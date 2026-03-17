@@ -1,7 +1,5 @@
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Button } from "../ui/button";
-import { Compass } from "lucide-react";
 
 export const BaseFields = ({ register, errors }: any) => (
   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -35,7 +33,7 @@ export const WaterFields = ({ register }: any) => (
   </div>
 );
 
-export const RockFields = ({ register, onOpenCompass }: { register: any; onOpenCompass?: () => void }) => (
+export const RockFields = ({ register }: { register: any }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
     {/* Rock Classification */}
     <div className="space-y-2">
@@ -112,35 +110,6 @@ export const RockFields = ({ register, onOpenCompass }: { register: any; onOpenC
     <div className="space-y-2"><Label>Hardness (Mohs)</Label><Input type="number" step="0.5" max="10" min="1" {...register("fields.hardness")} /></div>
     <div className="space-y-2"><Label>Specific Gravity</Label><Input type="number" step="0.1" {...register("fields.specificGravity")} /></div>
     <div className="space-y-2"><Label>Magnetism</Label><Input {...register("fields.magnetism")} /></div>
-
-    {/* Strike & Dip with Compass */}
-    <div className="space-y-2 sm:col-span-2 lg:col-span-3">
-      <div className="flex items-center justify-between">
-        <Label>Strike / Dip</Label>
-        {onOpenCompass && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-1.5 h-7 text-xs"
-            onClick={onOpenCompass}
-          >
-            <Compass className="w-3.5 h-3.5" />
-            Use Compass
-          </Button>
-        )}
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <span className="text-xs text-muted-foreground">Strike</span>
-          <Input {...register("fields.strike")} placeholder="e.g. 045°" />
-        </div>
-        <div className="space-y-1">
-          <span className="text-xs text-muted-foreground">Dip</span>
-          <Input {...register("fields.dip")} placeholder="e.g. 30°" />
-        </div>
-      </div>
-    </div>
 
     <div className="space-y-2"><Label>Weight (g)</Label><Input type="number" step="0.1" {...register("fields.weight")} /></div>
   </div>

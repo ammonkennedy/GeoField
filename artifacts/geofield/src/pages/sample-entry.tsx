@@ -15,7 +15,6 @@ import { useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { enqueue } from "@/lib/offline-queue";
 import { BaseFields, WaterFields, RockFields, SoilFields } from "@/components/fields/SchemaForms";
-import { CompassModal } from "@/components/CompassModal";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
@@ -58,7 +57,6 @@ export default function SampleEntry() {
   type MediaSlot = { type: "photo"; dataUrl: string } | { type: "video"; dataUrl: string } | null;
   const [mediaSlots, setMediaSlots] = useState<[MediaSlot, MediaSlot, MediaSlot]>([null, null, null]);
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("idle");
-  const [compassOpen, setCompassOpen] = useState(false);
   const [customParams, setCustomParams] = useState<CustomParam[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef<any>(null);
@@ -409,7 +407,7 @@ export default function SampleEntry() {
                   transition={{ duration: 0.2 }}
                 >
                   {currentType === "water" && <WaterFields register={register} />}
-                  {currentType === "rock" && <RockFields register={register} onOpenCompass={() => setCompassOpen(true)} />}
+                  {currentType === "rock" && <RockFields register={register} />}
                   {currentType === "soil_sand" && <SoilFields register={register} />}
                 </motion.div>
               </AnimatePresence>
@@ -628,14 +626,6 @@ export default function SampleEntry() {
         </div>
       </form>
 
-      <CompassModal
-        open={compassOpen}
-        onClose={() => setCompassOpen(false)}
-        onCapture={(strike, dip) => {
-          setValue("fields.strike", strike);
-          setValue("fields.dip", dip);
-        }}
-      />
     </Layout>
   );
 }
