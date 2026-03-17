@@ -9,6 +9,7 @@ import Dashboard from "@/pages/dashboard";
 import SampleEntry from "@/pages/sample-entry";
 import MapViewPage from "@/pages/map-view";
 import TripPlannerPage from "@/pages/trip-planner";
+import StratColumnPage from "@/pages/strat-column";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,9 @@ function Router() {
       </Route>
       <Route path="/trip/:tripId">
         <ProtectedRoute component={TripPlannerPage} />
+      </Route>
+      <Route path="/strat/:id">
+        <ProtectedRoute component={StratColumnPage} />
       </Route>
       <Route path="/sample/:id">
         <ProtectedRoute component={SampleEntry} />
