@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
-import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Camera } from "lucide-react";
+import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { RoadCamPanel, type RoadCam } from "@/components/RoadCamPanel";
 
 const TYPE_COLORS: Record<string, string> = {
   water: "#2d7dd2",
@@ -130,14 +129,6 @@ export default function MapViewPage() {
   const [terrain, setTerrain] = useState(true);
   const [geoInfo, setGeoInfo] = useState<GeoInfo | null>(null);
 
-  // Park cameras state
-  const [camsEnabled, setCamsEnabled] = useState(false);
-  const [cameras, setCameras] = useState<RoadCam[]>([]);
-  const [camsLoading, setCamsLoading] = useState(false);
-  const [selectedCam, setSelectedCam] = useState<RoadCam | null>(null);
-  // Keyed by camera ID so we can diff additions/removals without clearing everything
-  const camMarkersMapRef = useRef<Map<string, any>>(new Map());
-  const moveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: allSamples } = useGetSamples();
   const { data: folders } = useGetFolders();
@@ -160,93 +151,6 @@ export default function MapViewPage() {
   useEffect(() => {
     overlayLayerRef.current = overlayLayer;
   }, [overlayLayer]);
-
-  // ── PARK CAMERAS ──────────────────────────────────────────────────────────
-  const fetchCameras = useCallback(async () => {
-    if (!mapRef.current) return;
-    const bounds = mapRef.current.getBounds();
-    const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-    setCamsLoading(true);
-    try {
-      const r = await fetch(
-        `${base}/api/proxy/parkcams?minLat=${bounds.getSouth()}&maxLat=${bounds.getNorth()}&minLng=${bounds.getWest()}&maxLng=${bounds.getEast()}`
-      );
-      const d = await r.json();
-      setCameras(d.cameras ?? []);
-    } catch {
-      setCameras([]);
-    } finally {
-      setCamsLoading(false);
-    }
-  }, []);
-
-  // Diff-update markers: only add new ones and remove stale ones — never wipe everything
-  useEffect(() => {
-    import("maplibre-gl").then((L) => {
-      if (!camsEnabled || !mapRef.current) {
-        camMarkersMapRef.current.forEach((m) => m.remove());
-        camMarkersMapRef.current.clear();
-        return;
-      }
-
-      const incomingIds = new Set(cameras.map((c) => c.id));
-      const existingIds = new Set(camMarkersMapRef.current.keys());
-
-      // Remove markers that are no longer in the fetched set
-      existingIds.forEach((id) => {
-        if (!incomingIds.has(id)) {
-          camMarkersMapRef.current.get(id)?.remove();
-          camMarkersMapRef.current.delete(id);
-        }
-      });
-
-      // Add markers only for cameras that don't already have one
-      cameras.forEach((cam) => {
-        if (camMarkersMapRef.current.has(cam.id)) return;
-
-        const el = document.createElement("div");
-        el.style.cssText = [
-          "width:28px;height:28px;border-radius:50%;",
-          "background:#15803d;border:2px solid white;",
-          "box-shadow:0 2px 8px rgba(0,0,0,0.4);",
-          "display:flex;align-items:center;justify-content:center;",
-          "cursor:pointer;transition:transform 0.1s;",
-        ].join("");
-        el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`;
-        el.title = cam.title;
-        el.addEventListener("mouseenter", () => { el.style.transform = "scale(1.2)"; });
-        el.addEventListener("mouseleave", () => { el.style.transform = "scale(1)"; });
-        el.addEventListener("click", (e) => { e.stopPropagation(); setSelectedCam(cam); });
-
-        const marker = new L.Marker({ element: el }).setLngLat([cam.lng, cam.lat]).addTo(mapRef.current);
-        camMarkersMapRef.current.set(cam.id, marker);
-      });
-    });
-  }, [cameras, camsEnabled]);
-
-  // Toggle: when disabled clean up; when enabled do first fetch + debounced moveend re-fetch
-  useEffect(() => {
-    if (!camsEnabled) {
-      if (moveDebounceRef.current) clearTimeout(moveDebounceRef.current);
-      camMarkersMapRef.current.forEach((m) => m.remove());
-      camMarkersMapRef.current.clear();
-      setCameras([]);
-      setSelectedCam(null);
-      return;
-    }
-    fetchCameras();
-
-    const handleMoveEnd = () => {
-      if (moveDebounceRef.current) clearTimeout(moveDebounceRef.current);
-      moveDebounceRef.current = setTimeout(() => fetchCameras(), 600);
-    };
-    const map = mapRef.current;
-    if (map) map.on("moveend", handleMoveEnd);
-    return () => {
-      if (moveDebounceRef.current) clearTimeout(moveDebounceRef.current);
-      if (map) map.off("moveend", handleMoveEnd);
-    };
-  }, [camsEnabled, fetchCameras]);
 
   // ── INITIALIZE MAP ONCE ───────────────────────────────────────────────────
   useEffect(() => {
@@ -545,20 +449,6 @@ export default function MapViewPage() {
             <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           </div>
 
-          {/* Park Cameras toggle */}
-          <button
-            onClick={() => setCamsEnabled((v) => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all shadow-sm ${
-              camsEnabled
-                ? "bg-green-700 text-white border-green-700"
-                : "bg-card border-border text-muted-foreground hover:text-foreground"
-            }`}
-            title="Toggle National Park webcams"
-          >
-            <Camera className="w-3.5 h-3.5" />
-            {camsLoading ? "Loading…" : `Park Cams${camsEnabled && cameras.length > 0 ? ` (${cameras.length})` : ""}`}
-          </button>
-
           {/* Legend */}
           <div className="flex gap-3 ml-auto flex-wrap">
             {Object.entries(TYPE_COLORS).map(([type, color]) => (
@@ -578,16 +468,6 @@ export default function MapViewPage() {
               : "Click anywhere to get soil classification data (USDA SSURGO, US coverage only)."}
           </div>
         )}
-        {camsEnabled && (
-          <div className="text-xs text-muted-foreground bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex items-center gap-2">
-            <Camera className="w-3.5 h-3.5 text-green-700 shrink-0" />
-            <span>
-              <strong className="text-green-800">{cameras.length > 0 ? `${cameras.length} park webcam${cameras.length !== 1 ? "s" : ""}` : "No park cameras"}</strong>
-              {cameras.length > 0 ? " in this view — click a green pin to view. Live streams and reference photos from NPS." : " in the current view. Pan to a national park area."}
-            </span>
-          </div>
-        )}
-
         {samplesWithoutCoords.length > 0 && (
           <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -635,9 +515,6 @@ export default function MapViewPage() {
         )}
         <div className="flex-1 relative">
           <div ref={mapContainerRef} className="w-full h-full rounded-2xl overflow-hidden border border-border shadow-lg" />
-          {selectedCam && (
-            <RoadCamPanel cam={selectedCam} onClose={() => setSelectedCam(null)} />
-          )}
         </div>
       </div>
     </Layout>
