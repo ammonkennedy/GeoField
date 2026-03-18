@@ -140,6 +140,7 @@ export const SoilFields = ({ register }: any) => (
     <div className="space-y-2"><Label>Depth (cm)</Label><Input type="number" step="0.1" {...register("fields.depth")} /></div>
     <div className="space-y-2"><Label>Structure</Label><Input {...register("fields.structure")} placeholder="e.g. Granular, Blocky" /></div>
     <div className="space-y-2"><Label>Organic Matter (%)</Label><Input type="number" step="0.1" {...register("fields.organicMatter")} /></div>
+    <div className="space-y-2"><Label>Electrical Conductivity (mS/cm)</Label><Input type="number" step="0.01" {...register("fields.ec")} /></div>
     <div className="space-y-2"><Label>Weight (g)</Label><Input type="number" step="0.1" {...register("fields.weight")} /></div>
   </div>
 );
