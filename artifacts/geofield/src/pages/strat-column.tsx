@@ -7,9 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Plus, Trash2, GripVertical, Download, ChevronDown, ChevronUp,
-  Layers, ArrowLeft, Save, Pencil, X, Check, Compass
+  Layers, ArrowLeft, Save, Pencil, X, Check
 } from "lucide-react";
-import { CompassModal } from "@/components/CompassModal";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -381,9 +380,6 @@ export default function StratColumnPage() {
       updatedAt: Date.now(),
     };
   });
-  const [compassOpen, setCompassOpen] = useState(false);
-  const [pendingMeasLabel, setPendingMeasLabel] = useState("");
-
   const [saved, setSaved] = useState(!isNew);
 
   const save = useCallback(() => {
@@ -537,7 +533,7 @@ export default function StratColumnPage() {
           </div>
         </div>
 
-        {/* Main three-panel layout */}
+        {/* Main two-panel layout */}
         <div className="flex gap-4 flex-1 min-h-0 flex-col lg:flex-row">
           {/* Left — layer list */}
           <div className="lg:w-72 xl:w-80 flex flex-col gap-3 min-h-0">
@@ -578,164 +574,8 @@ export default function StratColumnPage() {
             <ColumnPreview column={column} />
           </div>
 
-          {/* Right — Strike & Dip measurements */}
-          <div className="lg:w-64 xl:w-72 flex flex-col gap-3 min-h-0">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <Compass className="w-3.5 h-3.5" />
-                Strike &amp; Dip
-              </h2>
-              <span className="text-xs text-muted-foreground">{column.measurements.length} pts</span>
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 gap-1.5 text-xs"
-                onClick={() => {
-                  setPendingMeasLabel("");
-                  setCompassOpen(true);
-                }}
-              >
-                <Compass className="w-3.5 h-3.5" />
-                Use Compass
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 gap-1.5 text-xs"
-                onClick={() => {
-                  const m: StrikeDipMeasurement = { id: crypto.randomUUID(), label: "", strike: "", dip: "", dipDir: "", notes: "" };
-                  setColumn((c) => ({ ...c, measurements: [...c.measurements, m] }));
-                  setSaved(false);
-                }}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Manual
-              </Button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              {column.measurements.length === 0 && (
-                <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
-                  <Compass className="w-8 h-8 opacity-20" />
-                  <p className="text-xs text-center">No measurements yet.<br />Use the compass or add manually.</p>
-                </div>
-              )}
-              {column.measurements.map((m, idx) => (
-                <MeasurementRow
-                  key={m.id}
-                  measurement={m}
-                  index={idx}
-                  onChange={(updated) => {
-                    setColumn((c) => {
-                      const measurements = [...c.measurements];
-                      measurements[idx] = updated;
-                      return { ...c, measurements };
-                    });
-                    setSaved(false);
-                  }}
-                  onDelete={() => {
-                    setColumn((c) => ({ ...c, measurements: c.measurements.filter((_, i) => i !== idx) }));
-                    setSaved(false);
-                  }}
-                />
-              ))}
-            </div>
-          </div>
         </div>
       </div>
-
-      <CompassModal
-        open={compassOpen}
-        onClose={() => setCompassOpen(false)}
-        onCapture={(strike, dip) => {
-          const dipDir = deriveDipDir(strike);
-          const m: StrikeDipMeasurement = {
-            id: crypto.randomUUID(),
-            label: pendingMeasLabel,
-            strike,
-            dip,
-            dipDir,
-            notes: "",
-          };
-          setColumn((c) => ({ ...c, measurements: [...c.measurements, m] }));
-          setSaved(false);
-        }}
-      />
     </Layout>
   );
-}
-
-/* ── Measurement row component ──────────────────────────────────────────── */
-function MeasurementRow({
-  measurement, index, onChange, onDelete,
-}: {
-  measurement: StrikeDipMeasurement;
-  index: number;
-  onChange: (m: StrikeDipMeasurement) => void;
-  onDelete: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const upd = (k: keyof StrikeDipMeasurement, v: string) => onChange({ ...measurement, [k]: v });
-
-  return (
-    <div className="border rounded-xl bg-card shadow-sm overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground font-mono w-5 shrink-0">{index + 1}.</span>
-            <p className="text-sm font-medium truncate">{measurement.label || "Measurement"}</p>
-          </div>
-          <div className="flex items-center gap-2 mt-0.5 pl-7">
-            <span className="text-xs font-mono text-primary">{measurement.strike || "--"}</span>
-            <span className="text-xs text-muted-foreground">→</span>
-            <span className="text-xs font-mono text-primary">{measurement.dip || "--"}</span>
-            {measurement.dipDir && <span className="text-xs text-muted-foreground">{measurement.dipDir}</span>}
-          </div>
-        </div>
-        <button onClick={() => setOpen((o) => !o)} className="p-1.5 rounded hover:bg-muted transition-colors">
-          {open ? <ChevronUp className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
-        </button>
-        <button onClick={onDelete} className="p-1.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors">
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
-
-      {open && (
-        <div className="px-3 pb-3 pt-1 border-t bg-muted/30 space-y-2">
-          <div className="space-y-1">
-            <Label className="text-xs">Label</Label>
-            <Input value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder="e.g. Outcrop A, Bedding plane" className="h-7 text-sm" />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label className="text-xs">Strike</Label>
-              <Input value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} placeholder="e.g. 045°" className="h-7 text-sm font-mono" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Dip</Label>
-              <Input value={measurement.dip} onChange={(e) => upd("dip", e.target.value)} placeholder="e.g. 30°" className="h-7 text-sm font-mono" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Dip Direction</Label>
-            <Input value={measurement.dipDir} onChange={(e) => upd("dipDir", e.target.value)} placeholder="e.g. SE, NW" className="h-7 text-sm" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Notes</Label>
-            <Input value={measurement.notes} onChange={(e) => upd("notes", e.target.value)} placeholder="Fault plane, bedding, foliation…" className="h-7 text-sm" />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function deriveDipDir(strikeStr: string): string {
-  const n = parseFloat(strikeStr);
-  if (isNaN(n)) return "";
-  const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
-  return dirs[Math.round(((n + 90) % 360) / 22.5) % 16];
 }

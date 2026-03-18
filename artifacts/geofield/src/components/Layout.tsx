@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Layers } from "lucide-react";
+import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Layers, Compass } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { loadColumns, type StratColumn } from "@/pages/strat-column";
@@ -133,6 +133,24 @@ export function Layout({ children }: { children: ReactNode }) {
                 <p className="text-xs text-muted-foreground italic px-3 py-2">No trips yet</p>
               )}
             </nav>
+          </div>
+
+          {/* Strike & Dip */}
+          <div className="px-4">
+            <Link
+              href="/strike-dip"
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 font-medium",
+                location === "/strike-dip"
+                  ? "bg-primary text-primary-foreground shadow-md"
+                  : "text-foreground hover:bg-muted"
+              )}
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Compass className="w-4 h-4 opacity-80 shrink-0" />
+              <span className="flex-1">Strike &amp; Dip</span>
+              {location === "/strike-dip" && <ChevronRight className="w-4 h-4 shrink-0" />}
+            </Link>
           </div>
 
           {/* Strat Columns */}
