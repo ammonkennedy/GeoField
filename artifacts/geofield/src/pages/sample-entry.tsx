@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image } from "lucide-react";
+import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image, BookmarkCheck } from "lucide-react";
 import { useSamplesMutations } from "@/hooks/use-geofield";
 import { useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -40,6 +40,25 @@ interface CustomParam {
   id: string;
   label: string;
   value: string;
+}
+
+/* ── Per-type custom param templates (persisted in localStorage) ─────────── */
+type SampleTypeId = 'water' | 'rock' | 'soil_sand';
+const TEMPLATE_KEY = "geofield_custom_param_templates";
+
+function loadTemplates(): Record<SampleTypeId, string[]> {
+  try { return JSON.parse(localStorage.getItem(TEMPLATE_KEY) || "{}"); }
+  catch { return {} as Record<SampleTypeId, string[]>; }
+}
+
+function saveTemplate(type: SampleTypeId, labels: string[]) {
+  const all = loadTemplates();
+  all[type] = labels;
+  localStorage.setItem(TEMPLATE_KEY, JSON.stringify(all));
+}
+
+function templateToParams(labels: string[]): CustomParam[] {
+  return labels.map((label) => ({ id: `tpl_${crypto.randomUUID()}`, label, value: "" }));
 }
 
 export default function SampleEntry() {
@@ -129,6 +148,17 @@ export default function SampleEntry() {
   const currentType = watch("sampleType");
   const locationValue = watch("fields.location") as string | undefined;
   const isPending = createSample.isPending || updateSample.isPending;
+
+  // When the sample type changes on a NEW sample, pre-fill custom params from the saved template
+  const prevTypeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isEdit) return;
+    if (prevTypeRef.current === currentType) return;
+    prevTypeRef.current = currentType;
+    const templates = loadTemplates();
+    const labels = templates[currentType as SampleTypeId] ?? [];
+    if (labels.length > 0) setCustomParams(templateToParams(labels));
+  }, [currentType, isEdit]);
 
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -244,6 +274,16 @@ export default function SampleEntry() {
   };
   const removeCustomParam = (id: string) => {
     setCustomParams((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const saveAsDefault = () => {
+    const labels = customParams.map((p) => p.label).filter(Boolean);
+    saveTemplate(currentType as SampleTypeId, labels);
+    const typeLabel = currentType === "water" ? "Water" : currentType === "rock" ? "Rock" : "Soil/Sediment";
+    toast({
+      title: "Template saved",
+      description: `${labels.length} custom parameter${labels.length !== 1 ? "s" : ""} will now appear on all new ${typeLabel} sheets.`,
+    });
   };
 
   const onSubmit = (data: FormValues) => {
@@ -417,26 +457,41 @@ export default function SampleEntry() {
 
             {/* Section 3: Custom Parameters */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-lg font-display font-semibold flex items-center gap-2">
                   <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">3</span>
                   Custom Parameters
                 </h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  onClick={addCustomParam}
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Parameter
-                </Button>
+                <div className="flex items-center gap-2">
+                  {customParams.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 border-primary/40 text-primary hover:bg-primary/5"
+                      onClick={saveAsDefault}
+                      title={`Save these parameters as the default template for all new ${currentType === "water" ? "Water" : currentType === "rock" ? "Rock" : "Soil/Sediment"} sheets`}
+                    >
+                      <BookmarkCheck className="w-4 h-4" />
+                      Save as default
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={addCustomParam}
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Parameter
+                  </Button>
+                </div>
               </div>
 
               {customParams.length === 0 ? (
                 <p className="text-sm text-muted-foreground italic px-1">
-                  No custom parameters on this sample. Click "Add Parameter" to create one specific to this sample sheet only.
+                  No custom parameters yet. Click <strong>Add Parameter</strong> to add one, then <strong>Save as default</strong> to make it appear on all future {currentType === "water" ? "Water" : currentType === "rock" ? "Rock" : "Soil/Sediment"} sheets.
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -464,6 +519,9 @@ export default function SampleEntry() {
                       </button>
                     </div>
                   ))}
+                  <p className="text-xs text-muted-foreground pt-1">
+                    Hit <strong>Save as default</strong> to make this set of parameters appear automatically on every new {currentType === "water" ? "Water" : currentType === "rock" ? "Rock" : "Soil/Sediment"} sheet.
+                  </p>
                 </div>
               )}
             </div>
