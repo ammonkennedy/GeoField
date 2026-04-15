@@ -4,6 +4,7 @@ import {
   MapPin, Plus, Trash2, Save, Map, X, Navigation, Edit3, Bookmark,
   Layers, Satellite, Mountain,
 } from "lucide-react";
+import { loadCustomLayers, safeAddCustomLayer, safeRemoveCustomLayer, deleteCustomLayer, type CustomMapLayer } from "@/lib/custom-layers";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -146,6 +147,7 @@ export default function TripPlannerPage() {
   const [baseLayer,    setBaseLayer]    = useState<BaseLayer>("satellite");
   const [terrain,      setTerrain]      = useState(true);
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
+  const [customLayers, setCustomLayers] = useState<CustomMapLayer[]>(loadCustomLayers);
 
   // Map refs
   const mapContainerRef  = useRef<HTMLDivElement>(null);
@@ -154,6 +156,7 @@ export default function TripPlannerPage() {
   const mapLoadedRef     = useRef(false);
   const overlayLayerRef  = useRef<OverlayLayer>("none");
   const pinModeRef       = useRef(false);
+  const customLayersRef  = useRef<CustomMapLayer[]>(loadCustomLayers());
 
   // Interaction state
   const [pinMode,         setPinMode]         = useState(false);
@@ -164,6 +167,28 @@ export default function TripPlannerPage() {
 
   // Keep refs in sync
   useEffect(() => { overlayLayerRef.current = overlayLayer; setGeoInfo(null); }, [overlayLayer]);
+
+  // Sync custom layers from localStorage
+  useEffect(() => {
+    const handler = () => setCustomLayers(loadCustomLayers());
+    window.addEventListener("custom-layers-updated", handler);
+    return () => window.removeEventListener("custom-layers-updated", handler);
+  }, []);
+
+  // Sync custom layers ref + update map when list changes
+  useEffect(() => {
+    customLayersRef.current = customLayers;
+    if (!mapInstanceRef.current || !mapLoadedRef.current) return;
+    const map = mapInstanceRef.current;
+    const existingIds = new Set(
+      (map.getStyle()?.layers ?? [])
+        .filter((l: any) => l.id.startsWith("clayer_fill_"))
+        .map((l: any) => (l.id as string).replace("clayer_fill_", ""))
+    );
+    const newIds = new Set(customLayers.map((l) => l.id));
+    existingIds.forEach((id) => { if (!newIds.has(id)) safeRemoveCustomLayer(map, id); });
+    customLayers.forEach((layer) => { if (!existingIds.has(layer.id)) safeAddCustomLayer(map, layer); });
+  }, [customLayers]);
   useEffect(() => {
     pinModeRef.current = pinMode;
     // Update map cursor when mode changes
@@ -288,6 +313,9 @@ export default function TripPlannerPage() {
             if (overlayLayerRef.current !== "none") {
               safeAddOverlay(map, overlayLayerRef.current);
             }
+
+            // Add any saved custom layers
+            customLayersRef.current.forEach((layer) => safeAddCustomLayer(map, layer));
 
             // Place existing site markers
             const sitesSnapshot = activeTrip?.sites ?? [];
@@ -634,6 +662,31 @@ export default function TripPlannerPage() {
                 </select>
                 <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               </div>
+
+              {/* Custom layer chips */}
+              {customLayers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {customLayers.map((layer) => (
+                    <div
+                      key={layer.id}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-medium"
+                      style={{ borderColor: layer.color + "99", backgroundColor: layer.color + "18" }}
+                    >
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: layer.color }} />
+                      <span className="max-w-[100px] truncate">{layer.name}</span>
+                      <button
+                        onClick={() => {
+                          if (!confirm(`Remove "${layer.name}" layer?`)) return;
+                          deleteCustomLayer(layer.id);
+                        }}
+                        className="text-muted-foreground hover:text-destructive transition-colors ml-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Add Sample Spot button — arms pin mode */}
               <button

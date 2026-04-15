@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
-import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain } from "lucide-react";
+import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { loadCustomLayers, addCustomLayer, deleteCustomLayer, safeAddCustomLayer, safeRemoveCustomLayer, type CustomMapLayer } from "@/lib/custom-layers";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -128,7 +132,13 @@ export default function MapViewPage() {
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
   const [terrain, setTerrain] = useState(true);
   const [geoInfo, setGeoInfo] = useState<GeoInfo | null>(null);
-
+  const [customLayers, setCustomLayers] = useState<CustomMapLayer[]>(loadCustomLayers);
+  const [layerModalOpen, setLayerModalOpen] = useState(false);
+  const [newLayerName, setNewLayerName] = useState("");
+  const [newLayerColor, setNewLayerColor] = useState("#e63946");
+  const [newLayerGeoJson, setNewLayerGeoJson] = useState<string | null>(null);
+  const [newLayerError, setNewLayerError] = useState("");
+  const [newLayerFileName, setNewLayerFileName] = useState("");
 
   const { data: allSamples } = useGetSamples();
   const { data: folders } = useGetFolders();
@@ -137,6 +147,8 @@ export default function MapViewPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<any[]>([]);
   const popupRef = useRef<any>(null);
+  const layerFileInputRef = useRef<HTMLInputElement>(null);
+  const customLayersRef = useRef<CustomMapLayer[]>(loadCustomLayers());
   // Use refs for values accessed inside async / event-handler closures to avoid stale captures
   const overlayLayerRef = useRef<OverlayLayer>("none");
   const mapLoadedRef = useRef(false);
@@ -151,6 +163,28 @@ export default function MapViewPage() {
   useEffect(() => {
     overlayLayerRef.current = overlayLayer;
   }, [overlayLayer]);
+
+  // Sync customLayers from localStorage changes (e.g. after delete)
+  useEffect(() => {
+    const handler = () => setCustomLayers(loadCustomLayers());
+    window.addEventListener("custom-layers-updated", handler);
+    return () => window.removeEventListener("custom-layers-updated", handler);
+  }, []);
+
+  // Keep customLayersRef in sync + update map when list changes
+  useEffect(() => {
+    customLayersRef.current = customLayers;
+    if (!mapRef.current || !mapLoadedRef.current) return;
+    const map = mapRef.current;
+    const existingIds = new Set(
+      (map.getStyle()?.layers ?? [])
+        .filter((l: any) => l.id.startsWith("clayer_fill_"))
+        .map((l: any) => (l.id as string).replace("clayer_fill_", ""))
+    );
+    const newIds = new Set(customLayers.map((l) => l.id));
+    existingIds.forEach((id) => { if (!newIds.has(id)) safeRemoveCustomLayer(map, id); });
+    customLayers.forEach((layer) => { if (!existingIds.has(layer.id)) safeAddCustomLayer(map, layer); });
+  }, [customLayers]);
 
   // ── INITIALIZE MAP ONCE ───────────────────────────────────────────────────
   useEffect(() => {
@@ -175,11 +209,11 @@ export default function MapViewPage() {
 
       map.on("load", () => {
         mapLoadedRef.current = true;
-        // Apply initial overlay if any
         if (overlayLayerRef.current !== "none") {
           safeAddOverlay(map, overlayLayerRef.current);
         }
-        // Place initial markers
+        // Add any saved custom layers
+        customLayersRef.current.forEach((layer) => safeAddCustomLayer(map, layer));
         placeMarkers(L, map);
       });
 
@@ -449,6 +483,21 @@ export default function MapViewPage() {
             <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           </div>
 
+          {/* Insert Map Layer */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => {
+              setNewLayerName(""); setNewLayerColor("#e63946");
+              setNewLayerGeoJson(null); setNewLayerFileName(""); setNewLayerError("");
+              setLayerModalOpen(true);
+            }}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Insert Map Layer
+          </Button>
+
           {/* Legend */}
           <div className="flex gap-3 ml-auto flex-wrap">
             {Object.entries(TYPE_COLORS).map(([type, color]) => (
@@ -459,6 +508,31 @@ export default function MapViewPage() {
             ))}
           </div>
         </div>
+
+        {customLayers.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {customLayers.map((layer) => (
+              <div
+                key={layer.id}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium"
+                style={{ borderColor: layer.color + "99", backgroundColor: layer.color + "18" }}
+              >
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: layer.color }} />
+                <span>{layer.name}</span>
+                <button
+                  onClick={() => {
+                    if (!confirm(`Remove the "${layer.name}" layer?`)) return;
+                    deleteCustomLayer(layer.id);
+                  }}
+                  className="ml-0.5 text-muted-foreground hover:text-destructive transition-colors"
+                  title="Remove layer"
+                >
+                  <XIcon className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {overlayLayer !== "none" && (
           <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2 flex items-center gap-2">
@@ -517,6 +591,131 @@ export default function MapViewPage() {
           <div ref={mapContainerRef} className="w-full h-full rounded-2xl overflow-hidden border border-border shadow-lg" />
         </div>
       </div>
+
+      {/* Hidden file input for GeoJSON upload */}
+      <input
+        ref={layerFileInputRef}
+        type="file"
+        accept=".geojson,.json"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          e.target.value = "";
+          setNewLayerFileName(file.name);
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            try {
+              const text = ev.target?.result as string;
+              JSON.parse(text);
+              setNewLayerGeoJson(text);
+              setNewLayerError("");
+            } catch {
+              setNewLayerGeoJson(null);
+              setNewLayerError("Invalid GeoJSON — please check the file and try again.");
+            }
+          };
+          reader.readAsText(file);
+        }}
+      />
+
+      {/* Insert Map Layer modal */}
+      {layerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display font-bold text-lg flex items-center gap-2">
+                <Layers className="w-5 h-5 text-primary" />
+                Insert Map Layer
+              </h2>
+              <button onClick={() => setLayerModalOpen(false)} className="text-muted-foreground hover:text-foreground">
+                <XIcon className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Upload a GeoJSON file to overlay on the map. The layer will also appear in trip planning. Photos are not included in the export.
+            </p>
+
+            <div className="space-y-1">
+              <Label className="text-xs">Layer Name</Label>
+              <Input
+                value={newLayerName}
+                onChange={(e) => setNewLayerName(e.target.value)}
+                placeholder="e.g. Fault lines, Sample zones, Survey boundary"
+                className="h-9"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Layer Color</Label>
+              <div className="flex gap-2 flex-wrap">
+                {["#e63946","#2d7dd2","#06d6a0","#ffd166","#9b5de5","#f77f00","#4cc9f0","#8b5e3c"].map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setNewLayerColor(c)}
+                    className={`w-8 h-8 rounded-full border-2 transition-all ${newLayerColor === c ? "border-foreground scale-110 shadow-md" : "border-transparent hover:scale-105"}`}
+                    style={{ backgroundColor: c }}
+                    title={c}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={newLayerColor}
+                  onChange={(e) => setNewLayerColor(e.target.value)}
+                  className="w-8 h-8 rounded-full border-2 border-border cursor-pointer"
+                  title="Custom color"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">GeoJSON File</Label>
+              <button
+                type="button"
+                onClick={() => layerFileInputRef.current?.click()}
+                className="w-full flex flex-col items-center justify-center gap-2 py-6 border-2 border-dashed border-border rounded-xl hover:border-primary transition-colors text-muted-foreground hover:text-primary"
+              >
+                {newLayerFileName ? (
+                  <p className="text-sm font-medium text-foreground">{newLayerFileName}</p>
+                ) : (
+                  <>
+                    <Upload className="w-6 h-6" />
+                    <p className="text-sm">Click to upload .geojson or .json</p>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {newLayerError && (
+              <p className="text-sm text-destructive">{newLayerError}</p>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <Button
+                className="flex-1"
+                disabled={!newLayerName.trim() || !newLayerGeoJson}
+                onClick={() => {
+                  if (!newLayerName.trim() || !newLayerGeoJson) return;
+                  const layer: CustomMapLayer = {
+                    id: crypto.randomUUID(),
+                    name: newLayerName.trim(),
+                    color: newLayerColor,
+                    geojson: newLayerGeoJson,
+                    createdAt: new Date().toISOString(),
+                  };
+                  addCustomLayer(layer);
+                  setLayerModalOpen(false);
+                }}
+              >
+                Add to Map
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={() => setLayerModalOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }
