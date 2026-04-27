@@ -16,6 +16,8 @@
     "drizzle-orm": "catalog:",
     "express": "^5",
     "openid-client": "^6.8.2",
+    "stripe": "20.0.0",
+    "stripe-replit-sync": "1.0.0",
     "zod": "catalog:"
   },
   "devDependencies": {

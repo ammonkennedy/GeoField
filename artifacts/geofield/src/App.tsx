@@ -11,6 +11,7 @@ import MapViewPage from "@/pages/map-view";
 import TripPlannerPage from "@/pages/trip-planner";
 import StratColumnPage from "@/pages/strat-column";
 import StrikeDipPage from "@/pages/strike-dip";
+import SubscriptionPage from "@/pages/subscription";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -53,6 +54,9 @@ function Router() {
       </Route>
       <Route path="/sample/:id">
         <ProtectedRoute component={SampleEntry} />
+      </Route>
+      <Route path="/subscription">
+        <ProtectedRoute component={SubscriptionPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>

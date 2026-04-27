@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Layers, Compass } from "lucide-react";
+import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Layers, Compass, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { loadColumns, type StratColumn } from "@/pages/strat-column";
@@ -248,6 +248,24 @@ export function Layout({ children }: { children: ReactNode }) {
             </p>
           </div>
         )}
+
+        {/* Subscription link */}
+        <div className="px-4 pb-2">
+          <Link
+            href="/subscription"
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 font-medium w-full",
+              location === "/subscription"
+                ? "bg-primary text-primary-foreground shadow-md"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+            onClick={() => setSidebarOpen(false)}
+          >
+            <CreditCard className="w-4 h-4 shrink-0" />
+            <span className="flex-1">Subscription</span>
+            {location === "/subscription" && <ChevronRight className="w-4 h-4 shrink-0" />}
+          </Link>
+        </div>
 
         {/* User footer */}
         <div className="p-4 border-t border-border/50 bg-card mt-auto">
