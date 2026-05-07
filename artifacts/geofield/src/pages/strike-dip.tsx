@@ -4,9 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CompassModal } from "@/components/CompassModal";
+import { ExportCustomizerDialog } from "@/components/ExportCustomizerDialog";
 import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
+import {
+  STRIKE_DIP_COLUMNS, buildStyledWorksheet,
+  loadExportConfig, loadColumnPrefs,
+  type ExportColumn, type ExportFormatConfig,
+} from "@/lib/export-config";
+import { format as fmtDate } from "date-fns";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 export interface StrikeDipMeasurement {
@@ -245,6 +252,7 @@ export default function StrikeDipPage() {
   const { toast } = useToast();
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
   const [compassOpen, setCompassOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   useEffect(() => {
     saveMeasurements(measurements);
@@ -262,42 +270,30 @@ export default function StrikeDipPage() {
     setMeasurements((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const exportExcel = () => {
+  const openExport = () => {
     if (measurements.length === 0) {
       toast({ title: "Nothing to export", description: "Add at least one measurement first.", variant: "destructive" });
       return;
     }
-    const headers = ["#", "Label", "Strike", "Dip", "Dip Direction", "Feature Type", "Location", "Date", "Notes"];
-    const rows = measurements.map((m, i) => [
-      i + 1,
-      m.label,
-      m.strike,
-      m.dip,
-      m.dipDir,
-      m.featureType,
-      m.location,
-      m.date,
-      m.notes,
-    ]);
+    setExportOpen(true);
+  };
 
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-
-    // Column widths
-    ws["!cols"] = [
-      { wch: 4 }, { wch: 28 }, { wch: 10 }, { wch: 8 }, { wch: 14 },
-      { wch: 18 }, { wch: 24 }, { wch: 12 }, { wch: 40 },
-    ];
-
-    // Style header row bold (xlsx community edition supports basic styles via s)
-    const headerRange = XLSX.utils.decode_range(ws["!ref"] || "A1");
-    for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r: 0, c })];
-      if (cell) cell.s = { font: { bold: true }, fill: { fgColor: { rgb: "E8F0FE" } } };
-    }
-
+  const handleDoExport = (columns: ExportColumn[], config: ExportFormatConfig) => {
+    const dataRows = measurements.map((m, i) => ({
+      index: i + 1,
+      label: m.label,
+      strike: m.strike,
+      dip: m.dip,
+      dipDir: m.dipDir,
+      featureType: m.featureType,
+      location: m.location,
+      date: m.date,
+      notes: m.notes,
+    }));
+    const ws = buildStyledWorksheet(columns, dataRows, config);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Strike & Dip");
-    XLSX.writeFile(wb, `strike_dip_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, config.sheetName || "Strike & Dip");
+    XLSX.writeFile(wb, `strike_dip_${fmtDate(new Date(), "yyyyMMdd-HHmm")}.xlsx`);
     toast({ title: "Exported", description: `${measurements.length} measurements saved to Excel (photos not included).` });
   };
 
@@ -323,7 +319,7 @@ export default function StrikeDipPage() {
           <div className="flex items-center gap-2 flex-wrap">
             {measurements.length > 0 && (
               <>
-                <Button variant="outline" size="sm" onClick={exportExcel} className="gap-1.5">
+                <Button variant="outline" size="sm" onClick={openExport} className="gap-1.5">
                   <Download className="w-3.5 h-3.5" />
                   Export Excel
                 </Button>
@@ -387,6 +383,18 @@ export default function StrikeDipPage() {
           setMeasurements((prev) => [...prev, m]);
           toast({ title: "Measurement captured", description: `Strike ${strike} / Dip ${dip}` });
         }}
+      />
+
+      <ExportCustomizerDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        title="Customize Strike & Dip Export"
+        subtitle={`${measurements.length} measurement${measurements.length !== 1 ? "s" : ""} · photos not included`}
+        initialColumns={loadColumnPrefs("strikedip", STRIKE_DIP_COLUMNS)}
+        initialConfig={loadExportConfig("strikedip")}
+        configKey="strikedip"
+        exportLabel={`Export ${measurements.length} measurement${measurements.length !== 1 ? "s" : ""}`}
+        onExport={handleDoExport}
       />
     </Layout>
   );
