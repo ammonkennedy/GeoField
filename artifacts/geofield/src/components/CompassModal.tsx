@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
-import { X, Compass, CheckCircle, Smartphone, AlertTriangle } from "lucide-react";
+import { X, CheckCircle, Smartphone, AlertTriangle } from "lucide-react";
 
 interface CompassModalProps {
   open: boolean;
@@ -19,6 +19,213 @@ function formatBearing(deg: number) {
   return dirs[Math.round(mod360(deg) / 22.5) % 16];
 }
 
+/* ── SVG Compass Rose ────────────────────────────────────────────────────── */
+function CompassRose({ heading }: { heading: number | null }) {
+  const cx = 110, cy = 110, r = 100;
+
+  // Tick marks every 5°; longer at 10°, longest at 90°
+  const ticks = Array.from({ length: 72 }, (_, i) => {
+    const deg = i * 5;
+    const isCardinal = deg % 90 === 0;
+    const isMajor = deg % 30 === 0;
+    const len = isCardinal ? 18 : isMajor ? 12 : 7;
+    const width = isCardinal ? 2 : isMajor ? 1.5 : 1;
+    const rad = toRad(deg - 90);
+    const x1 = cx + (r - 2) * Math.cos(rad);
+    const y1 = cy + (r - 2) * Math.sin(rad);
+    const x2 = cx + (r - 2 - len) * Math.cos(rad);
+    const y2 = cy + (r - 2 - len) * Math.sin(rad);
+    return { x1, y1, x2, y2, width, isCardinal };
+  });
+
+  // Degree labels at 0, 45, 90 … 315
+  const degLabels = [0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
+    const rad = toRad(deg - 90);
+    const dist = r - 30;
+    return {
+      deg,
+      x: cx + dist * Math.cos(rad),
+      y: cy + dist * Math.sin(rad),
+      isCardinal: deg % 90 === 0,
+    };
+  });
+
+  const cardinalNames: Record<number, string> = { 0: "N", 90: "E", 180: "S", 270: "W" };
+
+  const needleRot = heading !== null ? -heading : 0;
+
+  return (
+    <svg viewBox="0 0 220 220" className="w-56 h-56 drop-shadow-xl">
+      {/* Outer bezel */}
+      <circle cx={cx} cy={cy} r={r + 6} fill="#1a1f2e" />
+      {/* Subtle gradient on bezel */}
+      <defs>
+        <radialGradient id="bezel" cx="40%" cy="35%">
+          <stop offset="0%" stopColor="#2d3448" />
+          <stop offset="100%" stopColor="#0f1117" />
+        </radialGradient>
+        <radialGradient id="face" cx="40%" cy="35%">
+          <stop offset="0%" stopColor="#1e2435" />
+          <stop offset="100%" stopColor="#111520" />
+        </radialGradient>
+      </defs>
+      <circle cx={cx} cy={cy} r={r + 6} fill="url(#bezel)" />
+      {/* Compass face */}
+      <circle cx={cx} cy={cy} r={r} fill="url(#face)" />
+      {/* Inner decorative ring */}
+      <circle cx={cx} cy={cy} r={r - 22} fill="none" stroke="#2a3050" strokeWidth="0.5" />
+
+      {/* Tick marks */}
+      {ticks.map((t, i) => (
+        <line
+          key={i}
+          x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
+          stroke={t.isCardinal ? "#7ba7e8" : "#3d4a6a"}
+          strokeWidth={t.width}
+          strokeLinecap="round"
+        />
+      ))}
+
+      {/* Degree / cardinal labels */}
+      {degLabels.map(({ deg, x, y, isCardinal }) => (
+        <text
+          key={deg}
+          x={x} y={y}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={isCardinal ? 11 : 8}
+          fontWeight={isCardinal ? "700" : "400"}
+          fontFamily="system-ui, sans-serif"
+          fill={isCardinal ? "#a8c4f0" : "#5a6a90"}
+          letterSpacing="0"
+        >
+          {isCardinal ? cardinalNames[deg] : deg}
+        </text>
+      ))}
+
+      {/* Rotating needle group */}
+      <g
+        transform={`rotate(${needleRot}, ${cx}, ${cy})`}
+        style={{ transition: heading !== null ? "transform 0.12s ease-out" : "none" }}
+      >
+        {/* North half — red */}
+        <path
+          d={`M ${cx} ${cy - 68} L ${cx - 7} ${cy + 4} L ${cx + 7} ${cy + 4} Z`}
+          fill="#e84545"
+          opacity="0.95"
+        />
+        {/* South half — muted blue-grey */}
+        <path
+          d={`M ${cx} ${cy + 68} L ${cx - 7} ${cy - 4} L ${cx + 7} ${cy - 4} Z`}
+          fill="#4a5678"
+          opacity="0.9"
+        />
+        {/* North cap highlight */}
+        <path
+          d={`M ${cx} ${cy - 68} L ${cx - 3} ${cy - 30} L ${cx} ${cy - 28} Z`}
+          fill="#ff6b6b"
+          opacity="0.5"
+        />
+      </g>
+
+      {/* Center cap */}
+      <circle cx={cx} cy={cy} r={7} fill="#1a1f2e" />
+      <circle cx={cx} cy={cy} r={4.5} fill="#7ba7e8" />
+      <circle cx={cx} cy={cy} r={2} fill="#c8dbf8" />
+
+      {/* Heading text below center */}
+      <text
+        x={cx} y={cy + 85}
+        textAnchor="middle"
+        fontSize="13"
+        fontWeight="700"
+        fontFamily="'SF Mono', 'Fira Mono', monospace"
+        fill="#a8c4f0"
+        letterSpacing="1"
+      >
+        {heading !== null ? `${Math.round(heading).toString().padStart(3, "0")}°` : "---°"}
+      </text>
+    </svg>
+  );
+}
+
+/* ── Inclinometer arc ────────────────────────────────────────────────────── */
+function DipMeter({ dip }: { dip: number }) {
+  // Semi-circle 0–90°
+  const cx = 80, cy = 70, r = 52;
+  // Map 0-90° to 180°-90° arc on the SVG (left to right)
+  const toAngle = (d: number) => toRad(180 - d); // 0° → 180deg, 90° → 90deg
+  const dipRad = toAngle(Math.min(dip, 90));
+
+  const px = cx + r * Math.cos(dipRad);
+  const py = cy - r * Math.sin(toRad(dip)); // simple upward pointer
+
+  // Arc path for the colored fill
+  const arcEnd = toAngle(Math.min(dip, 90));
+  const startX = cx - r, startY = cy;
+  const endX = cx + r * Math.cos(arcEnd);
+  const endY = cy - r * Math.sin(arcEnd - Math.PI) * -1; // recalculate
+
+  // Simpler: use path sweep
+  const needleAngle = 180 - dip; // degrees from left (0° of dip = 180° in SVG coords)
+  const needleRad = toRad(needleAngle);
+  const needleX = cx + r * Math.cos(needleRad);
+  const needleY = cy + r * Math.sin(needleRad); // SVG y is inverted
+
+  // Color by dip
+  const color = dip > 60 ? "#e84545" : dip > 30 ? "#f59e0b" : "#22c55e";
+
+  // Build arc path from 180° to needleAngle
+  const largeArc = dip > 90 ? 1 : 0;
+  const arcPath = `M ${cx - r} ${cy} A ${r} ${r} 0 ${largeArc} 1 ${needleX} ${needleY}`;
+
+  return (
+    <svg viewBox="0 0 160 80" className="w-40 h-20">
+      {/* Background arc (full 0-90°) */}
+      <path
+        d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
+        fill="none"
+        stroke="#2a3050"
+        strokeWidth="8"
+        strokeLinecap="round"
+      />
+      {/* Filled arc up to dip */}
+      {dip > 0 && (
+        <path
+          d={arcPath}
+          fill="none"
+          stroke={color}
+          strokeWidth="8"
+          strokeLinecap="round"
+          style={{ transition: "all 0.15s ease-out" }}
+        />
+      )}
+      {/* Tick marks at 30 and 60 */}
+      {[30, 60].map((d) => {
+        const a = toRad(180 - d);
+        const ix = cx + (r - 4) * Math.cos(a), iy = cy + (r - 4) * Math.sin(a);
+        const ox = cx + (r + 4) * Math.cos(a), oy = cy + (r + 4) * Math.sin(a);
+        return <line key={d} x1={ix} y1={iy} x2={ox} y2={oy} stroke="#3d4a6a" strokeWidth="1.5" />;
+      })}
+      {/* Needle pointer */}
+      <line
+        x1={cx} y1={cy}
+        x2={needleX} y2={needleY}
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        style={{ transition: "all 0.15s ease-out" }}
+      />
+      <circle cx={cx} cy={cy} r="3" fill="#1a1f2e" stroke={color} strokeWidth="1.5" />
+      {/* Labels */}
+      <text x={cx - r - 4} y={cy + 14} textAnchor="middle" fontSize="9" fill="#5a6a90" fontFamily="monospace">0°</text>
+      <text x={cx + r + 4} y={cy + 14} textAnchor="middle" fontSize="9" fill="#5a6a90" fontFamily="monospace">90°</text>
+      <text x={cx} y={cy - r - 6} textAnchor="middle" fontSize="9" fill="#5a6a90" fontFamily="monospace">45°</text>
+    </svg>
+  );
+}
+
+/* ── Main modal ──────────────────────────────────────────────────────────── */
 export function CompassModal({ open, onClose, onCapture }: CompassModalProps) {
   const [permState, setPermState] = useState<PermState>("idle");
   const [alpha, setAlpha] = useState<number | null>(null);
@@ -33,7 +240,6 @@ export function CompassModal({ open, onClose, onCapture }: CompassModalProps) {
     const a = e.alpha;
     const bRad = toRad(e.beta);
     const gRad = toRad(e.gamma);
-    // Overall tilt from horizontal = dip angle when phone is flat on rock
     const dipAngle = Math.round(toDeg(Math.acos(
       Math.min(1, Math.abs(Math.cos(bRad) * Math.cos(gRad)))
     )));
@@ -52,15 +258,9 @@ export function CompassModal({ open, onClose, onCapture }: CompassModalProps) {
     if (typeof DOE.requestPermission === "function") {
       try {
         const result = await DOE.requestPermission();
-        if (result === "granted") {
-          setPermState("granted");
-          startListening();
-        } else {
-          setPermState("denied");
-        }
-      } catch {
-        setPermState("denied");
-      }
+        if (result === "granted") { setPermState("granted"); startListening(); }
+        else setPermState("denied");
+      } catch { setPermState("denied"); }
     } else if (window.DeviceOrientationEvent) {
       setPermState("granted");
       startListening();
@@ -74,29 +274,19 @@ export function CompassModal({ open, onClose, onCapture }: CompassModalProps) {
     setLocked(false);
     setAlpha(null);
     setDip(0);
-
     const DOE = DeviceOrientationEvent as any;
     if (typeof DOE.requestPermission !== "function") {
-      // Android or desktop — no explicit permission needed
-      if (window.DeviceOrientationEvent) {
-        setPermState("granted");
-        startListening();
-      } else {
-        setPermState("unavailable");
-      }
+      if (window.DeviceOrientationEvent) { setPermState("granted"); startListening(); }
+      else setPermState("unavailable");
     } else {
       setPermState("idle");
     }
-
-    return () => {
-      window.removeEventListener("deviceorientation", handleOrientation, true);
-    };
+    return () => { window.removeEventListener("deviceorientation", handleOrientation, true); };
   }, [open, handleOrientation, startListening]);
 
   if (!open) return null;
 
   const strike = alpha !== null ? mod360(alpha) : 0;
-  const dipDisplay = dip;
   const dipDirection = alpha !== null ? mod360(alpha + 90) : 0;
 
   const handleLock = () => {
@@ -108,200 +298,118 @@ export function CompassModal({ open, onClose, onCapture }: CompassModalProps) {
   };
 
   const handleSave = () => {
-    const strikeStr = `${lockedStrike.toString().padStart(3, "0")}°`;
-    const dipStr = `${lockedDip}°`;
-    onCapture(strikeStr, dipStr);
+    onCapture(
+      `${lockedStrike.toString().padStart(3, "0")}°`,
+      `${lockedDip}°`
+    );
     onClose();
   };
 
-  const needleRotation = alpha !== null ? -alpha : 0;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-0 sm:p-4">
+      <div className="bg-[#0d1117] rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-white/5">
+
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-primary/10 to-transparent">
-          <div className="flex items-center gap-2 font-display font-bold text-lg">
-            <Compass className="w-5 h-5 text-primary" />
-            Strike &amp; Dip Compass
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <div className="text-sm font-semibold text-slate-300 tracking-widest uppercase">
+            Strike &amp; Dip
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted transition-colors">
-            <X className="w-5 h-5" />
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full flex items-center justify-center bg-white/5 hover:bg-white/10 transition-colors"
+          >
+            <X className="w-4 h-4 text-slate-400" />
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
-          {/* Instructions */}
-          <div className="flex items-start gap-2.5 bg-blue-50 dark:bg-blue-950/30 rounded-xl p-3 text-sm text-blue-700 dark:text-blue-300">
-            <Smartphone className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>Place phone <strong>face-up flat on the rock surface</strong>, with the top of the phone aligned along the strike direction, then tap Lock.</span>
+        <div className="px-5 pb-6 space-y-4">
+
+          {/* Instruction */}
+          <div className="flex items-start gap-2 bg-blue-500/10 border border-blue-500/20 rounded-xl px-3 py-2.5 text-xs text-blue-300">
+            <Smartphone className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>Place phone <strong>face-up flat on the rock</strong>, top edge along strike direction, then tap Lock.</span>
           </div>
 
+          {/* Permission states */}
           {permState === "idle" && (
-            <div className="text-center py-4 space-y-3">
-              <p className="text-sm text-muted-foreground">This device requires permission to access the compass sensor.</p>
+            <div className="py-4 space-y-3 text-center">
+              <p className="text-sm text-slate-400">This device requires permission to access the compass.</p>
               <Button onClick={requestPermission} className="w-full">Enable Compass</Button>
             </div>
           )}
-
           {permState === "requesting" && (
-            <div className="text-center py-6 text-muted-foreground text-sm">
-              Requesting sensor access...
-            </div>
+            <div className="py-6 text-center text-sm text-slate-500">Requesting sensor access…</div>
           )}
-
           {permState === "denied" && (
-            <div className="flex items-center gap-2 bg-destructive/10 text-destructive rounded-xl p-3 text-sm">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>Sensor access denied. Please allow motion &amp; orientation in your device settings, then reopen this dialog.</span>
+            <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5 text-xs text-red-300">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>Access denied. Allow motion &amp; orientation in device settings, then reopen.</span>
             </div>
           )}
-
           {permState === "unavailable" && (
-            <div className="flex items-center gap-2 bg-yellow-50 dark:bg-yellow-950/30 text-yellow-700 dark:text-yellow-300 rounded-xl p-3 text-sm">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>Your device doesn't support orientation sensors. Enter strike and dip manually in the form.</span>
+            <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-3 py-2.5 text-xs text-yellow-300">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <span>No orientation sensor detected. Enter strike and dip manually.</span>
             </div>
           )}
 
           {permState === "granted" && (
             <>
-              {/* Compass rose */}
-              <div className="flex justify-center">
-                <div className="relative w-44 h-44">
-                  {/* Outer ring */}
-                  <div className="absolute inset-0 rounded-full border-2 border-border bg-muted/30" />
-                  {/* Cardinal labels */}
-                  {[
-                    { label: "N", top: "4px", left: "50%", transform: "translateX(-50%)" },
-                    { label: "S", bottom: "4px", left: "50%", transform: "translateX(-50%)" },
-                    { label: "E", top: "50%", right: "4px", transform: "translateY(-50%)" },
-                    { label: "W", top: "50%", left: "4px", transform: "translateY(-50%)" },
-                  ].map(({ label, ...style }) => (
-                    <span
-                      key={label}
-                      className="absolute text-xs font-bold text-muted-foreground"
-                      style={style as any}
-                    >
-                      {label}
-                    </span>
-                  ))}
-                  {/* Tick marks */}
-                  {Array.from({ length: 36 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="absolute inset-0"
-                      style={{ transform: `rotate(${i * 10}deg)` }}
-                    >
-                      <div
-                        className={`absolute left-1/2 -translate-x-1/2 bg-border ${i % 9 === 0 ? "h-3 w-0.5" : "h-1.5 w-px"}`}
-                        style={{ top: "6px" }}
-                      />
-                    </div>
-                  ))}
-                  {/* Needle */}
-                  <div
-                    className="absolute inset-0 flex items-center justify-center transition-transform duration-150"
-                    style={{ transform: `rotate(${needleRotation}deg)` }}
-                  >
-                    <div className="relative w-2 h-36">
-                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0 h-0"
-                        style={{
-                          borderLeft: "5px solid transparent",
-                          borderRight: "5px solid transparent",
-                          borderBottom: "72px solid #ef4444",
-                        }}
-                      />
-                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0"
-                        style={{
-                          borderLeft: "5px solid transparent",
-                          borderRight: "5px solid transparent",
-                          borderTop: "72px solid #94a3b8",
-                        }}
-                      />
-                    </div>
-                  </div>
-                  {/* Center dot */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-3 h-3 rounded-full bg-card border-2 border-primary z-10" />
-                  </div>
-                  {/* Heading overlay */}
-                  <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 text-center">
-                    <span className="font-mono font-bold text-sm">
-                      {alpha !== null ? `${Math.round(alpha)}°` : "--°"}
-                      {alpha !== null ? ` ${formatBearing(alpha)}` : ""}
-                    </span>
-                  </div>
-                </div>
+              {/* Compass */}
+              <div className="flex justify-center pt-1">
+                <CompassRose heading={alpha} />
               </div>
 
-              {/* Dip bar */}
-              <div className="mt-6 space-y-1.5">
-                <div className="flex justify-between text-xs text-muted-foreground font-medium">
-                  <span>Dip Angle</span>
-                  <span className="font-mono font-bold text-foreground text-sm">{dipDisplay}°</span>
+              {/* Dip meter + readouts side by side */}
+              <div className="grid grid-cols-2 gap-3 items-center">
+                {/* Inclinometer */}
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-xs text-slate-500 uppercase tracking-widest">Dip</span>
+                  <DipMeter dip={dip} />
+                  <span className="font-mono font-bold text-2xl text-slate-100 -mt-1">{dip}°</span>
+                  {alpha !== null && (
+                    <span className="text-xs text-slate-500">dir. {formatBearing(dipDirection)}</span>
+                  )}
                 </div>
-                <div className="relative h-3 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="absolute left-0 top-0 h-full rounded-full transition-all duration-150"
-                    style={{
-                      width: `${Math.min(100, (dipDisplay / 90) * 100)}%`,
-                      background: dipDisplay > 60
-                        ? "#ef4444"
-                        : dipDisplay > 30
-                        ? "#f59e0b"
-                        : "#22c55e",
-                    }}
-                  />
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>0° (horizontal)</span>
-                  <span>90° (vertical)</span>
-                </div>
-              </div>
 
-              {/* Live readout */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-muted/50 rounded-xl p-3 text-center">
-                  <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">Strike</p>
-                  <p className="font-mono font-bold text-xl">
-                    {alpha !== null ? `${Math.round(mod360(alpha)).toString().padStart(3, "0")}°` : "--°"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {alpha !== null ? formatBearing(mod360(alpha)) : ""}
-                  </p>
-                </div>
-                <div className="bg-muted/50 rounded-xl p-3 text-center">
-                  <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wide">Dip</p>
-                  <p className="font-mono font-bold text-xl">{dipDisplay}°</p>
-                  <p className="text-xs text-muted-foreground">
-                    {alpha !== null ? `dir. ${formatBearing(dipDirection)}` : ""}
-                  </p>
+                {/* Strike readout */}
+                <div className="flex flex-col items-center gap-1 bg-white/3 rounded-2xl p-4 border border-white/5">
+                  <span className="text-xs text-slate-500 uppercase tracking-widest">Strike</span>
+                  <span className="font-mono font-bold text-3xl text-slate-100 tabular-nums">
+                    {alpha !== null ? `${Math.round(strike).toString().padStart(3, "0")}°` : "--°"}
+                  </span>
+                  <span className="text-sm text-slate-400 font-medium">
+                    {alpha !== null ? formatBearing(strike) : ""}
+                  </span>
                 </div>
               </div>
 
               {/* Locked result */}
               {locked && (
-                <div className="flex items-center gap-2 bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 rounded-xl p-3 text-sm">
+                <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2.5 text-sm text-emerald-300">
                   <CheckCircle className="w-4 h-4 shrink-0" />
                   <span>
-                    Locked: Strike <strong>{lockedStrike.toString().padStart(3, "0")}°</strong>, Dip <strong>{lockedDip}°</strong>
+                    Strike <strong>{lockedStrike.toString().padStart(3, "0")}°</strong> &middot; Dip <strong>{lockedDip}°</strong>
                   </span>
                 </div>
               )}
 
-              {/* Buttons */}
-              <div className="flex gap-2">
+              {/* Action buttons */}
+              <div className="flex gap-2 pt-1">
                 {!locked ? (
-                  <Button className="flex-1" onClick={handleLock} disabled={alpha === null}>
+                  <Button
+                    className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold"
+                    onClick={handleLock}
+                    disabled={alpha === null}
+                  >
                     Lock Measurement
                   </Button>
                 ) : (
                   <>
-                    <Button variant="outline" className="flex-1" onClick={() => setLocked(false)}>
+                    <Button variant="outline" className="flex-1 border-white/10 text-slate-300 hover:bg-white/5" onClick={() => setLocked(false)}>
                       Re-measure
                     </Button>
-                    <Button className="flex-1" onClick={handleSave}>
+                    <Button className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold" onClick={handleSave}>
                       Save to Form
                     </Button>
                   </>
