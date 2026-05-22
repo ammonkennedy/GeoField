@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "GeoField",
+    "slug": "geofield-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "geofield-mobile",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1e3d2e"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.geofield.mobile"
+    },
+    "android": {
+      "package": "com.geofield.mobile"
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "GeoField needs your location to tag field samples with GPS coordinates.",
+          "locationWhenInUsePermission": "GeoField needs your location to tag field samples with GPS coordinates."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "GeoField needs access to your photos to attach images to field samples.",
+          "cameraPermission": "GeoField needs access to your camera to photograph field samples."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

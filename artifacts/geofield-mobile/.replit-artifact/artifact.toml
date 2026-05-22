@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/geofield-mobile/"
+title = "GeoField Mobile"
+version = "1.0.0"
+id = "artifacts/geofield-mobile"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/geofield-mobile/" ]
+localPort = 23607
+
+[services.development]
+run = "pnpm --filter @workspace/geofield-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/geofield-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/geofield-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "23607"
+BASE_PATH = "/geofield-mobile/"
