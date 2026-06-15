@@ -48,8 +48,15 @@ export default function Login() {
               <a href="/api/login">Continue with Replit</a>
             </Button>
             
-            <Button asChild variant="outline" className="w-full h-12 text-lg">
-            <a href="/">Continue without Login</a>
+            <Button
+              variant="outline"
+              className="w-full h-12 text-lg"
+              onClick={() => {
+                localStorage.setItem("geofield-demo-mode", "true");
+                window.location.href = "/";
+              }}
+              >
+             Continue without Login
             </Button>
               
             <p className="text-xs text-muted-foreground">
