@@ -19,7 +19,7 @@ const queryClient = new QueryClient();
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { data, isLoading } = useGetCurrentAuthUser();
 
-  if (isLoading) {
+  if (isLoading && localStorage.getItem("geofield-demo-mode") !== "true") {
     return <div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
