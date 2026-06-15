@@ -43,9 +43,15 @@ export default function Login() {
           </div>
 
           <div className="w-full space-y-4 pt-4">
+            
             <Button asChild className="w-full h-12 text-lg font-medium shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all">
               <a href="/api/login">Continue with Replit</a>
             </Button>
+            
+            <Button asChild variant="outline" className="w-full h-12 text-lg">
+            <a href="/">Continue without Login</a>
+            </Button>
+              
             <p className="text-xs text-muted-foreground">
               Sign in to sync your field data with your lab account.
             </p>
