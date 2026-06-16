@@ -39,9 +39,9 @@ export default function Dashboard() {
   const allSamples = [...(samples || []), ...localSamples.map((item: any, index: number) => ({ id: -index - 1, ...item }))];
   
   const filteredSamples = allsamples.filter(s => 
-    s.sampleId.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (s.fields?.location && String(s.fields.location).toLowerCase().includes(searchTerm.toLowerCase()))
+    String(s.sampleId || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+    String(s.notes || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    String(s.fields?.location || "").toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
 
   const handleDeleteFolder = () => {
