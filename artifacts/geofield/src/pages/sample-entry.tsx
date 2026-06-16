@@ -318,7 +318,7 @@ export default function SampleEntry() {
     if (isEdit && id) {
       // Edits always go to the server (the form loaded from server data)
       updateSample.mutate({ id: Number(id), data: payload }, { onSuccess: () => setLocation("/") });
-    } else if (!navigator.onLine) {
+    } else if (!navigator.onLine || localStorage.getItem("geofield-demo-mode") ==="true") {
       // Offline — queue locally and navigate back
       enqueue(payload);
       toast({
