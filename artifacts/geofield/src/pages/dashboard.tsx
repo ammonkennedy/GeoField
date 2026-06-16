@@ -35,6 +35,9 @@ export default function Dashboard() {
 
   const activeFolder = folders?.find(f => f.id === folderIdNum);
 
+  const localSamples = JSON.parse(localStorage.getItem("geofield-offline-queue") || "[]");
+  const allSamples = [...(samples || []), ...localSamples.map((item: any, index: number) => ({ id: -index - 1, ...item }))];
+  
   const filteredSamples = samples?.filter(s => 
     s.sampleId.toLowerCase().includes(searchTerm.toLowerCase()) || 
     (s.notes && s.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
