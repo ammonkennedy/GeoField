@@ -40,8 +40,8 @@ export default function Dashboard() {
     ...(samples || []),
     ...localSamples.map((item: any, index: number) => ({
       id: -index - 1,
-      ...(item.payload,
-          sampleId: (item.payload?.sampleId || 'offline-${index + 1}',
+      ...(item.payload || {}),
+          sampleId: item.payload.sampleId || 'offline-${index + 1}',
           createdAt: item.queuedAt,
           isOffline: true,
     })),
