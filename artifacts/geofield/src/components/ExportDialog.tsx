@@ -13,13 +13,14 @@ type Selection = "all" | "uncategorized" | number;
 interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  samples?: any[];
 }
 
-export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
+export function ExportDialog({ open, onOpenChange, samples = [] }: ExportDialogProps) {
   const [selected, setSelected] = useState<Selection>("all");
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const { data: folders } = useGetFolders();
-  const { data: allSamples } = useGetSamples();
+  const allSamples = samples;
 
   const samplesToExport = useMemo(() => {
     if (!allSamples) return [];
