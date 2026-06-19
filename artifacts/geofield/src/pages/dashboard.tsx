@@ -174,7 +174,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} samples={allSamples} />
 
       <Dialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
         <DialogHeader>
