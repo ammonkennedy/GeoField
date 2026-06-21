@@ -27,6 +27,12 @@ export interface StrikeDipMeasurement {
   featureType: string;
   notes: string;
   photo?: string;
+  latitude?: number;
+longitude?: number;
+gpsAccuracy?: number;
+utmEasting?: number;
+utmNorthing?: number;
+utmZone?: string;
 }
 
 /* ── localStorage ───────────────────────────────────────────────────────── */
@@ -259,8 +265,35 @@ export default function StrikeDipPage() {
   }, [measurements]);
 
   const addManual = () => {
-    setMeasurements((prev) => [...prev, blankMeasurement()]);
-  };
+  const newMeasurement = blankMeasurement();
+
+  if (!navigator.geolocation) {
+    setMeasurements((prev) => [...prev, newMeasurement]);
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const withGps = {
+        ...newMeasurement,
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        gpsAccuracy: position.coords.accuracy,
+        location: `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`,
+      };
+
+      setMeasurements((prev) => [...prev, withGps]);
+    },
+    () => {
+      setMeasurements((prev) => [...prev, newMeasurement]);
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0,
+    }
+  );
+};
 
   const updateMeasurement = (idx: number, m: StrikeDipMeasurement) => {
     setMeasurements((prev) => { const next = [...prev]; next[idx] = m; return next; });
