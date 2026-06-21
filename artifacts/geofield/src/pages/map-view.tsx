@@ -140,7 +140,20 @@ export default function MapViewPage() {
   const [newLayerError, setNewLayerError] = useState("");
   const [newLayerFileName, setNewLayerFileName] = useState("");
 
-  const { data: allSamples } = useGetSamples();
+  const { data: serverSamples } = useGetSamples();
+
+const offlineQueue = JSON.parse(localStorage.getItem("geofield_offline_queue") || "[]");
+
+const offlineSamples = offlineQueue.map((item: any, index: number) => ({
+  id: `offline-${index}`,
+  ...item.payload,
+  offline: true,
+}));
+
+const allSamples = [
+  ...(serverSamples || []),
+  ...offlineSamples,
+];
   const { data: folders } = useGetFolders();
 
   const mapRef = useRef<any>(null);
