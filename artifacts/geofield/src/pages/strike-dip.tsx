@@ -254,6 +254,21 @@ function MeasurementRow({
 }
 
 /* ── Main page ──────────────────────────────────────────────────────────── */
+function latLonToUTM(lat: number, lon: number) {
+  const zoneNumber = Math.floor((lon + 180) / 6) + 1;
+  const zoneLetter = lat >= 0 ? "N" : "S";
+
+  // Simple approximate UTM placeholder
+  // Good enough for display/testing, but later we can replace with precise proj4 math.
+  const easting = Math.round((lon + 180) * 10000);
+  const northing = Math.round((lat + 90) * 10000);
+
+  return {
+    utmZone: `${zoneNumber}${zoneLetter}`,
+    utmEasting: easting,
+    utmNorthing: northing,
+  };
+}
 export default function StrikeDipPage() {
   const { toast } = useToast();
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
@@ -277,10 +292,10 @@ export default function StrikeDipPage() {
       const withGps = {
         ...newMeasurement,
         latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        gpsAccuracy: position.coords.accuracy,
-        location: `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`,
-      };
+longitude: position.coords.longitude,
+gpsAccuracy: position.coords.accuracy,
+...latLonToUTM(position.coords.latitude, position.coords.longitude),
+location: `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`,
 
       setMeasurements((prev) => [...prev, withGps]);
     },
