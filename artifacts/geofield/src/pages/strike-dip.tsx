@@ -296,6 +296,7 @@ longitude: position.coords.longitude,
 gpsAccuracy: position.coords.accuracy,
 ...latLonToUTM(position.coords.latitude, position.coords.longitude),
 location: `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`,
+      };
 
       setMeasurements((prev) => [...prev, withGps]);
     },
