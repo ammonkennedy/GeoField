@@ -85,15 +85,21 @@ export const FIELD_LABELS: Record<string, string> = {
 
 /* ── Strike-dip default columns ─────────────────────────────────────────── */
 export const STRIKE_DIP_COLUMNS: ExportColumn[] = [
-  { key: "index",       label: "#",             enabled: true, defaultWidth: 4  },
-  { key: "label",       label: "Label",          enabled: true, defaultWidth: 28 },
-  { key: "strike",      label: "Strike",         enabled: true, defaultWidth: 10 },
-  { key: "dip",         label: "Dip",            enabled: true, defaultWidth: 8  },
-  { key: "dipDir",      label: "Dip Direction",  enabled: true, defaultWidth: 14 },
-  { key: "featureType", label: "Feature Type",   enabled: true, defaultWidth: 18 },
-  { key: "location",    label: "Location",       enabled: true, defaultWidth: 24 },
-  { key: "date",        label: "Date",           enabled: true, defaultWidth: 12 },
-  { key: "notes",       label: "Notes",          enabled: true, defaultWidth: 40 },
+  { key: "index",       label: "#",                enabled: true,  defaultWidth: 4  },
+  { key: "label",       label: "Label",            enabled: true,  defaultWidth: 28 },
+  { key: "strike",      label: "Strike",           enabled: true,  defaultWidth: 10 },
+  { key: "dip",         label: "Dip",              enabled: true,  defaultWidth: 8  },
+  { key: "dipDir",      label: "Dip Direction",    enabled: true,  defaultWidth: 14 },
+  { key: "featureType", label: "Feature Type",     enabled: true,  defaultWidth: 18 },
+  { key: "location",    label: "Location",         enabled: true,  defaultWidth: 24 },
+  { key: "latitude",    label: "Latitude",         enabled: true,  defaultWidth: 14 },
+  { key: "longitude",   label: "Longitude",        enabled: true,  defaultWidth: 14 },
+  { key: "utmZone",     label: "UTM Zone",         enabled: true,  defaultWidth: 10 },
+  { key: "utmEasting",  label: "UTM Easting (mE)", enabled: true,  defaultWidth: 16 },
+  { key: "utmNorthing", label: "UTM Northing (mN)",enabled: true,  defaultWidth: 18 },
+  { key: "gpsAccuracy", label: "GPS Accuracy (m)", enabled: false, defaultWidth: 16 },
+  { key: "date",        label: "Date",             enabled: true,  defaultWidth: 12 },
+  { key: "notes",       label: "Notes",            enabled: true,  defaultWidth: 40 },
 ];
 
 /* ── Sample columns ─────────────────────────────────────────────────────── */
