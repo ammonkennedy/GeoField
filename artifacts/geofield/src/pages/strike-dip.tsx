@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CompassModal } from "@/components/CompassModal";
 import { ExportCustomizerDialog } from "@/components/ExportCustomizerDialog";
-import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, Image as ImageIcon } from "lucide-react";
+import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import {
@@ -28,11 +28,11 @@ export interface StrikeDipMeasurement {
   notes: string;
   photo?: string;
   latitude?: number;
-longitude?: number;
-gpsAccuracy?: number;
-utmEasting?: number;
-utmNorthing?: number;
-utmZone?: string;
+  longitude?: number;
+  gpsAccuracy?: number;
+  utmEasting?: number;
+  utmNorthing?: number;
+  utmZone?: string;
 }
 
 /* ── localStorage ───────────────────────────────────────────────────────── */
@@ -51,7 +51,7 @@ function saveMeasurements(items: StrikeDipMeasurement[]) {
 function deriveDipDir(strikeStr: string): string {
   const n = parseFloat(strikeStr);
   if (isNaN(n)) return "";
-  const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+  const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
   return dirs[Math.round(((n + 90) % 360) / 22.5) % 16];
 }
 
@@ -91,6 +91,11 @@ function compressImage(file: File): Promise<string> {
   });
 }
 
+function formatNumber(value: number | undefined, fractionDigits = 0): string {
+  if (typeof value !== "number" || Number.isNaN(value)) return "";
+  return value.toLocaleString(undefined, { maximumFractionDigits: fractionDigits });
+}
+
 /* ── Row component ──────────────────────────────────────────────────────── */
 function MeasurementRow({
   measurement, index, onChange, onDelete,
@@ -103,6 +108,8 @@ function MeasurementRow({
   const [open, setOpen] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const upd = (k: keyof StrikeDipMeasurement, v: string) => onChange({ ...measurement, [k]: v });
+  const hasGps = typeof measurement.latitude === "number" && typeof measurement.longitude === "number";
+  const hasUtm = typeof measurement.utmEasting === "number" && typeof measurement.utmNorthing === "number" && !!measurement.utmZone;
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -242,6 +249,27 @@ function MeasurementRow({
               <Label className="text-xs">Date</Label>
               <Input type="date" value={measurement.date} onChange={(e) => upd("date", e.target.value)} className="h-8 text-sm" />
             </div>
+            {(hasGps || hasUtm) && (
+              <div className="col-span-2 sm:col-span-3 rounded-xl border bg-card p-3 text-xs space-y-2">
+                <div className="flex items-center gap-2 font-semibold text-muted-foreground uppercase tracking-wide">
+                  <MapPin className="w-3.5 h-3.5" />
+                  Coordinates
+                </div>
+                {hasGps && (
+                  <div className="font-mono">
+                    Lat/Long: {measurement.latitude!.toFixed(6)}, {measurement.longitude!.toFixed(6)}
+                    {typeof measurement.gpsAccuracy === "number" && (
+                      <span className="text-muted-foreground"> · ±{formatNumber(measurement.gpsAccuracy, 1)} m</span>
+                    )}
+                  </div>
+                )}
+                {hasUtm && (
+                  <div className="font-mono">
+                    UTM (WGS84): Zone {measurement.utmZone} · {formatNumber(measurement.utmEasting)} mE · {formatNumber(measurement.utmNorthing)} mN
+                  </div>
+                )}
+              </div>
+            )}
             <div className="col-span-2 sm:col-span-3 space-y-1">
               <Label className="text-xs">Notes</Label>
               <Input value={measurement.notes} onChange={(e) => upd("notes", e.target.value)} placeholder="Fold vergence, shear sense, quality of measurement…" className="h-8 text-sm" />
@@ -254,21 +282,78 @@ function MeasurementRow({
 }
 
 /* ── Main page ──────────────────────────────────────────────────────────── */
-function latLonToUTM(lat: number, lon: number) {
-  const zoneNumber = Math.floor((lon + 180) / 6) + 1;
-  const zoneLetter = lat >= 0 ? "N" : "S";
+function latitudeBand(lat: number): string {
+  if (lat < -80 || lat > 84) return lat >= 0 ? "N" : "S";
+  const bands = "CDEFGHJKLMNPQRSTUVWX";
+  return bands[Math.min(19, Math.floor((lat + 80) / 8))];
+}
 
-  // Simple approximate UTM placeholder
-  // Good enough for display/testing, but later we can replace with precise proj4 math.
-  const easting = Math.round((lon + 180) * 10000);
-  const northing = Math.round((lat + 90) * 10000);
+function latLonToUTM(lat: number, lon: number) {
+  const a = 6378137.0;
+  const f = 1 / 298.257223563;
+  const k0 = 0.9996;
+  const e = Math.sqrt(f * (2 - f));
+  const eSq = e * e;
+  const ePrimeSq = eSq / (1 - eSq);
+
+  const zoneNumber = Math.floor((lon + 180) / 6) + 1;
+  const lonOrigin = (zoneNumber - 1) * 6 - 180 + 3;
+  const latRad = (lat * Math.PI) / 180;
+  const lonRad = (lon * Math.PI) / 180;
+  const lonOriginRad = (lonOrigin * Math.PI) / 180;
+
+  const n = a / Math.sqrt(1 - eSq * Math.sin(latRad) ** 2);
+  const t = Math.tan(latRad) ** 2;
+  const c = ePrimeSq * Math.cos(latRad) ** 2;
+  const A = Math.cos(latRad) * (lonRad - lonOriginRad);
+
+  const m =
+    a *
+    ((1 - eSq / 4 - (3 * eSq ** 2) / 64 - (5 * eSq ** 3) / 256) * latRad -
+      ((3 * eSq) / 8 + (3 * eSq ** 2) / 32 + (45 * eSq ** 3) / 1024) * Math.sin(2 * latRad) +
+      ((15 * eSq ** 2) / 256 + (45 * eSq ** 3) / 1024) * Math.sin(4 * latRad) -
+      ((35 * eSq ** 3) / 3072) * Math.sin(6 * latRad));
+
+  const easting =
+    k0 *
+      n *
+      (A +
+        ((1 - t + c) * A ** 3) / 6 +
+        ((5 - 18 * t + t ** 2 + 72 * c - 58 * ePrimeSq) * A ** 5) / 120) +
+    500000;
+
+  let northing =
+    k0 *
+    (m +
+      n *
+        Math.tan(latRad) *
+        ((A ** 2) / 2 +
+          ((5 - t + 9 * c + 4 * c ** 2) * A ** 4) / 24 +
+          ((61 - 58 * t + t ** 2 + 600 * c - 330 * ePrimeSq) * A ** 6) / 720));
+
+  if (lat < 0) northing += 10000000;
 
   return {
-    utmZone: `${zoneNumber}${zoneLetter}`,
-    utmEasting: easting,
-    utmNorthing: northing,
+    utmZone: `${zoneNumber}${latitudeBand(lat)}`,
+    utmEasting: Math.round(easting),
+    utmNorthing: Math.round(northing),
   };
 }
+
+function addGpsToMeasurement(measurement: StrikeDipMeasurement, position: GeolocationPosition): StrikeDipMeasurement {
+  const latitude = position.coords.latitude;
+  const longitude = position.coords.longitude;
+
+  return {
+    ...measurement,
+    latitude,
+    longitude,
+    gpsAccuracy: position.coords.accuracy,
+    ...latLonToUTM(latitude, longitude),
+    location: measurement.location || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
+  };
+}
+
 export default function StrikeDipPage() {
   const { toast } = useToast();
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
@@ -279,37 +364,33 @@ export default function StrikeDipPage() {
     saveMeasurements(measurements);
   }, [measurements]);
 
-  const addManual = () => {
-  const newMeasurement = blankMeasurement();
-
-  if (!navigator.geolocation) {
-    setMeasurements((prev) => [...prev, newMeasurement]);
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const withGps = {
-        ...newMeasurement,
-        latitude: position.coords.latitude,
-longitude: position.coords.longitude,
-gpsAccuracy: position.coords.accuracy,
-...latLonToUTM(position.coords.latitude, position.coords.longitude),
-location: `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.toFixed(6)}`,
-      };
-
-      setMeasurements((prev) => [...prev, withGps]);
-    },
-    () => {
-      setMeasurements((prev) => [...prev, newMeasurement]);
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0,
+  const addMeasurementWithGps = (measurement: StrikeDipMeasurement, successTitle?: string, successDescription?: string) => {
+    if (!navigator.geolocation) {
+      setMeasurements((prev) => [...prev, measurement]);
+      if (successTitle) toast({ title: successTitle, description: successDescription });
+      return;
     }
-  );
-};
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setMeasurements((prev) => [...prev, addGpsToMeasurement(measurement, position)]);
+        if (successTitle) toast({ title: successTitle, description: successDescription });
+      },
+      () => {
+        setMeasurements((prev) => [...prev, measurement]);
+        if (successTitle) toast({ title: successTitle, description: successDescription });
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  };
+
+  const addManual = () => {
+    addMeasurementWithGps(blankMeasurement());
+  };
 
   const updateMeasurement = (idx: number, m: StrikeDipMeasurement) => {
     setMeasurements((prev) => { const next = [...prev]; next[idx] = m; return next; });
@@ -336,6 +417,12 @@ location: `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.t
       dipDir: m.dipDir,
       featureType: m.featureType,
       location: m.location,
+      latitude: typeof m.latitude === "number" ? Number(m.latitude.toFixed(6)) : "",
+      longitude: typeof m.longitude === "number" ? Number(m.longitude.toFixed(6)) : "",
+      utmZone: m.utmZone || "",
+      utmEasting: m.utmEasting ?? "",
+      utmNorthing: m.utmNorthing ?? "",
+      gpsAccuracy: typeof m.gpsAccuracy === "number" ? Number(m.gpsAccuracy.toFixed(1)) : "",
       date: m.date,
       notes: m.notes,
     }));
@@ -429,8 +516,7 @@ location: `${position.coords.latitude.toFixed(6)}, ${position.coords.longitude.t
             dip,
             dipDir: deriveDipDir(strike),
           };
-          setMeasurements((prev) => [...prev, m]);
-          toast({ title: "Measurement captured", description: `Strike ${strike} / Dip ${dip}` });
+          addMeasurementWithGps(m, "Measurement captured", `Strike ${strike} / Dip ${dip}`);
         }}
       />
 
