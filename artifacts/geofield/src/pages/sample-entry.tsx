@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image, BookmarkCheck } from "lucide-react";
+import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck } from "lucide-react";
 import { useSamplesMutations } from "@/hooks/use-geofield";
 import { useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { enqueue } from "@/lib/offline-queue";
+import { storeMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
 import { BaseFields, WaterFields, RockFields, SoilFields } from "@/components/fields/SchemaForms";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -35,6 +36,15 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 type GpsStatus = "idle" | "loading" | "success" | "error" | "denied";
+
+type MediaSlot = {
+  type: "photo" | "video";
+  dataUrl: string;
+  fileName?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  stored?: StoredMediaMetadata;
+} | null;
 
 interface CustomParam {
   id: string;
@@ -73,11 +83,11 @@ export default function SampleEntry() {
   const { data: folders } = useGetFolders();
   const { createSample, updateSample } = useSamplesMutations();
 
-  type MediaSlot = { type: "photo"; dataUrl: string } | { type: "video"; dataUrl: string } | null;
   const [mediaSlots, setMediaSlots] = useState<[MediaSlot, MediaSlot, MediaSlot]>([null, null, null]);
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("idle");
   const [customParams, setCustomParams] = useState<CustomParam[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [isSavingMedia, setIsSavingMedia] = useState(false);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeSlotRef = useRef<number>(0);
@@ -115,11 +125,13 @@ export default function SampleEntry() {
   useEffect(() => {
     if (existingSample && isEdit) {
       const fields = existingSample.fields as Record<string, any> || {};
-      // Support new media array format and legacy single photo
+      // Support current local preview media, prepared cloud media metadata, and legacy single photo
       if (Array.isArray(fields.media)) {
-        const loaded = (fields.media as any[]).slice(0, 3).map((m: any) =>
-          m && m.type && m.dataUrl ? { type: m.type as "photo" | "video", dataUrl: m.dataUrl } : null
-        );
+        const loaded = (fields.media as any[]).slice(0, 3).map((m: any) => {
+          if (m?.dataUrl && m?.type) return { type: m.type as "photo" | "video", dataUrl: m.dataUrl };
+          if (m?.cloudUrl && m?.kind) return { type: m.kind as "photo" | "video", dataUrl: m.cloudUrl, stored: m };
+          return null;
+        });
         while (loaded.length < 3) loaded.push(null);
         setMediaSlots(loaded as [MediaSlot, MediaSlot, MediaSlot]);
       } else if (fields.photo) {
@@ -147,7 +159,7 @@ export default function SampleEntry() {
 
   const currentType = watch("sampleType");
   const locationValue = watch("fields.location") as string | undefined;
-  const isPending = createSample.isPending || updateSample.isPending;
+  const isPending = createSample.isPending || updateSample.isPending || isSavingMedia;
 
   // When the sample type changes on a NEW sample, pre-fill custom params from the saved template
   const prevTypeRef = useRef<string | null>(null);
@@ -162,7 +174,7 @@ export default function SampleEntry() {
 
   const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const img = new Image();
+      const img = new window.Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
         const MAX = 1200;
@@ -206,16 +218,34 @@ export default function SampleEntry() {
           return;
         }
         const reader = new FileReader();
-        reader.onload = (ev) => setSlot({ type: "video", dataUrl: ev.target?.result as string });
+        reader.onload = (ev) => setSlot({
+          type: "video",
+          dataUrl: ev.target?.result as string,
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+        });
         reader.readAsDataURL(file);
       };
       vid.onerror = () => { URL.revokeObjectURL(url); toast({ title: "Could not read video", description: "Try a different format (MP4 recommended)." }); };
     } else {
       try {
-        setSlot({ type: "photo", dataUrl: await compressImage(file) });
+        setSlot({
+          type: "photo",
+          dataUrl: await compressImage(file),
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+        });
       } catch {
         const reader = new FileReader();
-        reader.onload = (ev) => setSlot({ type: "photo", dataUrl: ev.target?.result as string });
+        reader.onload = (ev) => setSlot({
+          type: "photo",
+          dataUrl: ev.target?.result as string,
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+        });
         reader.readAsDataURL(file);
       }
     }
@@ -232,6 +262,23 @@ export default function SampleEntry() {
       next[index] = null;
       return next;
     });
+
+  async function prepareMediaForSave(slots: [MediaSlot, MediaSlot, MediaSlot]) {
+    const filled = slots.filter(Boolean) as Exclude<MediaSlot, null>[];
+    if (filled.length === 0) return [];
+
+    return Promise.all(
+      filled.map(async (slot) => {
+        if (slot.stored) return slot.stored;
+        return storeMediaDataUrl({
+          kind: slot.type,
+          dataUrl: slot.dataUrl,
+          fileName: slot.fileName,
+          mimeType: slot.mimeType,
+        });
+      })
+    );
+  }
 
   // Voice recognition for field notes
   const toggleRecording = () => {
@@ -286,19 +333,41 @@ export default function SampleEntry() {
     });
   };
 
-  const onSubmit = (data: FormValues) => {
+  const onSubmit = async (data: FormValues) => {
     const processedFields: Record<string, any> = {};
     Object.entries(data.fields).forEach(([k, v]) => {
       if (v === "") return;
       const num = Number(v);
       processedFields[k] = !isNaN(num) && typeof v === "string" && v.trim() !== "" ? num : v;
     });
-    // Save media slots; also keep legacy `photo` key for map popup backward compat
+
     const filledSlots = mediaSlots.some(Boolean);
     if (filledSlots) {
-      processedFields.media = mediaSlots;
-      const firstPhoto = mediaSlots.find((m) => m?.type === "photo");
-      if (firstPhoto) processedFields.photo = firstPhoto.dataUrl;
+      try {
+        setIsSavingMedia(true);
+        const storedMedia = await prepareMediaForSave(mediaSlots);
+        processedFields.media = storedMedia;
+        processedFields.photoCount = storedMedia.filter((m) => m.kind === "photo").length;
+        processedFields.videoCount = storedMedia.filter((m) => m.kind === "video").length;
+        const firstPhoto = storedMedia.find((m) => m.kind === "photo");
+        if (firstPhoto) {
+          processedFields.primaryPhoto = {
+            storageKey: firstPhoto.storageKey,
+            cloudUrl: firstPhoto.cloudUrl || null,
+            syncStatus: firstPhoto.syncStatus,
+          };
+        }
+      } catch {
+        toast({
+          title: "Could not save media",
+          description: "The sample was not saved because the photo/video could not be stored on this device.",
+          variant: "destructive",
+        });
+        setIsSavingMedia(false);
+        return;
+      } finally {
+        setIsSavingMedia(false);
+      }
     }
 
     // Include non-empty custom parameters
@@ -318,12 +387,14 @@ export default function SampleEntry() {
     if (isEdit && id) {
       // Edits always go to the server (the form loaded from server data)
       updateSample.mutate({ id: Number(id), data: payload }, { onSuccess: () => setLocation("/") });
-    } else if (!navigator.onLine || localStorage.getItem("geofield-demo-mode") ==="true") {
-      // Offline — queue locally and navigate back
+    } else if (!navigator.onLine || localStorage.getItem("geofield-demo-mode") === "true") {
+      // Offline — queue sample metadata locally; larger media is stored separately in IndexedDB
       enqueue(payload);
       toast({
         title: "Saved offline",
-        description: "Your sample is stored on this device and will sync automatically when you're back online.",
+        description: filledSlots
+          ? "Your sample is stored on this device. Photos/videos are kept in local media storage until cloud sync is added."
+          : "Your sample is stored on this device and will sync automatically when you're back online.",
       });
       setLocation("/");
     } else {
@@ -535,7 +606,7 @@ export default function SampleEntry() {
                 Photos &amp; Video
               </h3>
               <p className="text-xs text-muted-foreground -mt-1">
-                Up to 3 slots — each can be a photo or a short video clip (max 10 seconds). On mobile the camera opens directly.
+                Up to 3 slots — each can be a photo or a short video clip (max 10 seconds). Media is now stored separately from the offline sample queue to avoid filling localStorage.
               </p>
 
               {/* Hidden single file input shared by all slots */}
@@ -575,7 +646,7 @@ export default function SampleEntry() {
                             )}
                             {/* Type badge */}
                             <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] font-semibold rounded px-1.5 py-0.5 flex items-center gap-1 pointer-events-none">
-                              {slot.type === "photo" ? <Image className="w-2.5 h-2.5" /> : <Video className="w-2.5 h-2.5" />}
+                              {slot.type === "photo" ? <ImageIcon className="w-2.5 h-2.5" /> : <Video className="w-2.5 h-2.5" />}
                               {slot.type === "photo" ? "Photo" : "Video"}
                             </span>
                             {/* Clear button */}
@@ -674,7 +745,7 @@ export default function SampleEntry() {
         </Card>
 
         <div className="flex justify-end gap-4 sticky bottom-6 z-20">
-          <Button type="button" variant="outline" size="lg" className="bg-background shadow-md" onClick={() => setLocation("/")}>
+          <Button type="button" variant="outline" size="lg" className="bg-background shadow-md" onClick={() => setLocation("/")}> 
             Cancel
           </Button>
           <Button type="submit" size="lg" disabled={isPending} className="shadow-xl">
