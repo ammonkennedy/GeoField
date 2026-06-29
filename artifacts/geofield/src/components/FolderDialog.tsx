@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -6,6 +6,8 @@ import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { useFoldersMutations } from "@/hooks/use-geofield";
 import { Folder } from "@workspace/api-client-react";
+import { createLocalDataset, updateLocalDataset } from "@/lib/local-datasets";
+import { useToast } from "@/hooks/use-toast";
 
 export function FolderDialog({ 
   open, 
@@ -19,12 +21,40 @@ export function FolderDialog({
   const [name, setName] = useState(folder?.name || "");
   const [description, setDescription] = useState(folder?.description || "");
   const { createFolder, updateFolder } = useFoldersMutations();
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setName(folder?.name || "");
+    setDescription(folder?.description || "");
+  }, [folder, open]);
 
   const isPending = createFolder.isPending || updateFolder.isPending;
+  const useLocalDatasets = localStorage.getItem("geofield-demo-mode") === "true" || !navigator.onLine;
+
+  const finish = () => {
+    setName("");
+    setDescription("");
+    onOpenChange(false);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+
+    // Local datasets are what make the app usable before the backend folder API exists.
+    if ((folder as any)?.isLocal || (folder?.id && folder.id < 0)) {
+      updateLocalDataset(folder.id, { name, description });
+      toast({ title: "Dataset updated" });
+      finish();
+      return;
+    }
+
+    if (useLocalDatasets) {
+      createLocalDataset({ name, description });
+      toast({ title: "Dataset created", description: "Saved locally on this device." });
+      finish();
+      return;
+    }
 
     if (folder) {
       updateFolder.mutate({ 
@@ -37,10 +67,11 @@ export function FolderDialog({
       createFolder.mutate({ 
         data: { name, description } 
       }, {
-        onSuccess: () => {
-          setName("");
-          setDescription("");
-          onOpenChange(false);
+        onSuccess: finish,
+        onError: () => {
+          createLocalDataset({ name, description });
+          toast({ title: "Dataset created locally", description: "The backend did not accept the dataset yet, so GeoField saved it on this device." });
+          finish();
         }
       });
     }
