@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
+import { useEffect, useState, useMemo } from "react";
+import { useGetFolders } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Download, FolderOpen, Layers, ChevronRight } from "lucide-react";
@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { ExportCustomizerDialog } from "./ExportCustomizerDialog";
 import { exportSamplesWithConfig, getSampleColumns } from "@/lib/export";
 import { loadExportConfig, loadColumnPrefs } from "@/lib/export-config";
+import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 
 type Selection = "all" | "uncategorized" | number;
 
@@ -19,8 +20,20 @@ interface ExportDialogProps {
 export function ExportDialog({ open, onOpenChange, samples = [] }: ExportDialogProps) {
   const [selected, setSelected] = useState<Selection>("all");
   const [customizerOpen, setCustomizerOpen] = useState(false);
+  const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const { data: folders } = useGetFolders();
   const allSamples = samples;
+  const allFolders = [...(folders || []), ...localDatasets];
+
+  useEffect(() => {
+    const refresh = () => setLocalDatasets(getLocalDatasets());
+    window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
 
   const samplesToExport = useMemo(() => {
     if (!allSamples) return [];
@@ -30,7 +43,7 @@ export function ExportDialog({ open, onOpenChange, samples = [] }: ExportDialogP
   }, [allSamples, selected]);
 
   const count = samplesToExport.length;
-  const selectedFolder = typeof selected === "number" ? folders?.find((f) => f.id === selected) : null;
+  const selectedFolder = typeof selected === "number" ? allFolders.find((f: any) => f.id === selected) : null;
   const uncategorizedCount = (allSamples || []).filter((s) => !s.folderId).length;
 
   const folderName = selectedFolder
@@ -88,11 +101,11 @@ export function ExportDialog({ open, onOpenChange, samples = [] }: ExportDialogP
                 selected={selected === "all"}
                 onClick={() => setSelected("all")}
               />
-              {folders?.map((folder) => (
+              {allFolders.map((folder: any) => (
                 <OptionRow
                   key={folder.id}
                   icon={<FolderOpen className="w-4 h-4" />}
-                  label={folder.name}
+                  label={`${folder.name}${folder.isLocal ? " (local)" : ""}`}
                   count={(allSamples || []).filter((s) => s.folderId === folder.id).length}
                   selected={selected === folder.id}
                   onClick={() => setSelected(folder.id)}
