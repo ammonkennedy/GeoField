@@ -19,7 +19,7 @@ export function getQueue(): QueuedSample[] {
   } catch { return []; }
 }
 
-function setQueue(queue: QueuedSample[]) {
+export function setQueue(queue: QueuedSample[]) {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
   window.dispatchEvent(new CustomEvent(QUEUE_UPDATED_EVENT));
 }
@@ -32,6 +32,16 @@ export function enqueue(payload: QueuedSample["payload"]): QueuedSample {
   };
   setQueue([...getQueue(), item]);
   return item;
+}
+
+export function updateQueuedSample(queuedId: string, payload: QueuedSample["payload"]) {
+  setQueue(
+    getQueue().map((item) =>
+      item.queuedId === queuedId
+        ? { ...item, payload }
+        : item
+    )
+  );
 }
 
 export function removeFromQueue(queuedId: string) {
