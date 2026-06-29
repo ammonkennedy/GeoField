@@ -13,8 +13,9 @@ import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2,
 import { useSamplesMutations } from "@/hooks/use-geofield";
 import { useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { enqueue } from "@/lib/offline-queue";
-import { storeMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
+import { enqueue, getQueue, updateQueuedSample } from "@/lib/offline-queue";
+import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
+import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { BaseFields, WaterFields, RockFields, SoilFields } from "@/components/fields/SchemaForms";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -71,17 +72,55 @@ function templateToParams(labels: string[]): CustomParam[] {
   return labels.map((label) => ({ id: `tpl_${crypto.randomUUID()}`, label, value: "" }));
 }
 
+async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlot, MediaSlot, MediaSlot]> {
+  const empty: [MediaSlot, MediaSlot, MediaSlot] = [null, null, null];
+
+  if (Array.isArray(fields.media)) {
+    const loaded = await Promise.all(
+      (fields.media as any[]).slice(0, 3).map(async (m: any) => {
+        if (m?.dataUrl && m?.type) return { type: m.type as "photo" | "video", dataUrl: m.dataUrl };
+        if (m?.storageKey) {
+          const dataUrl = await getStoredMediaDataUrl(m.storageKey);
+          if (dataUrl) {
+            return {
+              type: (m.kind || m.type) as "photo" | "video",
+              dataUrl,
+              fileName: m.fileName,
+              mimeType: m.mimeType,
+              sizeBytes: m.sizeBytes,
+              stored: m as StoredMediaMetadata,
+            };
+          }
+        }
+        if (m?.cloudUrl && (m?.kind || m?.type)) {
+          return { type: (m.kind || m.type) as "photo" | "video", dataUrl: m.cloudUrl, stored: m };
+        }
+        return null;
+      })
+    );
+    while (loaded.length < 3) loaded.push(null);
+    return loaded as [MediaSlot, MediaSlot, MediaSlot];
+  }
+
+  if (fields.photo) return [{ type: "photo", dataUrl: fields.photo }, null, null];
+  return empty;
+}
+
 export default function SampleEntry() {
   const [, setLocation] = useLocation();
   const { id } = useParams();
   const isEdit = Boolean(id && id !== "new");
+  const isOfflineEdit = Boolean(id?.startsWith("q_"));
+  const numericId = Number(id);
   const { toast } = useToast();
 
-  const { data: existingSample, isLoading: loadingSample } = useGetSample(Number(id), {
-    query: { enabled: isEdit }
+  const { data: existingSample, isLoading: loadingSample } = useGetSample(numericId, {
+    query: { enabled: isEdit && !isOfflineEdit && Number.isFinite(numericId) }
   });
   const { data: folders } = useGetFolders();
   const { createSample, updateSample } = useSamplesMutations();
+  const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
+  const allFolders = [...(folders || []), ...localDatasets];
 
   const [mediaSlots, setMediaSlots] = useState<[MediaSlot, MediaSlot, MediaSlot]>([null, null, null]);
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("idle");
@@ -91,6 +130,16 @@ export default function SampleEntry() {
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeSlotRef = useRef<number>(0);
+
+  useEffect(() => {
+    const refresh = () => setLocalDatasets(getLocalDatasets());
+    window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
 
   const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -123,20 +172,37 @@ export default function SampleEntry() {
   }, [isEdit, setValue]);
 
   useEffect(() => {
-    if (existingSample && isEdit) {
+    if (!isOfflineEdit || !id) return;
+
+    const queued = getQueue().find((item) => item.queuedId === id);
+    if (!queued) return;
+
+    const fields = queued.payload.fields || {};
+    reset({
+      sampleType: queued.payload.sampleType as any,
+      sampleId: queued.payload.sampleId,
+      folderId: queued.payload.folderId ? String(queued.payload.folderId) : '',
+      notes: queued.payload.notes || '',
+      fields: { ...fields, photo: undefined, media: undefined, customParams: undefined },
+    });
+
+    if (Array.isArray(fields.customParams)) {
+      setCustomParams(
+        fields.customParams.map((p: any, i: number) => ({
+          id: `cp_${i}_${Date.now()}`,
+          label: p.label ?? "",
+          value: p.value ?? "",
+        }))
+      );
+    }
+
+    hydrateMediaSlots(fields).then(setMediaSlots);
+  }, [isOfflineEdit, id, reset]);
+
+  useEffect(() => {
+    if (existingSample && isEdit && !isOfflineEdit) {
       const fields = existingSample.fields as Record<string, any> || {};
-      // Support current local preview media, prepared cloud media metadata, and legacy single photo
-      if (Array.isArray(fields.media)) {
-        const loaded = (fields.media as any[]).slice(0, 3).map((m: any) => {
-          if (m?.dataUrl && m?.type) return { type: m.type as "photo" | "video", dataUrl: m.dataUrl };
-          if (m?.cloudUrl && m?.kind) return { type: m.kind as "photo" | "video", dataUrl: m.cloudUrl, stored: m };
-          return null;
-        });
-        while (loaded.length < 3) loaded.push(null);
-        setMediaSlots(loaded as [MediaSlot, MediaSlot, MediaSlot]);
-      } else if (fields.photo) {
-        setMediaSlots([{ type: "photo", dataUrl: fields.photo }, null, null]);
-      }
+      hydrateMediaSlots(fields).then(setMediaSlots);
       // Load saved custom params
       if (Array.isArray(fields.customParams)) {
         setCustomParams(
@@ -155,7 +221,7 @@ export default function SampleEntry() {
         fields: { ...fields, photo: undefined, media: undefined, customParams: undefined },
       });
     }
-  }, [existingSample, isEdit, reset]);
+  }, [existingSample, isEdit, isOfflineEdit, reset]);
 
   const currentType = watch("sampleType");
   const locationValue = watch("fields.location") as string | undefined;
@@ -384,8 +450,12 @@ export default function SampleEntry() {
       fields: processedFields,
     };
 
-    if (isEdit && id) {
-      // Edits always go to the server (the form loaded from server data)
+    if (isOfflineEdit && id) {
+      updateQueuedSample(id, payload);
+      toast({ title: "Sample updated", description: "Your offline sample edits were saved on this device." });
+      setLocation("/");
+    } else if (isEdit && id) {
+      // Edits loaded from the server go to the server
       updateSample.mutate({ id: Number(id), data: payload }, { onSuccess: () => setLocation("/") });
     } else if (!navigator.onLine || localStorage.getItem("geofield-demo-mode") === "true") {
       // Offline — queue sample metadata locally; larger media is stored separately in IndexedDB
@@ -402,7 +472,7 @@ export default function SampleEntry() {
     }
   };
 
-  if (isEdit && loadingSample) return (
+  if (isEdit && !isOfflineEdit && loadingSample) return (
     <Layout>
       <div className="animate-pulse space-y-4">
         <div className="h-8 bg-muted rounded w-48" />
@@ -703,7 +773,7 @@ export default function SampleEntry() {
                     {...register("folderId")}
                   >
                     <option value="">Uncategorized</option>
-                    {folders?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    {allFolders.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2 md:col-span-2">
