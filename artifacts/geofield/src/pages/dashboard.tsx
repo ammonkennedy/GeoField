@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
@@ -11,6 +11,8 @@ import { useSamplesMutations, useFoldersMutations } from "@/hooks/use-geofield";
 import { ExportDialog } from "@/components/ExportDialog";
 import { DatasetFigures } from "@/components/DatasetFigures";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
+import { deleteLocalDataset, getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 
 const typeStyles = {
   water: { label: 'Water', variant: 'water' as const },
@@ -22,43 +24,84 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { folderId } = useParams();
   const folderIdNum = folderId ? Number(folderId) : undefined;
+  const shouldLoadServerSamples = !folderIdNum || folderIdNum > 0;
   
-  const { data: samples, isLoading } = useGetSamples(folderIdNum ? { folderId: folderIdNum } : undefined);
+  const { data: samples, isLoading } = useGetSamples(shouldLoadServerSamples && folderIdNum ? { folderId: folderIdNum } : undefined);
   const { data: folders } = useGetFolders();
   
   const [searchTerm, setSearchTerm] = useState("");
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<string | number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [queuedSamples, setQueuedSamples] = useState(getQueue);
+  const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   
   const { deleteSample } = useSamplesMutations();
   const { deleteFolder } = useFoldersMutations();
 
-  const activeFolder = folders?.find(f => f.id === folderIdNum);
+  useEffect(() => {
+    const refreshQueue = () => setQueuedSamples(getQueue());
+    window.addEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
+    window.addEventListener("storage", refreshQueue);
+    return () => {
+      window.removeEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
+      window.removeEventListener("storage", refreshQueue);
+    };
+  }, []);
 
-  const localSamples = JSON.parse(localStorage.getItem("geofield_offline_queue") || "[]");
-  const allSamples = [
-    ...(samples || []),
-    ...localSamples.map((item: any, index: number) => ({
-      id: -index - 1,
+  useEffect(() => {
+    const refreshDatasets = () => setLocalDatasets(getLocalDatasets());
+    window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
+    window.addEventListener("storage", refreshDatasets);
+    return () => {
+      window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
+      window.removeEventListener("storage", refreshDatasets);
+    };
+  }, []);
+
+  const allFolders = [...(folders || []), ...localDatasets];
+  const activeFolder = allFolders.find((f: any) => f.id === folderIdNum);
+
+  const localSamples = queuedSamples
+    .filter((item) => !folderIdNum || item.payload.folderId === folderIdNum)
+    .map((item, index) => ({
+      id: item.queuedId,
       ...(item.payload || {}),
-          sampleId: item.payload.sampleId || 'offline-${index + 1}',
-          createdAt: item.queuedAt,
-          isOffline: true,
-    })),
-  ];
+      sampleId: item.payload.sampleId || `offline-${index + 1}`,
+      createdAt: item.queuedAt,
+      isOffline: true,
+    }));
+
+  const serverSamples = folderIdNum && folderIdNum < 0 ? [] : (samples || []);
+  const allSamples = [...serverSamples, ...localSamples];
   
-  const filteredSamples = allSamples.filter(s => 
+  const filteredSamples = allSamples.filter((s: any) => 
     String(s.sampleId || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
     String(s.notes || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(s.fields?.location || "").toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
 
   const handleDeleteFolder = () => {
-    if (activeFolder && confirm("Are you sure you want to delete this dataset? Samples will become uncategorized.")) {
-      deleteFolder.mutate({ id: activeFolder.id }, {
-        onSuccess: () => setLocation("/")
-      });
+    if (!activeFolder || !confirm("Are you sure you want to delete this dataset? Samples will become uncategorized.")) return;
+
+    if ((activeFolder as any).isLocal || activeFolder.id < 0) {
+      deleteLocalDataset(activeFolder.id);
+      setLocation("/");
+      return;
     }
+
+    deleteFolder.mutate({ id: activeFolder.id }, {
+      onSuccess: () => setLocation("/")
+    });
+  };
+
+  const handleDeleteSample = () => {
+    if (!deleteId) return;
+    if (typeof deleteId === "string") {
+      removeFromQueue(deleteId);
+      setDeleteId(null);
+      return;
+    }
+    deleteSample.mutate({ id: deleteId }, { onSuccess: () => setDeleteId(null) });
   };
 
   return (
@@ -108,7 +151,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {isLoading ? (
+      {isLoading && shouldLoadServerSamples ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1,2,3].map(i => <div key={i} className="h-48 bg-muted/50 rounded-xl animate-pulse" />)}
         </div>
@@ -127,9 +170,9 @@ export default function Dashboard() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredSamples.map(sample => {
+          {filteredSamples.map((sample: any) => {
             const style = typeStyles[sample.sampleType as keyof typeof typeStyles] || typeStyles.rock;
-            const folder = folders?.find(f => f.id === sample.folderId);
+            const folder = allFolders.find((f: any) => f.id === sample.folderId);
             const rawDate = sample.fields?.collectionDate as string || sample.createdAt;
             const date = rawDate ? new Date(rawDate).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
             const locationStr = sample.fields?.location as string;
@@ -140,11 +183,11 @@ export default function Dashboard() {
                 className="group hover:shadow-lg hover:border-primary/30 transition-all duration-300 flex flex-col"
               >
                 <div className="p-5 flex-1 cursor-pointer" onClick={() => setLocation(`/sample/${sample.id}`)}>
-                  <div className="flex justify-between items-start mb-4">
+                  <div className="flex justify-between items-start mb-4 gap-2">
                     <Badge variant={style.variant} className="capitalize text-sm px-3 py-1">
-                      {style.label}
+                      {style.label}{sample.isOffline ? " · Offline" : ""}
                     </Badge>
-                    <span className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded-md">
+                    <span className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded-md truncate">
                       {sample.sampleId}
                     </span>
                   </div>
@@ -196,11 +239,7 @@ export default function Dashboard() {
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
             <Button 
               variant="destructive" 
-              onClick={() => {
-                if (deleteId) {
-                  deleteSample.mutate({ id: deleteId }, { onSuccess: () => setDeleteId(null) });
-                }
-              }}
+              onClick={handleDeleteSample}
               disabled={deleteSample.isPending}
             >
               {deleteSample.isPending ? "Deleting..." : "Delete Permanently"}
