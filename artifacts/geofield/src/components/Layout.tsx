@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { loadColumns, type StratColumn } from "@/pages/strat-column";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
+import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -18,9 +19,11 @@ export function Layout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>(loadTrips);
   const [stratCols, setStratCols] = useState<StratColumn[]>(loadColumns);
+  const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
 
   const user = authData?.user;
   const { isOnline, queueCount, isSyncing, syncedCount, sync } = useOfflineSync();
+  const allFolders = [...(folders || []), ...localDatasets];
 
   // Keep trips list in sync
   useEffect(() => {
@@ -40,6 +43,17 @@ export function Layout({ children }: { children: ReactNode }) {
     window.addEventListener("storage", refresh);
     return () => {
       window.removeEventListener("strat-columns-updated", refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+
+  // Keep locally-created datasets in sync
+  useEffect(() => {
+    const refresh = () => setLocalDatasets(getLocalDatasets());
+    window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refresh);
       window.removeEventListener("storage", refresh);
     };
   }, []);
@@ -200,7 +214,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </Button>
             </div>
             <nav className="space-y-1">
-              {folders?.map(folder => (
+              {allFolders.map((folder: any) => (
                 <Link
                   key={folder.id}
                   href={`/dataset/${folder.id}`}
@@ -214,10 +228,11 @@ export function Layout({ children }: { children: ReactNode }) {
                 >
                   <FolderOpen className="w-4 h-4 opacity-80" />
                   <span className="truncate flex-1">{folder.name}</span>
+                  {folder.isLocal && <span className="text-[10px] opacity-70">local</span>}
                   {location === `/dataset/${folder.id}` && <ChevronRight className="w-4 h-4" />}
                 </Link>
               ))}
-              {folders?.length === 0 && (
+              {allFolders.length === 0 && (
                 <p className="text-xs text-muted-foreground italic px-3 py-2">No datasets yet</p>
               )}
             </nav>
