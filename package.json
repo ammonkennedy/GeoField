@@ -15,6 +15,7 @@
     "@aws-amplify/backend-cli": "latest",
     "aws-cdk-lib": "latest",
     "constructs": "latest",
+    "esbuild": "^0.25.12",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2"
   },
