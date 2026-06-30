@@ -15,26 +15,33 @@ import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-qu
 import { deleteLocalDataset, getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 
 const typeStyles = {
-  water: { label: 'Water', variant: 'water' as const },
-  rock: { label: 'Rock', variant: 'rock' as const },
-  soil_sand: { label: 'Soil', variant: 'soil' as const },
+  water: { label: "Water", variant: "water" as const },
+  rock: { label: "Rock", variant: "rock" as const },
+  soil_sand: { label: "Soil", variant: "soil" as const },
 };
+
+function parseRouteId(value?: string): string | number | undefined {
+  if (!value) return undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : value;
+}
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { folderId } = useParams();
-  const folderIdNum = folderId ? Number(folderId) : undefined;
-  const shouldLoadServerSamples = !folderIdNum || folderIdNum > 0;
-  
-  const { data: samples, isLoading } = useGetSamples(shouldLoadServerSamples && folderIdNum ? { folderId: folderIdNum } : undefined);
+  const activeFolderId = parseRouteId(folderId);
+  const isLocalFolder = typeof activeFolderId === "number" && activeFolderId < 0;
+  const shouldLoadServerSamples = !isLocalFolder;
+
+  const { data: samples, isLoading } = useGetSamples(shouldLoadServerSamples && activeFolderId ? { folderId: activeFolderId } : undefined);
   const { data: folders } = useGetFolders();
-  
+
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [queuedSamples, setQueuedSamples] = useState(getQueue);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
-  
+
   const { deleteSample } = useSamplesMutations();
   const { deleteFolder } = useFoldersMutations();
 
@@ -59,10 +66,10 @@ export default function Dashboard() {
   }, []);
 
   const allFolders = [...(folders || []), ...localDatasets];
-  const activeFolder = allFolders.find((f: any) => f.id === folderIdNum);
+  const activeFolder = allFolders.find((f: any) => String(f.id) === String(activeFolderId));
 
   const localSamples = queuedSamples
-    .filter((item) => !folderIdNum || item.payload.folderId === folderIdNum)
+    .filter((item) => !activeFolderId || String(item.payload.folderId ?? "") === String(activeFolderId))
     .map((item, index) => ({
       id: item.queuedId,
       ...(item.payload || {}),
@@ -71,11 +78,11 @@ export default function Dashboard() {
       isOffline: true,
     }));
 
-  const serverSamples = folderIdNum && folderIdNum < 0 ? [] : (samples || []);
+  const serverSamples = isLocalFolder ? [] : (samples || []);
   const allSamples = [...serverSamples, ...localSamples];
-  
-  const filteredSamples = allSamples.filter((s: any) => 
-    String(s.sampleId || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
+
+  const filteredSamples = allSamples.filter((s: any) =>
+    String(s.sampleId || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(s.notes || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(s.fields?.location || "").toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
@@ -83,8 +90,8 @@ export default function Dashboard() {
   const handleDeleteFolder = () => {
     if (!activeFolder || !confirm("Are you sure you want to delete this dataset? Samples will become uncategorized.")) return;
 
-    if ((activeFolder as any).isLocal || activeFolder.id < 0) {
-      deleteLocalDataset(activeFolder.id);
+    if ((activeFolder as any).isLocal || (typeof activeFolder.id === "number" && activeFolder.id < 0)) {
+      deleteLocalDataset(activeFolder.id as number);
       setLocation("/");
       return;
     }
@@ -96,7 +103,7 @@ export default function Dashboard() {
 
   const handleDeleteSample = () => {
     if (!deleteId) return;
-    if (typeof deleteId === "string") {
+    if (typeof deleteId === "string" && deleteId.startsWith("q_")) {
       removeFromQueue(deleteId);
       setDeleteId(null);
       return;
@@ -120,7 +127,7 @@ export default function Dashboard() {
             <p className="text-muted-foreground mt-2 max-w-2xl">{activeFolder.description}</p>
           )}
         </div>
-        
+
         <div className="flex flex-wrap items-center gap-3">
           {activeFolder && (
             <Button variant="outline" className="text-destructive border-destructive/20 hover:bg-destructive/10" onClick={handleDeleteFolder}>
@@ -143,8 +150,8 @@ export default function Dashboard() {
 
       <div className="mb-6 relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
-        <Input 
-          placeholder="Search by ID, location, or notes..." 
+        <Input
+          placeholder="Search by ID, location, or notes..."
           className="pl-10 h-12 text-base rounded-xl shadow-sm border-border/50"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -153,7 +160,7 @@ export default function Dashboard() {
 
       {isLoading && shouldLoadServerSamples ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1,2,3].map(i => <div key={i} className="h-48 bg-muted/50 rounded-xl animate-pulse" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-48 bg-muted/50 rounded-xl animate-pulse" />)}
         </div>
       ) : filteredSamples.length === 0 ? (
         <Card className="p-12 flex flex-col items-center justify-center text-center border-dashed">
@@ -172,16 +179,13 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredSamples.map((sample: any) => {
             const style = typeStyles[sample.sampleType as keyof typeof typeStyles] || typeStyles.rock;
-            const folder = allFolders.find((f: any) => f.id === sample.folderId);
+            const folder = allFolders.find((f: any) => String(f.id) === String(sample.folderId));
             const rawDate = sample.fields?.collectionDate as string || sample.createdAt;
             const date = rawDate ? new Date(rawDate).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
             const locationStr = sample.fields?.location as string;
 
             return (
-              <Card 
-                key={sample.id} 
-                className="group hover:shadow-lg hover:border-primary/30 transition-all duration-300 flex flex-col"
-              >
+              <Card key={sample.id} className="group hover:shadow-lg hover:border-primary/30 transition-all duration-300 flex flex-col">
                 <div className="p-5 flex-1 cursor-pointer" onClick={() => setLocation(`/sample/${sample.id}`)}>
                   <div className="flex justify-between items-start mb-4 gap-2">
                     <Badge variant={style.variant} className="capitalize text-sm px-3 py-1">
@@ -191,7 +195,7 @@ export default function Dashboard() {
                       {sample.sampleId}
                     </span>
                   </div>
-                  
+
                   <div className="space-y-3 mt-4">
                     <div className="flex items-center gap-2 text-sm text-foreground/80">
                       <Calendar className="w-4 h-4 text-muted-foreground" />
@@ -211,7 +215,7 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-                
+
                 <div className="border-t border-border/50 bg-muted/20 p-3 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Button variant="ghost" size="sm" onClick={() => setLocation(`/sample/${sample.id}`)}>
                     <Edit2 className="w-4 h-4 mr-2" /> Edit
@@ -221,7 +225,7 @@ export default function Dashboard() {
                   </Button>
                 </div>
               </Card>
-            )
+            );
           })}
         </div>
       )}
@@ -237,11 +241,7 @@ export default function Dashboard() {
           <p className="py-4">Are you sure you want to permanently delete this sample? This action cannot be undone.</p>
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button 
-              variant="destructive" 
-              onClick={handleDeleteSample}
-              disabled={deleteSample.isPending}
-            >
+            <Button variant="destructive" onClick={handleDeleteSample} disabled={deleteSample.isPending}>
               {deleteSample.isPending ? "Deleting..." : "Delete Permanently"}
             </Button>
           </div>
