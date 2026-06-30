@@ -1,0 +1,23 @@
+version: 1
+backend:
+  phases:
+    build:
+      commands:
+        - corepack enable
+        - pnpm install --no-frozen-lockfile
+        - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
+frontend:
+  phases:
+    build:
+      commands:
+        - export NODE_OPTIONS="--max-old-space-size=8192"
+        - pnpm --filter @workspace/geofield build
+  artifacts:
+    baseDirectory: artifacts/geofield/dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - artifacts/geofield/node_modules/**/*
+      - lib/api-client-react/node_modules/**/*
