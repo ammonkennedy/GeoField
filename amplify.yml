@@ -4,7 +4,7 @@ backend:
     build:
       commands:
         - corepack enable
-        - pnpm install --no-frozen-lockfile
+        - pnpm install --no-frozen-lockfile --ignore-scripts
         - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
 frontend:
   phases:
