@@ -30,7 +30,9 @@ catalog:
   zod: 3.25.76
 
 onlyBuiltDependencies:
+  - '@parcel/watcher'
   - '@swc/core'
+  - core-js
   - esbuild
   - msw
   - unrs-resolver
