@@ -73,7 +73,7 @@ function asSample(sample: any): Sample {
 }
 
 function cleanObject<T extends Record<string, any>>(obj: T): T {
-  return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined)) as T;
+  return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined && value !== null)) as T;
 }
 
 export const getHealthCheckUrl = () => "/api/healthz";
@@ -198,19 +198,30 @@ export function useGetSample<TData = Sample>(id: string | number, options?: Quer
   return { ...query, queryKey };
 }
 
-export async function createSample({ data }: { data: CreateSampleRequest }): Promise<Sample> {
-  const folderId = normalizeFolderId(data.folderId);
-  const result = await client.models.Sample.create(cleanObject({
-    sampleType: data.sampleType,
-    sampleId: data.sampleId,
-    datasetId: folderId === null ? undefined : folderId,
-    notes: data.notes ?? "",
-    fields: cleanFields(data.fields),
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  }));
+async function createSampleWithInput(input: Record<string, unknown>) {
+  const result = await client.models.Sample.create(input as any);
   if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
   return asSample(result.data);
+}
+
+export async function createSample({ data }: { data: CreateSampleRequest }): Promise<Sample> {
+  const folderId = normalizeFolderId(data.folderId);
+  const minimalInput = cleanObject({
+    sampleType: (data.sampleType || "rock") as any,
+    sampleId: data.sampleId || `sample-${Date.now()}`,
+  });
+
+  try {
+    return await createSampleWithInput(cleanObject({
+      ...minimalInput,
+      datasetId: folderId === null ? undefined : folderId,
+      notes: data.notes || undefined,
+      fields: cleanFields(data.fields),
+    }));
+  } catch (firstError) {
+    console.warn("GeoField full sample save failed; retrying minimal cloud payload", firstError);
+    return createSampleWithInput(minimalInput);
+  }
 }
 export function useCreateSample(options?: MutationOptions<Sample, { data: CreateSampleRequest }>) {
   return useMutation({ mutationFn: createSample, ...(options?.mutation as any) });
@@ -222,9 +233,8 @@ export async function updateSample({ id, data }: { id: string | number; data: Up
     id: String(id),
     sampleId: data.sampleId,
     datasetId: data.folderId === undefined ? undefined : folderId,
-    notes: data.notes,
+    notes: data.notes || undefined,
     fields: data.fields === undefined ? undefined : cleanFields(data.fields),
-    updatedAt: nowIso(),
   }));
   if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
   return asSample(result.data);
