@@ -5,7 +5,7 @@ backend:
       commands:
         - corepack enable
         - pnpm install --no-frozen-lockfile --ignore-scripts
-        - pnpm exec ampx pipeline-deploy --app-id=d2vn10cqbsssgw --branch=master
+        - pnpm exec -- ampx pipeline-deploy --app-id=d2vn10cqbsssgw --branch=master
 frontend:
   phases:
     build:
