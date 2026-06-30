@@ -16,6 +16,11 @@ frontend:
         - export NODE_OPTIONS="--max-old-space-size=4096"
         - corepack enable
         - corepack prepare pnpm@9.15.9 --activate
+        - fallocate -l 4G /tmp/amplify-swapfile || dd if=/dev/zero of=/tmp/amplify-swapfile bs=1M count=4096
+        - chmod 600 /tmp/amplify-swapfile
+        - mkswap /tmp/amplify-swapfile
+        - swapon /tmp/amplify-swapfile || true
+        - free -h || true
         - pnpm --filter @workspace/geofield build
   artifacts:
     baseDirectory: artifacts/geofield/dist/public
