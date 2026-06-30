@@ -13,12 +13,12 @@ frontend:
   phases:
     build:
       commands:
-        - export NODE_OPTIONS="--max-old-space-size=8192"
+        - export NODE_OPTIONS="--max-old-space-size=4096"
         - corepack enable
         - corepack prepare pnpm@9.15.9 --activate
         - pnpm --filter @workspace/geofield build
   artifacts:
-    baseDirectory: artifacts/geofield/dist
+    baseDirectory: artifacts/geofield/dist/public
     files:
       - '**/*'
   cache:
