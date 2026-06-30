@@ -4,6 +4,7 @@ backend:
     build:
       commands:
         - corepack enable
+        - corepack prepare pnpm@9.15.9 --activate
         - pnpm install --no-frozen-lockfile
         - pnpm exec -- ampx pipeline-deploy --app-id=d2vn10cqbsssgw --branch=master
 frontend:
@@ -11,6 +12,8 @@ frontend:
     build:
       commands:
         - export NODE_OPTIONS="--max-old-space-size=8192"
+        - corepack enable
+        - corepack prepare pnpm@9.15.9 --activate
         - pnpm --filter @workspace/geofield build
   artifacts:
     baseDirectory: artifacts/geofield/dist
