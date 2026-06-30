@@ -44,6 +44,10 @@ function normalizeFolderId(folderId: unknown): string | null | undefined {
   return value;
 }
 
+function cleanFields(fields: unknown) {
+  return JSON.parse(JSON.stringify(fields ?? {}));
+}
+
 function asFolder(dataset: any): Folder {
   return {
     id: dataset.id,
@@ -201,7 +205,7 @@ export async function createSample({ data }: { data: CreateSampleRequest }): Pro
     sampleId: data.sampleId,
     datasetId: folderId === null ? undefined : folderId,
     notes: data.notes ?? "",
-    fields: data.fields ?? {},
+    fields: cleanFields(data.fields),
     createdAt: nowIso(),
     updatedAt: nowIso(),
   }));
@@ -219,7 +223,7 @@ export async function updateSample({ id, data }: { id: string | number; data: Up
     sampleId: data.sampleId,
     datasetId: data.folderId === undefined ? undefined : folderId,
     notes: data.notes,
-    fields: data.fields,
+    fields: data.fields === undefined ? undefined : cleanFields(data.fields),
     updatedAt: nowIso(),
   }));
   if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
