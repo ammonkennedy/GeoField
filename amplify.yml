@@ -5,7 +5,7 @@ backend:
       commands:
         - corepack enable
         - pnpm install --no-frozen-lockfile --ignore-scripts
-        - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
+        - npx ampx pipeline-deploy --branch master --app-id d2vn10cqbsssgw
 frontend:
   phases:
     build:
