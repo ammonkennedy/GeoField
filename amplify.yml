@@ -6,6 +6,8 @@ backend:
         - corepack enable
         - corepack prepare pnpm@9.15.9 --activate
         - pnpm install --no-frozen-lockfile
+        - pnpm rebuild esbuild
+        - pnpm exec -- esbuild --version
         - pnpm exec -- ampx pipeline-deploy --app-id=d2vn10cqbsssgw --branch=master
 frontend:
   phases:
