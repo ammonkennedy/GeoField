@@ -1,23 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getGetSamplesQueryKey } from "@workspace/api-client-react";
+import { createSample, getGetSamplesQueryKey } from "@workspace/api-client-react";
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
-
-const API_BASE = (import.meta.env.BASE_URL ?? "").replace(/\/$/, "");
 
 export function useOfflineSync() {
   const queryClient = useQueryClient();
-  const [isOnline, setIsOnline]     = useState(navigator.onLine);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [queueCount, setQueueCount] = useState(() => getQueue().length);
-  const [isSyncing, setIsSyncing]   = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [syncedCount, setSyncedCount] = useState(0);
+  const [lastError, setLastError] = useState<string | null>(null);
   const syncingRef = useRef(false);
 
   const refreshCount = useCallback(() => {
     setQueueCount(getQueue().length);
   }, []);
 
-  // Keep queue count up to date across tabs and after enqueue/dequeue
   useEffect(() => {
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshCount);
     window.addEventListener("storage", refreshCount);
@@ -34,22 +32,17 @@ export function useOfflineSync() {
 
     syncingRef.current = true;
     setIsSyncing(true);
+    setLastError(null);
     let synced = 0;
 
     for (const item of queue) {
       try {
-        const res = await fetch(`${API_BASE}/api/samples`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(item.payload),
-        });
-        if (res.ok) {
-          removeFromQueue(item.queuedId);
-          synced++;
-        }
-      } catch {
-        // Still offline for this item — leave it in queue
+        await createSample({ data: item.payload as any });
+        removeFromQueue(item.queuedId);
+        synced++;
+      } catch (error: any) {
+        setLastError(error?.message || "Could not sync. Make sure you are signed in, then try again.");
+        break;
       }
     }
 
@@ -59,9 +52,10 @@ export function useOfflineSync() {
       setTimeout(() => setSyncedCount(0), 5000);
     }
 
+    refreshCount();
     syncingRef.current = false;
     setIsSyncing(false);
-  }, [queryClient]);
+  }, [queryClient, refreshCount]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -78,5 +72,5 @@ export function useOfflineSync() {
     };
   }, [sync]);
 
-  return { isOnline, queueCount, isSyncing, syncedCount, sync };
+  return { isOnline, queueCount, isSyncing, syncedCount, lastError, sync };
 }
