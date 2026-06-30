@@ -12,6 +12,8 @@
   "devDependencies": {
     "@aws-amplify/backend": "latest",
     "@aws-amplify/backend-cli": "latest",
+    "aws-cdk-lib": "latest",
+    "constructs": "latest",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2"
   },
