@@ -35,6 +35,15 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function normalizeFolderId(folderId: unknown): string | null | undefined {
+  if (folderId === undefined) return undefined;
+  if (folderId === null || folderId === "") return null;
+  if (typeof folderId === "number" && Number.isNaN(folderId)) return null;
+  const value = String(folderId).trim();
+  if (!value || value === "NaN" || value === "undefined" || value === "null") return null;
+  return value;
+}
+
 function asFolder(dataset: any): Folder {
   return {
     id: dataset.id,
@@ -186,10 +195,11 @@ export function useGetSample<TData = Sample>(id: string | number, options?: Quer
 }
 
 export async function createSample({ data }: { data: CreateSampleRequest }): Promise<Sample> {
+  const folderId = normalizeFolderId(data.folderId);
   const result = await client.models.Sample.create(cleanObject({
     sampleType: data.sampleType,
     sampleId: data.sampleId,
-    datasetId: data.folderId == null ? undefined : String(data.folderId),
+    datasetId: folderId === null ? undefined : folderId,
     notes: data.notes ?? "",
     fields: data.fields ?? {},
     createdAt: nowIso(),
@@ -203,10 +213,11 @@ export function useCreateSample(options?: MutationOptions<Sample, { data: Create
 }
 
 export async function updateSample({ id, data }: { id: string | number; data: UpdateSampleRequest }): Promise<Sample> {
+  const folderId = normalizeFolderId(data.folderId);
   const result = await client.models.Sample.update(cleanObject({
     id: String(id),
     sampleId: data.sampleId,
-    datasetId: data.folderId === undefined ? undefined : data.folderId == null ? null : String(data.folderId),
+    datasetId: data.folderId === undefined ? undefined : folderId,
     notes: data.notes,
     fields: data.fields,
     updatedAt: nowIso(),
