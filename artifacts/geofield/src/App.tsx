@@ -9,7 +9,6 @@ import Dashboard from "@/pages/dashboard";
 import SampleEntry from "@/pages/sample-entry";
 import MapViewPage from "@/pages/map-view";
 import TripPlannerPage from "@/pages/trip-planner";
-import StratColumnPage from "@/pages/strat-column";
 import StrikeDipPage from "@/pages/strike-dip";
 import SubscriptionPage from "@/pages/subscription";
 import NotFound from "@/pages/not-found";
@@ -45,9 +44,6 @@ function Router() {
       </Route>
       <Route path="/trip/:tripId">
         <ProtectedRoute component={TripPlannerPage} />
-      </Route>
-      <Route path="/strat/:id">
-        <ProtectedRoute component={StratColumnPage} />
       </Route>
       <Route path="/strike-dip">
         <ProtectedRoute component={StrikeDipPage} />
