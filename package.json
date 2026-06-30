@@ -20,5 +20,13 @@
   "dependencies": {
     "stripe": "20.0.0",
     "stripe-replit-sync": "1.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "core-js",
+      "core-js-pure",
+      "esbuild"
+    ]
   }
 }
