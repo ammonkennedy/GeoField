@@ -3,10 +3,9 @@ import { Link, useLocation } from "wouter";
 import { useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Layers, Compass, CreditCard } from "lucide-react";
+import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
-import { loadColumns, type StratColumn } from "@/pages/strat-column";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
 import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 
@@ -18,7 +17,6 @@ export function Layout({ children }: { children: ReactNode }) {
   const [datasetDialogOpen, setDatasetDialogOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>(loadTrips);
-  const [stratCols, setStratCols] = useState<StratColumn[]>(loadColumns);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
 
   const user = authData?.user;
@@ -32,17 +30,6 @@ export function Layout({ children }: { children: ReactNode }) {
     window.addEventListener("storage", refresh);
     return () => {
       window.removeEventListener("trips-updated", refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
-
-  // Keep strat columns in sync
-  useEffect(() => {
-    const refresh = () => setStratCols(loadColumns());
-    window.addEventListener("strat-columns-updated", refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener("strat-columns-updated", refresh);
       window.removeEventListener("storage", refresh);
     };
   }, []);
@@ -165,44 +152,6 @@ export function Layout({ children }: { children: ReactNode }) {
               <span className="flex-1">Strike &amp; Dip</span>
               {location === "/strike-dip" && <ChevronRight className="w-4 h-4 shrink-0" />}
             </Link>
-          </div>
-
-          {/* Strat Columns */}
-          <div className="px-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Strat Columns</h3>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => { setSidebarOpen(false); setLocation("/strat/new"); }}
-                title="New strat column"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-            <nav className="space-y-1">
-              {stratCols.map((col) => (
-                <Link
-                  key={col.id}
-                  href={`/strat/${col.id}`}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 group",
-                    location === `/strat/${col.id}`
-                      ? "bg-primary text-primary-foreground font-medium shadow-md"
-                      : "text-foreground hover:bg-muted font-medium"
-                  )}
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <Layers className="w-4 h-4 opacity-80 shrink-0" />
-                  <span className="truncate flex-1">{col.title || "Untitled Column"}</span>
-                  {location === `/strat/${col.id}` && <ChevronRight className="w-4 h-4 shrink-0" />}
-                </Link>
-              ))}
-              {stratCols.length === 0 && (
-                <p className="text-xs text-muted-foreground italic px-3 py-2">No columns yet</p>
-              )}
-            </nav>
           </div>
 
           {/* Datasets */}
