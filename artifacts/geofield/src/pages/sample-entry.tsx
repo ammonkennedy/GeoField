@@ -445,7 +445,7 @@ export default function SampleEntry() {
     const payload = {
       sampleType: data.sampleType,
       sampleId: data.sampleId,
-      folderId: data.folderId ? Number(data.folderId) : null,
+      folderId: data.folderId || null,
       notes: data.notes,
       fields: processedFields,
     };
