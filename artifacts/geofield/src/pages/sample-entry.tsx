@@ -111,11 +111,11 @@ export default function SampleEntry() {
   const { id } = useParams();
   const isEdit = Boolean(id && id !== "new");
   const isOfflineEdit = Boolean(id?.startsWith("q_"));
-  const numericId = Number(id);
+  const sampleLookupId = isEdit && !isOfflineEdit && id ? id : "";
   const { toast } = useToast();
 
-  const { data: existingSample, isLoading: loadingSample } = useGetSample(numericId, {
-    query: { enabled: isEdit && !isOfflineEdit && Number.isFinite(numericId) }
+  const { data: existingSample, isLoading: loadingSample } = useGetSample(sampleLookupId, {
+    query: { enabled: isEdit && !isOfflineEdit && Boolean(id) }
   });
   const { data: folders } = useGetFolders();
   const { createSample, updateSample } = useSamplesMutations();
@@ -456,7 +456,7 @@ export default function SampleEntry() {
       setLocation("/");
     } else if (isEdit && id) {
       // Edits loaded from the server go to the server
-      updateSample.mutate({ id: Number(id), data: payload }, { onSuccess: () => setLocation("/") });
+      updateSample.mutate({ id, data: payload }, { onSuccess: () => setLocation("/") });
     } else if (!navigator.onLine || localStorage.getItem("geofield-demo-mode") === "true") {
       // Offline — queue sample metadata locally; larger media is stored separately in IndexedDB
       enqueue(payload);
