@@ -57,6 +57,22 @@ function cleanFields(fields: unknown) {
   return JSON.parse(JSON.stringify(fields ?? {}));
 }
 
+function parseFields(fields: unknown) {
+  if (!fields) return {};
+  if (typeof fields === "string") {
+    try {
+      return JSON.parse(fields);
+    } catch {
+      return {};
+    }
+  }
+  return fields;
+}
+
+function serializeFields(fields: unknown) {
+  return JSON.stringify(cleanFields(fields));
+}
+
 function stripLargeMediaFields(fields: unknown) {
   const cleaned = cleanFields(fields) as Record<string, unknown>;
   delete cleaned.photo;
@@ -85,7 +101,7 @@ function asSample(sample: any): Sample {
     userId: sample.owner ?? "",
     folderId: sample.datasetId ?? null,
     notes: sample.notes ?? null,
-    fields: sample.fields ?? {},
+    fields: parseFields(sample.fields),
     createdAt: sample.createdAt ?? nowIso(),
     updatedAt: sample.updatedAt ?? sample.createdAt ?? nowIso(),
   } as Sample;
@@ -241,13 +257,13 @@ export async function createSample({ data }: { data: CreateSampleRequest }): Pro
   try {
     return await createSampleWithInput(cleanObject({
       ...baseInput,
-      fields: cleanFields(data.fields),
+      fields: serializeFields(data.fields),
     }));
   } catch (firstError) {
     console.warn("GeoField full sample save failed; retrying without large media fields", firstError);
     return createSampleWithInput(cleanObject({
       ...baseInput,
-      fields: stripLargeMediaFields(data.fields),
+      fields: serializeFields(stripLargeMediaFields(data.fields)),
     }));
   }
 }
@@ -263,7 +279,7 @@ export async function updateSample({ id, data }: { id: string | number; data: Up
     sampleId: data.sampleId,
     datasetId: data.folderId === undefined ? undefined : folderId,
     notes: data.notes || undefined,
-    fields: data.fields === undefined ? undefined : cleanFields(data.fields),
+    fields: data.fields === undefined ? undefined : serializeFields(data.fields),
   }));
   if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
   return asSample(result.data);
@@ -273,7 +289,8 @@ export function useUpdateSample(options?: MutationOptions<Sample, { id: string |
 }
 
 export async function deleteSample({ id }: { id: string | number }): Promise<void> {
-  const result = await client.models.Sample.delete({ id: String(id) });
+  const sampleId = currentSampleIdFallback(id);
+  const result = await client.models.Sample.delete({ id: String(sampleId) });
   if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
 }
 export function useDeleteSample(options?: MutationOptions<void, { id: string | number }>) {
