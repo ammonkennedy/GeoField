@@ -44,6 +44,15 @@ function normalizeFolderId(folderId: unknown): string | null | undefined {
   return value;
 }
 
+function currentSampleIdFallback(id: string | number | null | undefined): string | number {
+  if (id !== undefined && id !== null && String(id) !== "NaN") return id;
+  if (typeof globalThis === "undefined" || !("location" in globalThis)) return id as any;
+  const parts = globalThis.location.pathname.split("/").filter(Boolean);
+  const last = parts[parts.length - 1] || "";
+  if (!last || last === "new" || last === "sample") return id as any;
+  return last;
+}
+
 function cleanFields(fields: unknown) {
   return JSON.parse(JSON.stringify(fields ?? {}));
 }
@@ -187,14 +196,20 @@ export function useGetSamples<TData = Sample[]>(params?: GetSamplesParams, optio
 
 export const getGetSampleQueryKey = (id: string | number) => ["sample", String(id)] as const;
 export async function getSample(id: string | number): Promise<Sample> {
-  const result = await client.models.Sample.get({ id: String(id) });
+  const sampleId = currentSampleIdFallback(id);
+  const result = await client.models.Sample.get({ id: String(sampleId) });
   if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
   if (!result.data) throw new Error("Sample not found");
   return asSample(result.data);
 }
 export function useGetSample<TData = Sample>(id: string | number, options?: QueryOptions<any>): UseQueryResult<TData, ErrorType<unknown>> & { queryKey: QueryKey } {
-  const queryKey = getGetSampleQueryKey(id);
-  const query = useQuery({ queryKey, queryFn: () => getSample(id), retry: false, ...(options?.query as any) }) as any;
+  const sampleId = currentSampleIdFallback(id);
+  const queryKey = getGetSampleQueryKey(sampleId);
+  const queryOptions = { ...((options?.query as any) ?? {}) };
+  if (String(id) === "NaN" && String(sampleId) !== "NaN") {
+    queryOptions.enabled = true;
+  }
+  const query = useQuery({ queryKey, queryFn: () => getSample(sampleId), retry: false, ...queryOptions }) as any;
   return { ...query, queryKey };
 }
 
@@ -229,8 +244,9 @@ export function useCreateSample(options?: MutationOptions<Sample, { data: Create
 
 export async function updateSample({ id, data }: { id: string | number; data: UpdateSampleRequest }): Promise<Sample> {
   const folderId = normalizeFolderId(data.folderId);
+  const sampleId = currentSampleIdFallback(id);
   const result = await client.models.Sample.update(cleanObject({
-    id: String(id),
+    id: String(sampleId),
     sampleId: data.sampleId,
     datasetId: data.folderId === undefined ? undefined : folderId,
     notes: data.notes || undefined,
