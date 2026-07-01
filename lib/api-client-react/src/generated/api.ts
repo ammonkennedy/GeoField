@@ -57,6 +57,16 @@ function cleanFields(fields: unknown) {
   return JSON.parse(JSON.stringify(fields ?? {}));
 }
 
+function stripLargeMediaFields(fields: unknown) {
+  const cleaned = cleanFields(fields) as Record<string, unknown>;
+  delete cleaned.photo;
+  delete cleaned.media;
+  delete cleaned.primaryPhoto;
+  delete cleaned.photoCount;
+  delete cleaned.videoCount;
+  return cleaned;
+}
+
 function asFolder(dataset: any): Folder {
   return {
     id: dataset.id,
@@ -221,21 +231,24 @@ async function createSampleWithInput(input: Record<string, unknown>) {
 
 export async function createSample({ data }: { data: CreateSampleRequest }): Promise<Sample> {
   const folderId = normalizeFolderId(data.folderId);
-  const minimalInput = cleanObject({
+  const baseInput = cleanObject({
     sampleType: (data.sampleType || "rock") as any,
     sampleId: data.sampleId || `sample-${Date.now()}`,
+    datasetId: folderId === null ? undefined : folderId,
+    notes: data.notes || undefined,
   });
 
   try {
     return await createSampleWithInput(cleanObject({
-      ...minimalInput,
-      datasetId: folderId === null ? undefined : folderId,
-      notes: data.notes || undefined,
+      ...baseInput,
       fields: cleanFields(data.fields),
     }));
   } catch (firstError) {
-    console.warn("GeoField full sample save failed; retrying minimal cloud payload", firstError);
-    return createSampleWithInput(minimalInput);
+    console.warn("GeoField full sample save failed; retrying without large media fields", firstError);
+    return createSampleWithInput(cleanObject({
+      ...baseInput,
+      fields: stripLargeMediaFields(data.fields),
+    }));
   }
 }
 export function useCreateSample(options?: MutationOptions<Sample, { data: CreateSampleRequest }>) {
