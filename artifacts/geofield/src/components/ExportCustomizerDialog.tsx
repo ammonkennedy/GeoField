@@ -3,10 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Download, ChevronUp, ChevronDown, GripVertical, Eye, EyeOff, RotateCcw } from "lucide-react";
+import { Download, ChevronUp, ChevronDown, GripVertical, Eye, EyeOff, RotateCcw, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  type ExportColumn, type ExportFormatConfig,
+  type ExportColumn, type ExportFormatConfig, type ExportCustomRow,
   DEFAULT_FORMAT_CONFIG,
   saveExportConfig, saveColumnPrefs,
 } from "@/lib/export-config";
@@ -23,17 +23,23 @@ interface ExportCustomizerDialogProps {
   onExport: (columns: ExportColumn[], config: ExportFormatConfig) => void;
 }
 
+function newCustomRow(): ExportCustomRow {
+  return { id: `row_${Date.now()}_${Math.random().toString(36).slice(2)}`, text: "" };
+}
+
 export function ExportCustomizerDialog({
   open, onOpenChange, title, subtitle,
   initialColumns, initialConfig, configKey, exportLabel, onExport,
 }: ExportCustomizerDialogProps) {
   const [columns, setColumns] = useState<ExportColumn[]>(initialColumns);
   const [sheetName, setSheetName] = useState(initialConfig.sheetName);
+  const [customRows, setCustomRows] = useState<ExportCustomRow[]>(initialConfig.customRows || []);
 
   const handleOpenChange = (v: boolean) => {
     if (v) {
       setColumns(initialColumns);
       setSheetName(initialConfig.sheetName);
+      setCustomRows(initialConfig.customRows || []);
     }
     onOpenChange(v);
   };
@@ -62,12 +68,23 @@ export function ExportCustomizerDialog({
   const setLabel = (i: number, label: string) =>
     setColumns((prev) => prev.map((c, idx) => (idx === i ? { ...c, label } : c)));
 
+  const addCustomRow = () => setCustomRows((prev) => [...prev, newCustomRow()]);
+  const updateCustomRow = (id: string, text: string) =>
+    setCustomRows((prev) => prev.map((row) => (row.id === id ? { ...row, text } : row)));
+  const removeCustomRow = (id: string) =>
+    setCustomRows((prev) => prev.filter((row) => row.id !== id));
+
   const enableAll = () => setColumns((prev) => prev.map((c) => ({ ...c, enabled: true })));
   const disableAll = () => setColumns((prev) => prev.map((c) => ({ ...c, enabled: false })));
   const resetOrder = useCallback(() => setColumns(initialColumns), [initialColumns]);
 
   const handleExport = () => {
-    const config: ExportFormatConfig = { ...DEFAULT_FORMAT_CONFIG, sheetName: sheetName || "Data" };
+    const config: ExportFormatConfig = {
+      ...DEFAULT_FORMAT_CONFIG,
+      ...initialConfig,
+      sheetName: sheetName || "Data",
+      customRows,
+    };
     saveColumnPrefs(configKey, columns);
     saveExportConfig(configKey, config);
     onExport(columns, config);
@@ -102,6 +119,48 @@ export function ExportCustomizerDialog({
               placeholder="Data"
               className="h-9 max-w-xs"
             />
+          </div>
+
+          {/* Custom rows */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Extra Rows Above Header
+                </Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add blank spacing rows or type a title that appears above the Excel headers.
+                </p>
+              </div>
+              <Button type="button" variant="outline" size="sm" className="gap-1 shrink-0" onClick={addCustomRow}>
+                <Plus className="w-3.5 h-3.5" />
+                Add Row
+              </Button>
+            </div>
+
+            {customRows.length > 0 && (
+              <div className="space-y-1.5">
+                {customRows.map((row, index) => (
+                  <div key={row.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-card">
+                    <span className="text-xs text-muted-foreground w-12 shrink-0">Row {index + 1}</span>
+                    <Input
+                      value={row.text}
+                      onChange={(e) => updateCustomRow(row.id, e.target.value)}
+                      placeholder="Leave blank for spacing, or type a title…"
+                      className="h-8 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeCustomRow(row.id)}
+                      className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                      title="Remove row"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Columns */}
@@ -182,6 +241,7 @@ export function ExportCustomizerDialog({
                   {/* Up / Down */}
                   <div className="flex gap-0.5 shrink-0">
                     <button
+                      type="button"
                       onClick={() => moveUp(i)}
                       disabled={i === 0}
                       className="p-1 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
@@ -189,6 +249,7 @@ export function ExportCustomizerDialog({
                       <ChevronUp className="w-3.5 h-3.5" />
                     </button>
                     <button
+                      type="button"
                       onClick={() => moveDown(i)}
                       disabled={i === columns.length - 1}
                       className="p-1 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
