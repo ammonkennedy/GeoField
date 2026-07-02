@@ -10,6 +10,11 @@ export interface ExportColumn {
   defaultWidth?: number;
 }
 
+export interface ExportCustomRow {
+  id: string;
+  text: string;
+}
+
 /* ── Format config ──────────────────────────────────────────────────────── */
 export interface ExportFormatConfig {
   sheetName: string;
@@ -19,6 +24,7 @@ export interface ExportFormatConfig {
   zebraStripe: boolean;
   zebraColor: string;       // 6-char hex WITHOUT #
   freezeHeader: boolean;
+  customRows: ExportCustomRow[];
 }
 
 export const DEFAULT_FORMAT_CONFIG: ExportFormatConfig = {
@@ -29,6 +35,7 @@ export const DEFAULT_FORMAT_CONFIG: ExportFormatConfig = {
   zebraStripe: true,
   zebraColor: "EFF6FF",
   freezeHeader: true,
+  customRows: [],
 };
 
 /* ── Color presets ──────────────────────────────────────────────────────── */
@@ -155,8 +162,15 @@ export function buildStyledWorksheet(
 ): XLSX.WorkSheet {
   const enabled = columns.filter((c) => c.enabled);
   const headers = enabled.map((c) => c.label);
+  const customRows = config.customRows || [];
+  const customRowCount = customRows.length;
 
   const aoa = [
+    ...customRows.map((row) => {
+      const values = new Array(Math.max(enabled.length, 1)).fill("");
+      values[0] = row.text || "";
+      return values;
+    }),
     headers,
     ...dataRows.map((row) =>
       enabled.map((c) => {
@@ -170,14 +184,26 @@ export function buildStyledWorksheet(
   ws["!cols"] = enabled.map((c) => ({ wch: c.defaultWidth ?? 15 }));
 
   if (config.freezeHeader) {
-    (ws as any)["!freeze"] = { xSplit: 0, ySplit: 1 };
+    (ws as any)["!freeze"] = { xSplit: 0, ySplit: customRowCount + 1 };
   }
 
   const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+  const headerRowIndex = customRowCount;
+
+  // Custom title/spacing rows styling
+  customRows.forEach((row, index) => {
+    if (!row.text) return;
+    const addr = XLSX.utils.encode_cell({ r: index, c: 0 });
+    if (!ws[addr]) return;
+    ws[addr].s = {
+      font: { bold: true, sz: 14 },
+      alignment: { vertical: "center" },
+    };
+  });
 
   // Header row styling
   for (let c = range.s.c; c <= range.e.c; c++) {
-    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    const addr = XLSX.utils.encode_cell({ r: headerRowIndex, c });
     if (!ws[addr]) continue;
     ws[addr].s = {
       font: {
@@ -189,9 +215,9 @@ export function buildStyledWorksheet(
     };
   }
 
-  // Zebra striping (even data rows: r = 2, 4, 6…)
+  // Zebra striping every other data row after the header
   if (config.zebraStripe) {
-    for (let r = 2; r <= range.e.r; r += 2) {
+    for (let r = headerRowIndex + 2; r <= range.e.r; r += 2) {
       for (let c = range.s.c; c <= range.e.c; c++) {
         const addr = XLSX.utils.encode_cell({ r, c });
         if (!ws[addr]) ws[addr] = { t: "z", v: "" };
