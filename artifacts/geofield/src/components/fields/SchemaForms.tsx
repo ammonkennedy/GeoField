@@ -35,7 +35,6 @@ export const WaterFields = ({ register }: any) => (
 
 export const RockFields = ({ register }: { register: any }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-    {/* Rock Classification */}
     <div className="space-y-2">
       <Label>Rock Type</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.rockType")}>
@@ -45,10 +44,7 @@ export const RockFields = ({ register }: { register: any }) => (
         <option value="Metamorphic">Metamorphic</option>
       </select>
     </div>
-    <div className="space-y-2">
-      <Label>Rock Name</Label>
-      <Input {...register("fields.rockName")} placeholder="e.g. Basalt, Sandstone" />
-    </div>
+    <div className="space-y-2"><Label>Rock Name</Label><Input {...register("fields.rockName")} placeholder="e.g. Basalt, Sandstone" /></div>
     <div className="space-y-2">
       <Label>Lithology</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.lithology")}>
@@ -91,8 +87,6 @@ export const RockFields = ({ register }: { register: any }) => (
         </optgroup>
       </select>
     </div>
-
-    {/* Physical Properties */}
     <div className="space-y-2"><Label>Color</Label><Input {...register("fields.color")} /></div>
     <div className="space-y-2"><Label>Texture</Label><Input {...register("fields.texture")} placeholder="e.g. Fine, Porphyritic" /></div>
     <div className="space-y-2">
@@ -110,7 +104,6 @@ export const RockFields = ({ register }: { register: any }) => (
     <div className="space-y-2"><Label>Hardness (Mohs)</Label><Input type="number" step="0.5" max="10" min="1" {...register("fields.hardness")} /></div>
     <div className="space-y-2"><Label>Specific Gravity</Label><Input type="number" step="0.1" {...register("fields.specificGravity")} /></div>
     <div className="space-y-2"><Label>Magnetism</Label><Input {...register("fields.magnetism")} /></div>
-
     <div className="space-y-2"><Label>Weight (g)</Label><Input type="number" step="0.1" {...register("fields.weight")} /></div>
   </div>
 );
@@ -142,5 +135,28 @@ export const SoilFields = ({ register }: any) => (
     <div className="space-y-2"><Label>Organic Matter (%)</Label><Input type="number" step="0.1" {...register("fields.organicMatter")} /></div>
     <div className="space-y-2"><Label>Electrical Conductivity (mS/cm)</Label><Input type="number" step="0.01" {...register("fields.ec")} /></div>
     <div className="space-y-2"><Label>Weight (g)</Label><Input type="number" step="0.1" {...register("fields.weight")} /></div>
+  </div>
+);
+
+export const OtherFields = ({ register }: any) => (
+  <div className="space-y-6">
+    <div className="space-y-2">
+      <Label>Sample Type Title</Label>
+      <Input {...register("fields.otherSampleTitle")} placeholder="e.g. Concrete, Vegetation, Sludge, Unknown material" />
+    </div>
+    <div className="grid grid-cols-1 gap-3">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-3 items-end">
+          <div className="space-y-2">
+            <Label>{`Parameter ${i + 1}`}</Label>
+            <Input {...register(`fields.otherParam${i + 1}Label`)} placeholder="Parameter name" />
+          </div>
+          <div className="space-y-2">
+            <Label>Value</Label>
+            <Input {...register(`fields.otherParam${i + 1}Value`)} placeholder="Value / notes" />
+          </div>
+        </div>
+      ))}
+    </div>
   </div>
 );
