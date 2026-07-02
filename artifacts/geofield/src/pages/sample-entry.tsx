@@ -9,14 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck } from "lucide-react";
+import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck, FileQuestion } from "lucide-react";
 import { useSamplesMutations } from "@/hooks/use-geofield";
 import { useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { enqueue, getQueue, updateQueuedSample } from "@/lib/offline-queue";
 import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
 import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-import { BaseFields, WaterFields, RockFields, SoilFields } from "@/components/fields/SchemaForms";
+import { BaseFields, WaterFields, RockFields, SoilFields, OtherFields } from "@/components/fields/SchemaForms";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
@@ -25,10 +25,11 @@ const sampleTypes = [
   { id: 'water', label: 'Water', icon: Droplet, color: 'text-[var(--color-water)]', bg: 'bg-[var(--color-water)]/10' },
   { id: 'rock', label: 'Rock', icon: Mountain, color: 'text-[var(--color-rock)]', bg: 'bg-[var(--color-rock)]/10' },
   { id: 'soil_sand', label: 'Soil/Sediment', icon: Sprout, color: 'text-[var(--color-soil)]', bg: 'bg-[var(--color-soil)]/10' },
+  { id: 'other', label: 'Other', icon: FileQuestion, color: 'text-muted-foreground', bg: 'bg-muted' },
 ] as const;
 
 const formSchema = z.object({
-  sampleType: z.enum(['water', 'rock', 'soil_sand']),
+  sampleType: z.enum(['water', 'rock', 'soil_sand', 'other']),
   sampleId: z.string().min(1, "Sample ID is required"),
   folderId: z.string().optional(),
   notes: z.string().optional(),
@@ -37,6 +38,7 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 type GpsStatus = "idle" | "loading" | "success" | "error" | "denied";
+type SampleTypeId = 'water' | 'rock' | 'soil_sand' | 'other';
 
 type MediaSlot = {
   type: "photo" | "video";
@@ -53,13 +55,11 @@ interface CustomParam {
   value: string;
 }
 
-/* ── Per-type custom param templates (persisted in localStorage) ─────────── */
-type SampleTypeId = 'water' | 'rock' | 'soil_sand';
 const TEMPLATE_KEY = "geofield_custom_param_templates";
 
-function loadTemplates(): Record<SampleTypeId, string[]> {
+function loadTemplates(): Partial<Record<SampleTypeId, string[]>> {
   try { return JSON.parse(localStorage.getItem(TEMPLATE_KEY) || "{}"); }
-  catch { return {} as Record<SampleTypeId, string[]>; }
+  catch { return {}; }
 }
 
 function saveTemplate(type: SampleTypeId, labels: string[]) {
@@ -70,6 +70,14 @@ function saveTemplate(type: SampleTypeId, labels: string[]) {
 
 function templateToParams(labels: string[]): CustomParam[] {
   return labels.map((label) => ({ id: `tpl_${crypto.randomUUID()}`, label, value: "" }));
+}
+
+function getTypeLabel(type: string) {
+  if (type === "water") return "Water";
+  if (type === "rock") return "Rock";
+  if (type === "soil_sand") return "Soil/Sediment";
+  if (type === "other") return "Other";
+  return "Sample";
 }
 
 async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlot, MediaSlot, MediaSlot]> {
@@ -152,7 +160,6 @@ export default function SampleEntry() {
     }
   });
 
-  // Auto-fill date+time and GPS on new sample
   useEffect(() => {
     if (isEdit) return;
     const now = new Date();
@@ -173,10 +180,8 @@ export default function SampleEntry() {
 
   useEffect(() => {
     if (!isOfflineEdit || !id) return;
-
     const queued = getQueue().find((item) => item.queuedId === id);
     if (!queued) return;
-
     const fields = queued.payload.fields || {};
     reset({
       sampleType: queued.payload.sampleType as any,
@@ -185,17 +190,13 @@ export default function SampleEntry() {
       notes: queued.payload.notes || '',
       fields: { ...fields, photo: undefined, media: undefined, customParams: undefined },
     });
-
     if (Array.isArray(fields.customParams)) {
-      setCustomParams(
-        fields.customParams.map((p: any, i: number) => ({
-          id: `cp_${i}_${Date.now()}`,
-          label: p.label ?? "",
-          value: p.value ?? "",
-        }))
-      );
+      setCustomParams(fields.customParams.map((p: any, i: number) => ({
+        id: `cp_${i}_${Date.now()}`,
+        label: p.label ?? "",
+        value: p.value ?? "",
+      })));
     }
-
     hydrateMediaSlots(fields).then(setMediaSlots);
   }, [isOfflineEdit, id, reset]);
 
@@ -203,15 +204,12 @@ export default function SampleEntry() {
     if (existingSample && isEdit && !isOfflineEdit) {
       const fields = existingSample.fields as Record<string, any> || {};
       hydrateMediaSlots(fields).then(setMediaSlots);
-      // Load saved custom params
       if (Array.isArray(fields.customParams)) {
-        setCustomParams(
-          fields.customParams.map((p: any, i: number) => ({
-            id: `cp_${i}_${Date.now()}`,
-            label: p.label ?? "",
-            value: p.value ?? "",
-          }))
-        );
+        setCustomParams(fields.customParams.map((p: any, i: number) => ({
+          id: `cp_${i}_${Date.now()}`,
+          label: p.label ?? "",
+          value: p.value ?? "",
+        })));
       }
       reset({
         sampleType: existingSample.sampleType as any,
@@ -227,7 +225,6 @@ export default function SampleEntry() {
   const locationValue = watch("fields.location") as string | undefined;
   const isPending = createSample.isPending || updateSample.isPending || isSavingMedia;
 
-  // When the sample type changes on a NEW sample, pre-fill custom params from the saved template
   const prevTypeRef = useRef<string | null>(null);
   useEffect(() => {
     if (isEdit) return;
@@ -236,6 +233,7 @@ export default function SampleEntry() {
     const templates = loadTemplates();
     const labels = templates[currentType as SampleTypeId] ?? [];
     if (labels.length > 0) setCustomParams(templateToParams(labels));
+    else if (currentType === "other") setCustomParams([]);
   }, [currentType, isEdit]);
 
   const compressImage = (file: File): Promise<string> => {
@@ -296,22 +294,10 @@ export default function SampleEntry() {
       vid.onerror = () => { URL.revokeObjectURL(url); toast({ title: "Could not read video", description: "Try a different format (MP4 recommended)." }); };
     } else {
       try {
-        setSlot({
-          type: "photo",
-          dataUrl: await compressImage(file),
-          fileName: file.name,
-          mimeType: file.type,
-          sizeBytes: file.size,
-        });
+        setSlot({ type: "photo", dataUrl: await compressImage(file), fileName: file.name, mimeType: file.type, sizeBytes: file.size });
       } catch {
         const reader = new FileReader();
-        reader.onload = (ev) => setSlot({
-          type: "photo",
-          dataUrl: ev.target?.result as string,
-          fileName: file.name,
-          mimeType: file.type,
-          sizeBytes: file.size,
-        });
+        reader.onload = (ev) => setSlot({ type: "photo", dataUrl: ev.target?.result as string, fileName: file.name, mimeType: file.type, sizeBytes: file.size });
         reader.readAsDataURL(file);
       }
     }
@@ -332,21 +318,12 @@ export default function SampleEntry() {
   async function prepareMediaForSave(slots: [MediaSlot, MediaSlot, MediaSlot]) {
     const filled = slots.filter(Boolean) as Exclude<MediaSlot, null>[];
     if (filled.length === 0) return [];
-
-    return Promise.all(
-      filled.map(async (slot) => {
-        if (slot.stored) return slot.stored;
-        return storeMediaDataUrl({
-          kind: slot.type,
-          dataUrl: slot.dataUrl,
-          fileName: slot.fileName,
-          mimeType: slot.mimeType,
-        });
-      })
-    );
+    return Promise.all(filled.map(async (slot) => {
+      if (slot.stored) return slot.stored;
+      return storeMediaDataUrl({ kind: slot.type, dataUrl: slot.dataUrl, fileName: slot.fileName, mimeType: slot.mimeType });
+    }));
   }
 
-  // Voice recognition for field notes
   const toggleRecording = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
@@ -378,24 +355,17 @@ export default function SampleEntry() {
     setIsRecording(true);
   };
 
-  // Custom param helpers
-  const addCustomParam = () => {
-    setCustomParams((prev) => [...prev, { id: `cp_${Date.now()}`, label: "", value: "" }]);
-  };
-  const updateCustomParam = (id: string, field: "label" | "value", val: string) => {
+  const addCustomParam = () => setCustomParams((prev) => [...prev, { id: `cp_${Date.now()}`, label: "", value: "" }]);
+  const updateCustomParam = (id: string, field: "label" | "value", val: string) =>
     setCustomParams((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: val } : p)));
-  };
-  const removeCustomParam = (id: string) => {
-    setCustomParams((prev) => prev.filter((p) => p.id !== id));
-  };
+  const removeCustomParam = (id: string) => setCustomParams((prev) => prev.filter((p) => p.id !== id));
 
   const saveAsDefault = () => {
     const labels = customParams.map((p) => p.label).filter(Boolean);
     saveTemplate(currentType as SampleTypeId, labels);
-    const typeLabel = currentType === "water" ? "Water" : currentType === "rock" ? "Rock" : "Soil/Sediment";
     toast({
       title: "Template saved",
-      description: `${labels.length} custom parameter${labels.length !== 1 ? "s" : ""} will now appear on all new ${typeLabel} sheets.`,
+      description: `${labels.length} custom parameter${labels.length !== 1 ? "s" : ""} will now appear on all new ${getTypeLabel(currentType)} sheets.`,
     });
   };
 
@@ -416,19 +386,9 @@ export default function SampleEntry() {
         processedFields.photoCount = storedMedia.filter((m) => m.kind === "photo").length;
         processedFields.videoCount = storedMedia.filter((m) => m.kind === "video").length;
         const firstPhoto = storedMedia.find((m) => m.kind === "photo");
-        if (firstPhoto) {
-          processedFields.primaryPhoto = {
-            storageKey: firstPhoto.storageKey,
-            cloudUrl: firstPhoto.cloudUrl || null,
-            syncStatus: firstPhoto.syncStatus,
-          };
-        }
+        if (firstPhoto) processedFields.primaryPhoto = { storageKey: firstPhoto.storageKey, cloudUrl: firstPhoto.cloudUrl || null, syncStatus: firstPhoto.syncStatus };
       } catch {
-        toast({
-          title: "Could not save media",
-          description: "The sample was not saved because the photo/video could not be stored on this device.",
-          variant: "destructive",
-        });
+        toast({ title: "Could not save media", description: "The sample was not saved because the photo/video could not be stored on this device.", variant: "destructive" });
         setIsSavingMedia(false);
         return;
       } finally {
@@ -436,11 +396,8 @@ export default function SampleEntry() {
       }
     }
 
-    // Include non-empty custom parameters
     const nonEmptyParams = customParams.filter((p) => p.label.trim());
-    if (nonEmptyParams.length > 0) {
-      processedFields.customParams = nonEmptyParams.map((p) => ({ label: p.label.trim(), value: p.value }));
-    }
+    if (nonEmptyParams.length > 0) processedFields.customParams = nonEmptyParams.map((p) => ({ label: p.label.trim(), value: p.value }));
 
     const payload = {
       sampleType: data.sampleType,
@@ -455,17 +412,10 @@ export default function SampleEntry() {
       toast({ title: "Sample updated", description: "Your offline sample edits were saved on this device." });
       setLocation("/");
     } else if (isEdit && id) {
-      // Edits loaded from the server go to the server
       updateSample.mutate({ id, data: payload }, { onSuccess: () => setLocation("/") });
     } else if (!navigator.onLine || localStorage.getItem("geofield-demo-mode") === "true") {
-      // Offline — queue sample metadata locally; larger media is stored separately in IndexedDB
       enqueue(payload);
-      toast({
-        title: "Saved offline",
-        description: filledSlots
-          ? "Your sample is stored on this device. Photos/videos are kept in local media storage until cloud sync is added."
-          : "Your sample is stored on this device and will sync automatically when you're back online.",
-      });
+      toast({ title: "Saved offline", description: filledSlots ? "Your sample is stored on this device. Photos/videos are kept in local media storage until cloud sync is added." : "Your sample is stored on this device and will sync automatically when you're back online." });
       setLocation("/");
     } else {
       createSample.mutate({ data: payload }, { onSuccess: () => setLocation("/") });
@@ -485,9 +435,7 @@ export default function SampleEntry() {
   return (
     <Layout>
       <div className="flex items-center gap-4 mb-8">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="rounded-full">
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
+        <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="rounded-full"><ArrowLeft className="w-5 h-5" /></Button>
         <div>
           <h1 className="text-3xl font-bold font-display">{isEdit ? "Edit Sample" : "New Field Sample"}</h1>
           <p className="text-muted-foreground mt-1">Record accurate parameter data directly from the field.</p>
@@ -495,336 +443,64 @@ export default function SampleEntry() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 pb-20">
-
-        {/* Type Selection */}
         <div className="space-y-3">
           <Label className="text-base">Sample Type</Label>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {sampleTypes.map((type) => {
               const isSelected = currentType === type.id;
               const Icon = type.icon;
               return (
-                <div
-                  key={type.id}
-                  onClick={() => !isEdit && setValue("sampleType", type.id, { shouldValidate: true })}
-                  className={cn(
-                    "relative overflow-hidden rounded-xl border p-4 cursor-pointer transition-all duration-300",
-                    isSelected
-                      ? "border-primary ring-2 ring-primary/20 shadow-md bg-card"
-                      : isEdit
-                      ? "opacity-50 cursor-not-allowed bg-muted/50 border-transparent"
-                      : "border-border bg-card hover:border-primary/50 hover:shadow-sm"
-                  )}
-                >
+                <div key={type.id} onClick={() => !isEdit && setValue("sampleType", type.id, { shouldValidate: true })} className={cn("relative overflow-hidden rounded-xl border p-4 cursor-pointer transition-all duration-300", isSelected ? "border-primary ring-2 ring-primary/20 shadow-md bg-card" : isEdit ? "opacity-50 cursor-not-allowed bg-muted/50 border-transparent" : "border-border bg-card hover:border-primary/50 hover:shadow-sm")}>
                   {isSelected && <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full" />}
-                  <div className="flex items-center gap-4 relative z-10">
-                    <div className={cn("p-3 rounded-lg", type.bg, type.color)}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    <span className="font-semibold text-lg">{type.label}</span>
-                  </div>
+                  <div className="flex items-center gap-4 relative z-10"><div className={cn("p-3 rounded-lg", type.bg, type.color)}><Icon className="w-6 h-6" /></div><span className="font-semibold text-lg">{type.label}</span></div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Dynamic Form Card */}
         <Card className="overflow-hidden shadow-lg border-border/50">
           <div className="p-6 md:p-8 space-y-8 bg-gradient-to-b from-card to-muted/20">
-
-            {/* Section 1: Basic Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-display font-semibold flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">1</span>
-                Basic Information
-                {!isEdit && (
-                  <span className={cn(
-                    "ml-2 inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium",
-                    gpsStatus === "loading" && "bg-yellow-100 text-yellow-700",
-                    gpsStatus === "success" && "bg-green-100 text-green-700",
-                    (gpsStatus === "error" || gpsStatus === "denied") && "bg-red-100 text-red-600",
-                    gpsStatus === "idle" && "bg-muted text-muted-foreground",
-                  )}>
-                    {gpsStatus === "loading" && <><Loader2 className="w-3 h-3 animate-spin" />Getting GPS...</>}
-                    {gpsStatus === "success" && <><MapPin className="w-3 h-3" />GPS captured</>}
-                    {gpsStatus === "denied" && <><MapPin className="w-3 h-3" />Location denied</>}
-                    {gpsStatus === "error" && <><MapPin className="w-3 h-3" />GPS unavailable</>}
-                  </span>
-                )}
-              </h3>
+              <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">1</span>Basic Information{!isEdit && (<span className={cn("ml-2 inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium", gpsStatus === "loading" && "bg-yellow-100 text-yellow-700", gpsStatus === "success" && "bg-green-100 text-green-700", (gpsStatus === "error" || gpsStatus === "denied") && "bg-red-100 text-red-600", gpsStatus === "idle" && "bg-muted text-muted-foreground")}>{gpsStatus === "loading" && <><Loader2 className="w-3 h-3 animate-spin" />Getting GPS...</>}{gpsStatus === "success" && <><MapPin className="w-3 h-3" />GPS captured</>}{gpsStatus === "denied" && <><MapPin className="w-3 h-3" />Location denied</>}{gpsStatus === "error" && <><MapPin className="w-3 h-3" />GPS unavailable</>}</span>)}</h3>
               <BaseFields register={register} errors={errors} />
-              {(() => {
-                const coords = parseCoordsUTM(locationValue);
-                if (!coords) return null;
-                const utm = latLngToUTM(coords[0], coords[1]);
-                return (
-                  <div className="flex items-start gap-2.5 bg-muted/40 border border-border rounded-lg px-3.5 py-2.5 text-sm">
-                    <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">UTM Coordinates (WGS84)</p>
-                      <p className="font-mono text-sm text-foreground">{utm.display}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">Zone {utm.zone}{utm.letter} · {utm.hemisphere === "N" ? "Northern" : "Southern"} Hemisphere</p>
-                    </div>
-                  </div>
-                );
-              })()}
+              {(() => { const coords = parseCoordsUTM(locationValue); if (!coords) return null; const utm = latLngToUTM(coords[0], coords[1]); return <div className="flex items-start gap-2.5 bg-muted/40 border border-border rounded-lg px-3.5 py-2.5 text-sm"><MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" /><div><p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">UTM Coordinates (WGS84)</p><p className="font-mono text-sm text-foreground">{utm.display}</p><p className="text-xs text-muted-foreground mt-0.5">Zone {utm.zone}{utm.letter} · {utm.hemisphere === "N" ? "Northern" : "Southern"} Hemisphere</p></div></div>; })()}
             </div>
 
             <div className="h-px bg-border/60 w-full" />
 
-            {/* Section 2: Type-specific Parameters */}
             <div className="space-y-4">
-              <h3 className="text-lg font-display font-semibold flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>
-                Parameters
-              </h3>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={currentType}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {currentType === "water" && <WaterFields register={register} />}
-                  {currentType === "rock" && <RockFields register={register} />}
-                  {currentType === "soil_sand" && <SoilFields register={register} />}
-                </motion.div>
-              </AnimatePresence>
+              <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>Parameters</h3>
+              <AnimatePresence mode="wait"><motion.div key={currentType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>{currentType === "water" && <WaterFields register={register} />}{currentType === "rock" && <RockFields register={register} />}{currentType === "soil_sand" && <SoilFields register={register} />}{currentType === "other" && <OtherFields register={register} />}</motion.div></AnimatePresence>
             </div>
 
             <div className="h-px bg-border/60 w-full" />
 
-            {/* Section 3: Custom Parameters */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <h3 className="text-lg font-display font-semibold flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">3</span>
-                  Custom Parameters
-                </h3>
-                <div className="flex items-center gap-2">
-                  {customParams.length > 0 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="gap-2 border-primary/40 text-primary hover:bg-primary/5"
-                      onClick={saveAsDefault}
-                      title={`Save these parameters as the default template for all new ${currentType === "water" ? "Water" : currentType === "rock" ? "Rock" : "Soil/Sediment"} sheets`}
-                    >
-                      <BookmarkCheck className="w-4 h-4" />
-                      Save as default
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={addCustomParam}
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Parameter
-                  </Button>
-                </div>
-              </div>
-
-              {customParams.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic px-1">
-                  No custom parameters yet. Click <strong>Add Parameter</strong> to add one, then <strong>Save as default</strong> to make it appear on all future {currentType === "water" ? "Water" : currentType === "rock" ? "Rock" : "Soil/Sediment"} sheets.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {customParams.map((param) => (
-                    <div key={param.id} className="flex gap-2 items-start group">
-                      <GripVertical className="w-4 h-4 mt-2.5 text-muted-foreground/40 shrink-0" />
-                      <Input
-                        value={param.label}
-                        onChange={(e) => updateCustomParam(param.id, "label", e.target.value)}
-                        placeholder="Parameter name"
-                        className="w-40 shrink-0 text-sm"
-                      />
-                      <Input
-                        value={param.value}
-                        onChange={(e) => updateCustomParam(param.id, "value", e.target.value)}
-                        placeholder="Value (e.g. 7.2, Present, 42 mg/L)"
-                        className="flex-1 text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeCustomParam(param.id)}
-                        className="mt-2 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                  <p className="text-xs text-muted-foreground pt-1">
-                    Hit <strong>Save as default</strong> to make this set of parameters appear automatically on every new {currentType === "water" ? "Water" : currentType === "rock" ? "Rock" : "Soil/Sediment"} sheet.
-                  </p>
-                </div>
-              )}
+              <div className="flex items-center justify-between flex-wrap gap-2"><h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">3</span>Custom Parameters</h3><div className="flex items-center gap-2">{customParams.length > 0 && <Button type="button" variant="outline" size="sm" className="gap-2 border-primary/40 text-primary hover:bg-primary/5" onClick={saveAsDefault} title={`Save these parameters as the default template for all new ${getTypeLabel(currentType)} sheets`}><BookmarkCheck className="w-4 h-4" />Save as default</Button>}<Button type="button" variant="outline" size="sm" className="gap-2" onClick={addCustomParam}><Plus className="w-4 h-4" />Add Parameter</Button></div></div>
+              {customParams.length === 0 ? <p className="text-sm text-muted-foreground italic px-1">No custom parameters yet. Click <strong>Add Parameter</strong> to add one.</p> : <div className="space-y-3">{customParams.map((param) => <div key={param.id} className="flex gap-2 items-start group"><GripVertical className="w-4 h-4 mt-2.5 text-muted-foreground/40 shrink-0" /><Input value={param.label} onChange={(e) => updateCustomParam(param.id, "label", e.target.value)} placeholder="Parameter name" className="w-40 shrink-0 text-sm" /><Input value={param.value} onChange={(e) => updateCustomParam(param.id, "value", e.target.value)} placeholder="Value (e.g. 7.2, Present, 42 mg/L)" className="flex-1 text-sm" /><button type="button" onClick={() => removeCustomParam(param.id)} className="mt-2 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"><X className="w-4 h-4" /></button></div>)}</div>}
             </div>
 
             <div className="h-px bg-border/60 w-full" />
 
-            {/* Section 4: Photos & Video */}
             <div className="space-y-4">
-              <h3 className="text-lg font-display font-semibold flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">4</span>
-                Photos &amp; Video
-              </h3>
-              <p className="text-xs text-muted-foreground -mt-1">
-                Up to 3 slots — each can be a photo or a short video clip (max 10 seconds). Media is now stored separately from the offline sample queue to avoid filling localStorage.
-              </p>
-
-              {/* Hidden single file input shared by all slots */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,video/*"
-                className="hidden"
-                onChange={handleMediaChange}
-              />
-
-              <div className="flex flex-wrap gap-3">
-                {([0, 1, 2] as const).map((i) => {
-                  const slot = mediaSlots[i];
-                  const label = i === 0 ? "Primary" : i === 1 ? "Secondary" : "Additional";
-                  return (
-                    <div key={i} className="flex flex-col items-center gap-1.5">
-                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</span>
-                      <div className="relative group">
-                        {slot ? (
-                          <>
-                            {slot.type === "photo" ? (
-                              <img
-                                src={slot.dataUrl}
-                                alt={`Sample photo ${i + 1}`}
-                                className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer"
-                                onClick={() => openSlot(i)}
-                              />
-                            ) : (
-                              <video
-                                src={slot.dataUrl}
-                                className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer bg-black"
-                                controls
-                                playsInline
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            )}
-                            {/* Type badge */}
-                            <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] font-semibold rounded px-1.5 py-0.5 flex items-center gap-1 pointer-events-none">
-                              {slot.type === "photo" ? <ImageIcon className="w-2.5 h-2.5" /> : <Video className="w-2.5 h-2.5" />}
-                              {slot.type === "photo" ? "Photo" : "Video"}
-                            </span>
-                            {/* Clear button */}
-                            <button
-                              type="button"
-                              onClick={() => clearSlot(i)}
-                              className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                            {/* Replace overlay on photo */}
-                            {slot.type === "photo" && (
-                              <div
-                                className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
-                                onClick={() => openSlot(i)}
-                              >
-                                <Camera className="w-6 h-6 text-white" />
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <div
-                            className="w-36 h-36 rounded-xl border-2 border-dashed border-border bg-muted/30 flex flex-col items-center justify-center gap-2 text-muted-foreground cursor-pointer hover:border-primary/40 hover:bg-muted/50 transition-colors"
-                            onClick={() => openSlot(i)}
-                          >
-                            <div className="flex gap-2">
-                              <Camera className="w-5 h-5" />
-                              <Video className="w-5 h-5" />
-                            </div>
-                            <span className="text-[11px] text-center px-2 leading-tight">Tap to add<br />photo or video</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">4</span>Photos &amp; Video</h3>
+              <p className="text-xs text-muted-foreground -mt-1">Up to 3 slots — each can be a photo or a short video clip (max 10 seconds).</p>
+              <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
+              <div className="flex flex-wrap gap-3">{([0, 1, 2] as const).map((i) => { const slot = mediaSlots[i]; const label = i === 0 ? "Primary" : i === 1 ? "Secondary" : "Additional"; return <div key={i} className="flex flex-col items-center gap-1.5"><span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</span><div className="relative group">{slot ? <>{slot.type === "photo" ? <img src={slot.dataUrl} alt={`Sample photo ${i + 1}`} className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer" onClick={() => openSlot(i)} /> : <video src={slot.dataUrl} className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer bg-black" controls playsInline onClick={(e) => e.stopPropagation()} />}<span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] font-semibold rounded px-1.5 py-0.5 flex items-center gap-1 pointer-events-none">{slot.type === "photo" ? <ImageIcon className="w-2.5 h-2.5" /> : <Video className="w-2.5 h-2.5" />}{slot.type === "photo" ? "Photo" : "Video"}</span><button type="button" onClick={() => clearSlot(i)} className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow"><X className="w-3.5 h-3.5" /></button>{slot.type === "photo" && <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer" onClick={() => openSlot(i)}><Camera className="w-6 h-6 text-white" /></div>}</> : <div className="w-36 h-36 rounded-xl border-2 border-dashed border-border bg-muted/30 flex flex-col items-center justify-center gap-2 text-muted-foreground cursor-pointer hover:border-primary/40 hover:bg-muted/50 transition-colors" onClick={() => openSlot(i)}><div className="flex gap-2"><Camera className="w-5 h-5" /><Video className="w-5 h-5" /></div><span className="text-[11px] text-center px-2 leading-tight">Tap to add<br />photo or video</span></div>}</div></div>; })}</div>
             </div>
 
             <div className="h-px bg-border/60 w-full" />
 
-            {/* Section 5: Organization */}
             <div className="space-y-4">
-              <h3 className="text-lg font-display font-semibold flex items-center gap-2">
-                <span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">5</span>
-                Organization
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="folderId">Dataset (Optional)</Label>
-                  <select
-                    id="folderId"
-                    className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm"
-                    {...register("folderId")}
-                  >
-                    <option value="">Uncategorized</option>
-                    {allFolders.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="notes">Field Notes</Label>
-                    <button
-                      type="button"
-                      onClick={toggleRecording}
-                      title={isRecording ? "Stop recording" : "Dictate field notes"}
-                      className={cn(
-                        "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all",
-                        isRecording
-                          ? "bg-red-500 text-white border-red-500 animate-pulse"
-                          : "bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/50"
-                      )}
-                    >
-                      {isRecording
-                        ? <><MicOff className="w-3.5 h-3.5" /> Stop</>
-                        : <><Mic className="w-3.5 h-3.5" /> Dictate</>}
-                    </button>
-                  </div>
-                  {isRecording && (
-                    <p className="text-xs text-red-500 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-red-500 animate-ping inline-block" />
-                      Listening… speak your field notes now.
-                    </p>
-                  )}
-                  <Textarea
-                    id="notes"
-                    placeholder="Additional observations, weather conditions, context... or click Dictate to speak."
-                    className="min-h-[120px]"
-                    {...register("notes")}
-                  />
-                </div>
-              </div>
+              <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">5</span>Organization</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><Label htmlFor="folderId">Dataset (Optional)</Label><select id="folderId" className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("folderId")}><option value="">Uncategorized</option>{allFolders.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></div><div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><Label htmlFor="notes">Field Notes</Label><button type="button" onClick={toggleRecording} title={isRecording ? "Stop recording" : "Dictate field notes"} className={cn("flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all", isRecording ? "bg-red-500 text-white border-red-500 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/50")}>{isRecording ? <><MicOff className="w-3.5 h-3.5" /> Stop</> : <><Mic className="w-3.5 h-3.5" /> Dictate</>}</button></div>{isRecording && <p className="text-xs text-red-500 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500 animate-ping inline-block" />Listening… speak your field notes now.</p>}<Textarea id="notes" placeholder="Additional observations, weather conditions, context... or click Dictate to speak." className="min-h-[120px]" {...register("notes")} /></div></div>
             </div>
-
           </div>
         </Card>
 
-        <div className="flex justify-end gap-4 sticky bottom-6 z-20">
-          <Button type="button" variant="outline" size="lg" className="bg-background shadow-md" onClick={() => setLocation("/")}> 
-            Cancel
-          </Button>
-          <Button type="submit" size="lg" disabled={isPending} className="shadow-xl">
-            <Save className="w-5 h-5 mr-2" />
-            {isPending ? "Saving..." : isEdit ? "Update Sample" : "Save Sample"}
-          </Button>
-        </div>
+        <div className="flex justify-end gap-4 sticky bottom-6 z-20"><Button type="button" variant="outline" size="lg" className="bg-background shadow-md" onClick={() => setLocation("/")}>Cancel</Button><Button type="submit" size="lg" disabled={isPending} className="shadow-xl"><Save className="w-5 h-5 mr-2" />{isPending ? "Saving..." : isEdit ? "Update Sample" : "Save Sample"}</Button></div>
       </form>
-
     </Layout>
   );
 }
