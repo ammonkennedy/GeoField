@@ -26,7 +26,7 @@ export interface AuthUserEnvelope {
 }
 
 export interface Folder {
-  id: number;
+  id: number | string;
   name: string;
   /** @nullable */
   description?: string | null;
@@ -48,6 +48,7 @@ export const SampleSampleType = {
   water: "water",
   rock: "rock",
   soil_sand: "soil_sand",
+  other: "other",
 } as const;
 
 /**
@@ -56,12 +57,12 @@ export const SampleSampleType = {
 export type SampleFields = { [key: string]: unknown };
 
 export interface Sample {
-  id: number;
+  id: number | string;
   sampleType: SampleSampleType;
   sampleId: string;
   userId: string;
   /** @nullable */
-  folderId?: number | null;
+  folderId?: number | string | null;
   /** @nullable */
   notes?: string | null;
   /** JSON object containing all sample parameters */
@@ -77,6 +78,7 @@ export const CreateSampleRequestSampleType = {
   water: "water",
   rock: "rock",
   soil_sand: "soil_sand",
+  other: "other",
 } as const;
 
 export type CreateSampleRequestFields = { [key: string]: unknown };
@@ -86,7 +88,7 @@ export interface CreateSampleRequest {
   /** @minLength 1 */
   sampleId: string;
   /** @nullable */
-  folderId?: number | null;
+  folderId?: number | string | null;
   /** @nullable */
   notes?: string | null;
   fields: CreateSampleRequestFields;
@@ -98,7 +100,7 @@ export interface UpdateSampleRequest {
   /** @minLength 1 */
   sampleId?: string;
   /** @nullable */
-  folderId?: number | null;
+  folderId?: number | string | null;
   /** @nullable */
   notes?: string | null;
   fields?: UpdateSampleRequestFields;
@@ -106,7 +108,7 @@ export interface UpdateSampleRequest {
 
 export interface MoveSampleRequest {
   /** @nullable */
-  folderId?: number | null;
+  folderId?: number | string | null;
 }
 
 /**
@@ -131,5 +133,5 @@ export type GetSamplesParams = {
   /**
    * @nullable
    */
-  folderId?: number | null;
+  folderId?: number | string | null;
 };
