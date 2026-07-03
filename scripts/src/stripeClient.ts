@@ -1,5 +1,13 @@
 import Stripe from "stripe";
 
+type ReplitConnectorResponse = {
+  items?: Array<{
+    settings?: {
+      secret?: string;
+    };
+  }>;
+};
+
 async function getCredentials(): Promise<{ secretKey: string }> {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
@@ -24,7 +32,7 @@ async function getCredentials(): Promise<{ secretKey: string }> {
 
   if (!resp.ok) throw new Error(`Failed to fetch Stripe credentials: ${resp.status} ${resp.statusText}`);
 
-  const data = await resp.json();
+  const data = await resp.json() as ReplitConnectorResponse;
   const settings = data.items?.[0]?.settings;
   if (!settings?.secret) throw new Error("Stripe integration not connected or missing secret key.");
 

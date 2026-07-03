@@ -18,6 +18,8 @@ import "maplibre-gl/dist/maplibre-gl.css";
 type BaseLayer    = "street" | "satellite";
 type OverlayLayer = "none" | "geology" | "soil" | "trails";
 
+const USGS_IMAGERY_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}";
+const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
 const GEO_TILES    = "https://tiles.macrostrat.org/carto/{z}/{x}/{y}.png";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
 const SOIL_WMS     =
@@ -58,6 +60,7 @@ export interface PlannedSite {
   id: string;
   name: string;
   description: string;
+  sampleType?: "water" | "rock" | "soil_sand" | "other";
   lat: number;
   lng: number;
   addedAt: string;
@@ -104,23 +107,39 @@ function siteSampleId(siteName: string, siteIndex: number) {
   return slug ? `SITE-${siteIndex + 1}-${slug}` : `SITE-${siteIndex + 1}`;
 }
 
+function plannedSiteTitle(site: PlannedSite) {
+  const sampleType = site.sampleType ?? "other";
+  if (sampleType === "water") return "Water";
+  if (sampleType === "rock") return "Rock";
+  if (sampleType === "soil_sand") return "Soil / Sediment";
+  return site.name;
+}
+
+function plannedSiteSampleTypeLabel(site: PlannedSite) {
+  const sampleType = site.sampleType ?? "other";
+  if (sampleType === "water") return "Water";
+  if (sampleType === "rock") return "Rock";
+  if (sampleType === "soil_sand") return "Soil / Sediment";
+  return "Other";
+}
+
 // ── Initial map style (mirrors map-view.tsx) ──────────────────────────────────
 const TRIP_MAP_STYLE: any = {
   version: 8,
   sources: {
     satellite: {
       type: "raster",
-      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+      tiles: [USGS_IMAGERY_TILES],
       tileSize: 256,
-      attribution: "© Esri — Maxar, Earthstar Geographics",
-      maxzoom: 18,
+      attribution: "USGS The National Map, USDA NAIP",
+      maxzoom: 16,
     },
     street: {
       type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tiles: [USGS_TOPO_TILES],
       tileSize: 256,
-      attribution: "© OpenStreetMap contributors",
-      maxzoom: 19,
+      attribution: "USGS The National Map",
+      maxzoom: 16,
     },
     labels: {
       type: "raster",
@@ -134,6 +153,7 @@ const TRIP_MAP_STYLE: any = {
       tileSize: 256,
       maxzoom: 15,
       encoding: "terrarium",
+      attribution: "Mapzen terrain tiles on AWS",
     },
   },
   layers: [
@@ -182,6 +202,7 @@ export default function TripPlannerPage() {
   const [pendingCoords,   setPendingCoords]   = useState<[number, number] | null>(null);
   const [pendingSiteName, setPendingSiteName] = useState("");
   const [pendingSiteDesc, setPendingSiteDesc] = useState("");
+  const [pendingSampleType, setPendingSampleType] = useState<PlannedSite["sampleType"]>("rock");
 
   // Keep refs in sync
   useEffect(() => { overlayLayerRef.current = overlayLayer; setGeoInfo(null); }, [overlayLayer]);
@@ -198,12 +219,12 @@ export default function TripPlannerPage() {
     customLayersRef.current = customLayers;
     if (!mapInstanceRef.current || !mapLoadedRef.current) return;
     const map = mapInstanceRef.current;
-    const existingIds = new Set(
+    const existingIds = new Set<string>(
       (map.getStyle()?.layers ?? [])
         .filter((l: any) => l.id.startsWith("clayer_fill_"))
         .map((l: any) => (l.id as string).replace("clayer_fill_", ""))
     );
-    const newIds = new Set(customLayers.map((l) => l.id));
+    const newIds = new Set<string>(customLayers.map((l) => l.id));
     existingIds.forEach((id) => { if (!newIds.has(id)) safeRemoveCustomLayer(map, id); });
     customLayers.forEach((layer) => { if (!existingIds.has(layer.id)) safeAddCustomLayer(map, layer); });
   }, [customLayers]);
@@ -263,13 +284,13 @@ export default function TripPlannerPage() {
     const queue = getQueue();
     const queuedId = site.queuedSampleId || `q_site_${site.id}`;
     const payload: QueuedSample["payload"] = {
-      sampleType: "other",
+      sampleType: site.sampleType ?? "other",
       sampleId: siteSampleId(site.name, siteIndex),
       folderId: datasetId,
       notes: site.description || "Planned future sample site",
       fields: {
         location: `${formatCoord(site.lat)}, ${formatCoord(site.lng)}`,
-        otherSampleTitle: site.name,
+        otherSampleTitle: plannedSiteTitle(site),
         collectionStatus: "planned",
         plannedSiteId: site.id,
         tripId: trip.id,
@@ -433,6 +454,7 @@ export default function TripPlannerPage() {
               setPendingCoords([lat, lng]);
               setPendingSiteName("");
               setPendingSiteDesc("");
+              setPendingSampleType("rock");
               setPinMode(false);
               map.getCanvas().style.cursor = "default";
               return;
@@ -558,6 +580,7 @@ export default function TripPlannerPage() {
     const newSite = addSite({
       name: pendingSiteName.trim(),
       description: pendingSiteDesc.trim(),
+      sampleType: pendingSampleType,
       lat: pendingCoords[0],
       lng: pendingCoords[1],
     });
@@ -675,7 +698,12 @@ export default function TripPlannerPage() {
                     {idx + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold">{site.name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold">{site.name}</p>
+                      <span className="text-xs rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                        {plannedSiteSampleTypeLabel(site)}
+                      </span>
+                    </div>
                     {site.description && (
                       <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{site.description}</p>
                     )}
@@ -757,8 +785,8 @@ export default function TripPlannerPage() {
                   onChange={(e) => setOverlayLayer(e.target.value as OverlayLayer)}
                 >
                   <option value="none">No Overlay</option>
-                  <option value="geology">Rock Formations (Macrostrat)</option>
-                  <option value="soil">Soil Types (SoilGrids)</option>
+                  <option value="geology">Regional Geology</option>
+                  <option value="soil">Soil Types</option>
                   <option value="trails">Hiking Trails (Waymarked)</option>
                 </select>
                 <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -885,6 +913,19 @@ export default function TripPlannerPage() {
                         placeholder="e.g. River Outcrop A"
                         onKeyDown={(e) => e.key === "Enter" && handleConfirmSite()}
                       />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Sample Type</Label>
+                      <select
+                        className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm"
+                        value={pendingSampleType}
+                        onChange={(e) => setPendingSampleType(e.target.value as PlannedSite["sampleType"])}
+                      >
+                        <option value="rock">Rock</option>
+                        <option value="water">Water</option>
+                        <option value="soil_sand">Soil / Sediment</option>
+                        <option value="other">Other</option>
+                      </select>
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-semibold">Description (Optional)</Label>

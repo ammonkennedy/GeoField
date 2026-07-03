@@ -68,7 +68,7 @@ export function useSamplesMutations() {
 
   const updateSample = useUpdateSample({
     mutation: {
-      onSuccess: (data) => {
+      onSuccess: (data: { id: string | number }) => {
         queryClient.invalidateQueries({ queryKey: getGetSamplesQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetSampleQueryKey(data.id) });
         toast({ title: "Sample updated" });
@@ -89,7 +89,7 @@ export function useSamplesMutations() {
 
   const moveSample = useMoveSample({
     mutation: {
-      onSuccess: (data) => {
+      onSuccess: (data: { id: string | number }) => {
         queryClient.invalidateQueries({ queryKey: getGetSamplesQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetSampleQueryKey(data.id) });
         toast({ title: "Sample moved" });

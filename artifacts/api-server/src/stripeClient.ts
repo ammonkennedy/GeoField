@@ -1,6 +1,15 @@
 import Stripe from "stripe";
 import { StripeSync } from "stripe-replit-sync";
 
+type ReplitConnectorResponse = {
+  items?: Array<{
+    settings?: {
+      publishable?: string;
+      secret?: string;
+    };
+  }>;
+};
+
 async function getCredentials(): Promise<{ publishableKey: string; secretKey: string }> {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
@@ -32,7 +41,7 @@ async function getCredentials(): Promise<{ publishableKey: string; secretKey: st
     throw new Error(`Failed to fetch Stripe credentials: ${resp.status} ${resp.statusText}`);
   }
 
-  const data = await resp.json();
+  const data = await resp.json() as ReplitConnectorResponse;
   const settings = data.items?.[0]?.settings;
 
   if (!settings?.secret || !settings?.publishable) {

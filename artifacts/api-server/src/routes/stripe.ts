@@ -89,7 +89,7 @@ router.post("/stripe/trial/start", async (req: any, res) => {
     .where(eq(usersTable.id, req.user.id));
 
   const trialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  res.json({ success: true, trialEnd: trialEnd.toISOString(), daysLeft: 7 });
+  return res.json({ success: true, trialEnd: trialEnd.toISOString(), daysLeft: 7 });
 });
 
 // POST /api/stripe/promo — redeem a promo code for full access
@@ -110,13 +110,13 @@ router.post("/stripe/promo", async (req: any, res) => {
     .set({ promoCodeUsed: code })
     .where(eq(usersTable.id, req.user.id));
 
-  res.json({ success: true, message: "Promo code applied — full access granted!" });
+  return res.json({ success: true, message: "Promo code applied — full access granted!" });
 });
 
 // GET /api/stripe/publishable-key — return the Stripe publishable key to the frontend
 router.get("/stripe/publishable-key", async (_req, res) => {
   const key = await getStripePublishableKey();
-  res.json({ publishableKey: key });
+  return res.json({ publishableKey: key });
 });
 
 // POST /api/stripe/checkout — create a Stripe Checkout session (subscription with 7-day trial)
@@ -151,7 +151,7 @@ router.post("/stripe/checkout", async (req: any, res) => {
       .where(eq(usersTable.id, req.user.id));
   }
 
-  res.json({ url: session.url });
+  return res.json({ url: session.url });
 });
 
 // POST /api/stripe/portal — create a Stripe Customer Portal session
@@ -167,7 +167,7 @@ router.post("/stripe/portal", async (req: any, res) => {
     return_url: `${host}/geofield/subscription`,
   });
 
-  res.json({ url: portalSession.url });
+  return res.json({ url: portalSession.url });
 });
 
 // GET /api/stripe/prices — list active subscription prices

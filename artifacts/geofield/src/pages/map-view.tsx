@@ -37,6 +37,8 @@ function getSampleLabel(sample: any) {
 type BaseLayer = "street" | "satellite";
 type OverlayLayer = "none" | "geology" | "soil" | "trails";
 
+const USGS_IMAGERY_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}";
+const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
 const GEO_TILES    = "https://tiles.macrostrat.org/carto/{z}/{x}/{y}.png";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
 const SOIL_WMS =
@@ -69,17 +71,17 @@ const INITIAL_STYLE: any = {
   sources: {
     satellite: {
       type: "raster",
-      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+      tiles: [USGS_IMAGERY_TILES],
       tileSize: 256,
-      attribution: "© Esri — Maxar, Earthstar Geographics",
-      maxzoom: 18,
+      attribution: "USGS The National Map, USDA NAIP",
+      maxzoom: 16,
     },
     street: {
       type: "raster",
-      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tiles: [USGS_TOPO_TILES],
       tileSize: 256,
-      attribution: "© OpenStreetMap contributors",
-      maxzoom: 19,
+      attribution: "USGS The National Map",
+      maxzoom: 16,
     },
     terrain: {
       type: "raster-dem",
@@ -87,6 +89,7 @@ const INITIAL_STYLE: any = {
       tileSize: 256,
       maxzoom: 15,
       encoding: "terrarium",
+      attribution: "Mapzen terrain tiles on AWS",
     },
   },
   layers: [
@@ -234,12 +237,12 @@ export default function MapViewPage() {
     customLayersRef.current = customLayers;
     if (!mapRef.current || !mapLoadedRef.current) return;
     const map = mapRef.current;
-    const existingIds = new Set(
+    const existingIds = new Set<string>(
       (map.getStyle()?.layers ?? [])
         .filter((l: any) => l.id.startsWith("clayer_fill_"))
         .map((l: any) => (l.id as string).replace("clayer_fill_", ""))
     );
-    const newIds = new Set(customLayers.map((l) => l.id));
+    const newIds = new Set<string>(customLayers.map((l) => l.id));
     existingIds.forEach((id) => { if (!newIds.has(id)) safeRemoveCustomLayer(map, id); });
     customLayers.forEach((layer) => { if (!existingIds.has(layer.id)) safeAddCustomLayer(map, layer); });
   }, [customLayers]);
@@ -258,7 +261,7 @@ export default function MapViewPage() {
         zoom: 4,
         pitch: 40,
         maxPitch: 85,
-        attributionControl: true,
+        attributionControl: {},
       });
       mapRef.current = map;
 
@@ -574,8 +577,8 @@ export default function MapViewPage() {
               onChange={(e) => { setOverlayLayer(e.target.value as OverlayLayer); setGeoInfo(null); }}
             >
               <option value="none">No Overlay</option>
-              <option value="geology">Rock Formations (Macrostrat)</option>
-              <option value="soil">Soil Types (SoilGrids)</option>
+              <option value="geology">Regional Geology</option>
+              <option value="soil">Soil Types</option>
               <option value="trails">Hiking Trails (Waymarked)</option>
             </select>
             <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />

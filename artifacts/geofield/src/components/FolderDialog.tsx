@@ -42,8 +42,8 @@ export function FolderDialog({
     if (!name.trim()) return;
 
     // Local datasets are what make the app usable before the backend folder API exists.
-    if (folder && ((folder as any).isLocal || folder.id < 0)) {
-      updateLocalDataset(folder.id, { name, description });
+    if (folder && ((folder as any).isLocal || (typeof folder.id === "number" && folder.id < 0))) {
+      updateLocalDataset(Number(folder.id), { name, description });
       toast({ title: "Dataset updated" });
       finish();
       return;

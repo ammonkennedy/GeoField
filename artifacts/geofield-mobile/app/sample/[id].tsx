@@ -72,6 +72,10 @@ function generateSampleId(type: SampleType) {
   return `${prefix}-${ts}`;
 }
 
+function isVideoUri(uri: string) {
+  return /\.(mp4|mov|m4v|webm|3gp)(\?|#|$)/i.test(uri);
+}
+
 export default function SampleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const isNew = id === "new";
@@ -134,16 +138,17 @@ export default function SampleScreen() {
     }
   };
 
-  const pickPhoto = async () => {
+  const pickMedia = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission required", "Allow photo access to attach images.");
+      Alert.alert("Permission required", "Allow photo and video access to attach media.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+      mediaTypes: ["images", "videos"],
       quality: 0.7,
       allowsMultipleSelection: false,
+      videoMaxDuration: 10,
     });
     if (!result.canceled && result.assets[0]) {
       setPhotos((prev) => [...prev, result.assets[0].uri]);
@@ -156,7 +161,23 @@ export default function SampleScreen() {
       Alert.alert("Permission required", "Allow camera access to take photos.");
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7 });
+    if (!result.canceled && result.assets[0]) {
+      setPhotos((prev) => [...prev, result.assets[0].uri]);
+    }
+  };
+
+  const recordVideo = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Allow camera access to record videos.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["videos"],
+      quality: 0.7,
+      videoMaxDuration: 10,
+    });
     if (!result.canceled && result.assets[0]) {
       setPhotos((prev) => [...prev, result.assets[0].uri]);
     }
@@ -320,12 +341,19 @@ export default function SampleScreen() {
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius * 1.5 }]}>
         <View style={styles.cardHeader}>
           <Feather name="camera" size={16} color={colors.primary} />
-          <Text style={[styles.cardTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>Photos</Text>
+          <Text style={[styles.cardTitle, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>Photos & Videos</Text>
         </View>
         <View style={styles.photosRow}>
           {photos.map((uri, i) => (
             <View key={i} style={styles.photoWrap}>
-              <Image source={{ uri }} style={[styles.photo, { borderRadius: colors.radius }]} />
+              {isVideoUri(uri) ? (
+                <View style={[styles.videoTile, { borderRadius: colors.radius, backgroundColor: colors.muted, borderColor: colors.border }]}>
+                  <Feather name="video" size={22} color={colors.primary} />
+                  <Text style={[styles.videoTileText, { color: colors.mutedForeground }]}>Video</Text>
+                </View>
+              ) : (
+                <Image source={{ uri }} style={[styles.photo, { borderRadius: colors.radius }]} />
+              )}
               <Pressable
                 onPress={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
                 style={styles.photoDelete}
@@ -343,7 +371,13 @@ export default function SampleScreen() {
                 <Feather name="camera" size={20} color={colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={pickPhoto}
+                onPress={recordVideo}
+                style={[styles.photoAddBtn, { backgroundColor: colors.muted, borderColor: colors.border, borderRadius: colors.radius }]}
+              >
+                <Feather name="video" size={20} color={colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={pickMedia}
                 style={[styles.photoAddBtn, { backgroundColor: colors.muted, borderColor: colors.border, borderRadius: colors.radius }]}
               >
                 <Feather name="image" size={20} color={colors.primary} />
@@ -406,6 +440,15 @@ const styles = StyleSheet.create({
   },
   photoActions: { flexDirection: "row", gap: 8 },
   photoAddBtn: { width: 72, height: 72, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth },
+  videoTile: {
+    width: 72,
+    height: 72,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 4,
+  },
+  videoTileText: { fontSize: 11, fontWeight: "600" },
   actions: { gap: 10, marginTop: 4 },
   saveBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, padding: 16 },
   saveBtnText: { fontSize: 16, color: "#fff" },

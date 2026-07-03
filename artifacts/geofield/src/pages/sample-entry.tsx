@@ -137,6 +137,8 @@ export default function SampleEntry() {
   const [isSavingMedia, setIsSavingMedia] = useState(false);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoCaptureInputRef = useRef<HTMLInputElement>(null);
+  const videoCaptureInputRef = useRef<HTMLInputElement>(null);
   const activeSlotRef = useRef<number>(0);
 
   useEffect(() => {
@@ -306,9 +308,11 @@ export default function SampleEntry() {
     }
   };
 
-  const openSlot = (index: number) => {
+  const openSlot = (index: number, source: "library" | "camera" | "video" = "library") => {
     activeSlotRef.current = index;
-    fileInputRef.current?.click();
+    if (source === "camera") photoCaptureInputRef.current?.click();
+    else if (source === "video") videoCaptureInputRef.current?.click();
+    else fileInputRef.current?.click();
   };
 
   const clearSlot = (index: number) =>
@@ -402,10 +406,11 @@ export default function SampleEntry() {
     const nonEmptyParams = customParams.filter((p) => p.label.trim());
     if (nonEmptyParams.length > 0) processedFields.customParams = nonEmptyParams.map((p) => ({ label: p.label.trim(), value: p.value }));
 
+    const folderId = data.folderId ? Number(data.folderId) : null;
     const payload = {
       sampleType: data.sampleType,
       sampleId: data.sampleId,
-      folderId: data.folderId || null,
+      folderId: Number.isFinite(folderId) ? folderId : null,
       notes: data.notes,
       fields: processedFields,
     };
@@ -490,7 +495,47 @@ export default function SampleEntry() {
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">4</span>Photos &amp; Video</h3>
               <p className="text-xs text-muted-foreground -mt-1">Up to 3 slots — each can be a photo or a short video clip (max 10 seconds).</p>
               <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
-              <div className="flex flex-wrap gap-3">{([0, 1, 2] as const).map((i) => { const slot = mediaSlots[i]; const label = i === 0 ? "Primary" : i === 1 ? "Secondary" : "Additional"; return <div key={i} className="flex flex-col items-center gap-1.5"><span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</span><div className="relative group">{slot ? <>{slot.type === "photo" ? <img src={slot.dataUrl} alt={`Sample photo ${i + 1}`} className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer" onClick={() => openSlot(i)} /> : <video src={slot.dataUrl} className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer bg-black" controls playsInline onClick={(e) => e.stopPropagation()} />}<span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] font-semibold rounded px-1.5 py-0.5 flex items-center gap-1 pointer-events-none">{slot.type === "photo" ? <ImageIcon className="w-2.5 h-2.5" /> : <Video className="w-2.5 h-2.5" />}{slot.type === "photo" ? "Photo" : "Video"}</span><button type="button" onClick={() => clearSlot(i)} className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow"><X className="w-3.5 h-3.5" /></button>{slot.type === "photo" && <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer" onClick={() => openSlot(i)}><Camera className="w-6 h-6 text-white" /></div>}</> : <div className="w-36 h-36 rounded-xl border-2 border-dashed border-border bg-muted/30 flex flex-col items-center justify-center gap-2 text-muted-foreground cursor-pointer hover:border-primary/40 hover:bg-muted/50 transition-colors" onClick={() => openSlot(i)}><div className="flex gap-2"><Camera className="w-5 h-5" /><Video className="w-5 h-5" /></div><span className="text-[11px] text-center px-2 leading-tight">Tap to add<br />photo or video</span></div>}</div></div>; })}</div>
+              <input ref={photoCaptureInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleMediaChange} />
+              <input ref={videoCaptureInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={handleMediaChange} />
+              <div className="flex flex-wrap gap-3">
+                {([0, 1, 2] as const).map((i) => {
+                  const slot = mediaSlots[i];
+                  const label = i === 0 ? "Primary" : i === 1 ? "Secondary" : "Additional";
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-1.5">
+                      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</span>
+                      <div className="relative group">
+                        {slot ? (
+                          <>
+                            {slot.type === "photo" ? (
+                              <img src={slot.dataUrl} alt={`Sample photo ${i + 1}`} className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer" onClick={() => openSlot(i)} />
+                            ) : (
+                              <video src={slot.dataUrl} className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer bg-black" controls playsInline onClick={(e) => e.stopPropagation()} />
+                            )}
+                            <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] font-semibold rounded px-1.5 py-0.5 flex items-center gap-1 pointer-events-none">
+                              {slot.type === "photo" ? <ImageIcon className="w-2.5 h-2.5" /> : <Video className="w-2.5 h-2.5" />}
+                              {slot.type === "photo" ? "Photo" : "Video"}
+                            </span>
+                            <button type="button" onClick={() => clearSlot(i)} className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow"><X className="w-3.5 h-3.5" /></button>
+                            {slot.type === "photo" && <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer" onClick={() => openSlot(i, "camera")}><Camera className="w-6 h-6 text-white" /></div>}
+                          </>
+                        ) : (
+                          <div className="w-36 rounded-xl border border-border bg-muted/30 p-2 shadow-sm">
+                            <div className="h-20 rounded-lg border border-dashed border-border flex items-center justify-center text-muted-foreground mb-2">
+                              <div className="flex gap-2"><Camera className="w-5 h-5" /><Video className="w-5 h-5" /></div>
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Button type="button" variant="outline" size="sm" className="h-8 justify-start gap-1.5 px-2 text-xs" onClick={() => openSlot(i, "camera")}><Camera className="w-3.5 h-3.5" />Take Photo</Button>
+                              <Button type="button" variant="outline" size="sm" className="h-8 justify-start gap-1.5 px-2 text-xs" onClick={() => openSlot(i, "video")}><Video className="w-3.5 h-3.5" />Record Video</Button>
+                              <Button type="button" variant="ghost" size="sm" className="h-8 justify-start gap-1.5 px-2 text-xs" onClick={() => openSlot(i)}><ImageIcon className="w-3.5 h-3.5" />Choose Media</Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="h-px bg-border/60 w-full" />

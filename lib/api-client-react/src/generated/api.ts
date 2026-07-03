@@ -4,7 +4,6 @@ import { Amplify } from "aws-amplify";
 import { confirmSignUp, fetchUserAttributes, getCurrentUser, signIn, signOut, signUp } from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
 import outputs from "../../../../amplify_outputs.json";
-import type { Schema } from "../../../../amplify/data/resource";
 import type {
   AuthUserEnvelope,
   CreateFolderRequest,
@@ -19,7 +18,7 @@ import type {
 
 Amplify.configure(outputs);
 
-const client = generateClient<Schema>();
+const client: any = generateClient();
 
 type ErrorType<T = unknown> = Error & { data?: T };
 
@@ -28,11 +27,15 @@ type MutationOptions<TData, TVariables> = {
 };
 
 type QueryOptions<TData> = {
-  query?: UseQueryOptions<TData, ErrorType<unknown>, TData>;
+  query?: Omit<UseQueryOptions<TData, ErrorType<unknown>, TData>, "queryKey" | "queryFn">;
 };
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function errorMessage(errors: Array<{ message?: string }> = []) {
+  return errors.map((e) => e.message || "Unknown Amplify error").join("; ");
 }
 
 function normalizeFolderId(folderId: unknown): string | null | undefined {
@@ -171,7 +174,7 @@ export function useBeginBrowserLogin<TData = unknown>(options?: QueryOptions<any
 export const getGetFoldersQueryKey = () => ["datasets"] as const;
 export async function getFolders(): Promise<Folder[]> {
   const { data, errors } = await client.models.Dataset.list();
-  if (errors?.length) throw new Error(errors.map((e) => e.message).join("; "));
+  if (errors?.length) throw new Error(errorMessage(errors));
   return (data ?? []).map(asFolder);
 }
 export function useGetFolders<TData = Folder[]>(options?: QueryOptions<any>): UseQueryResult<TData, ErrorType<unknown>> & { queryKey: QueryKey } {
@@ -182,34 +185,34 @@ export function useGetFolders<TData = Folder[]>(options?: QueryOptions<any>): Us
 
 export async function createFolder({ data }: { data: CreateFolderRequest }): Promise<Folder> {
   const result = await client.models.Dataset.create({ name: data.name, description: data.description ?? "", createdAt: nowIso(), updatedAt: nowIso() });
-  if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFolder(result.data);
 }
 export function useCreateFolder(options?: MutationOptions<Folder, { data: CreateFolderRequest }>) {
-  return useMutation({ mutationFn: createFolder, ...(options?.mutation as any) });
+  return useMutation<Folder, ErrorType<unknown>, { data: CreateFolderRequest }>({ mutationFn: createFolder, ...(options?.mutation as any) });
 }
 
 export async function updateFolder({ id, data }: { id: string | number; data: CreateFolderRequest }): Promise<Folder> {
   const result = await client.models.Dataset.update(cleanObject({ id: String(id), name: data.name, description: data.description ?? "", updatedAt: nowIso() }));
-  if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFolder(result.data);
 }
 export function useUpdateFolder(options?: MutationOptions<Folder, { id: string | number; data: CreateFolderRequest }>) {
-  return useMutation({ mutationFn: updateFolder, ...(options?.mutation as any) });
+  return useMutation<Folder, ErrorType<unknown>, { id: string | number; data: CreateFolderRequest }>({ mutationFn: updateFolder, ...(options?.mutation as any) });
 }
 
 export async function deleteFolder({ id }: { id: string | number }): Promise<void> {
   const result = await client.models.Dataset.delete({ id: String(id) });
-  if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
 export function useDeleteFolder(options?: MutationOptions<void, { id: string | number }>) {
-  return useMutation({ mutationFn: deleteFolder, ...(options?.mutation as any) });
+  return useMutation<void, ErrorType<unknown>, { id: string | number }>({ mutationFn: deleteFolder, ...(options?.mutation as any) });
 }
 
 export const getGetSamplesQueryKey = (params?: GetSamplesParams) => params?.folderId ? ["samples", String(params.folderId)] as const : ["samples"] as const;
 export async function getSamples(params?: GetSamplesParams): Promise<Sample[]> {
   const { data, errors } = await client.models.Sample.list();
-  if (errors?.length) throw new Error(errors.map((e) => e.message).join("; "));
+  if (errors?.length) throw new Error(errorMessage(errors));
   const samples = (data ?? []).map(asSample);
   if (params?.folderId == null) return samples;
   return samples.filter((sample: any) => String(sample.folderId ?? "") === String(params.folderId));
@@ -224,7 +227,7 @@ export const getGetSampleQueryKey = (id: string | number) => ["sample", String(i
 export async function getSample(id: string | number): Promise<Sample> {
   const sampleId = currentSampleIdFallback(id);
   const result = await client.models.Sample.get({ id: String(sampleId) });
-  if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
   if (!result.data) throw new Error("Sample not found");
   return asSample(result.data);
 }
@@ -241,7 +244,7 @@ export function useGetSample<TData = Sample>(id: string | number, options?: Quer
 
 async function createSampleWithInput(input: Record<string, unknown>) {
   const result = await client.models.Sample.create(input as any);
-  if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asSample(result.data);
 }
 
@@ -268,7 +271,7 @@ export async function createSample({ data }: { data: CreateSampleRequest }): Pro
   }
 }
 export function useCreateSample(options?: MutationOptions<Sample, { data: CreateSampleRequest }>) {
-  return useMutation({ mutationFn: createSample, ...(options?.mutation as any) });
+  return useMutation<Sample, ErrorType<unknown>, { data: CreateSampleRequest }>({ mutationFn: createSample, ...(options?.mutation as any) });
 }
 
 export async function updateSample({ id, data }: { id: string | number; data: UpdateSampleRequest }): Promise<Sample> {
@@ -281,25 +284,25 @@ export async function updateSample({ id, data }: { id: string | number; data: Up
     notes: data.notes || undefined,
     fields: data.fields === undefined ? undefined : serializeFields(data.fields),
   }));
-  if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asSample(result.data);
 }
 export function useUpdateSample(options?: MutationOptions<Sample, { id: string | number; data: UpdateSampleRequest }>) {
-  return useMutation({ mutationFn: updateSample, ...(options?.mutation as any) });
+  return useMutation<Sample, ErrorType<unknown>, { id: string | number; data: UpdateSampleRequest }>({ mutationFn: updateSample, ...(options?.mutation as any) });
 }
 
 export async function deleteSample({ id }: { id: string | number }): Promise<void> {
   const sampleId = currentSampleIdFallback(id);
   const result = await client.models.Sample.delete({ id: String(sampleId) });
-  if (result.errors?.length) throw new Error(result.errors.map((e) => e.message).join("; "));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
 export function useDeleteSample(options?: MutationOptions<void, { id: string | number }>) {
-  return useMutation({ mutationFn: deleteSample, ...(options?.mutation as any) });
+  return useMutation<void, ErrorType<unknown>, { id: string | number }>({ mutationFn: deleteSample, ...(options?.mutation as any) });
 }
 
 export async function moveSample({ id, data }: { id: string | number; data: MoveSampleRequest }): Promise<Sample> {
   return updateSample({ id, data: { folderId: data.folderId } });
 }
 export function useMoveSample(options?: MutationOptions<Sample, { id: string | number; data: MoveSampleRequest }>) {
-  return useMutation({ mutationFn: moveSample, ...(options?.mutation as any) });
+  return useMutation<Sample, ErrorType<unknown>, { id: string | number; data: MoveSampleRequest }>({ mutationFn: moveSample, ...(options?.mutation as any) });
 }

@@ -144,7 +144,7 @@ export default function Dashboard() {
             </Button>
           )}
           {activeFolder && filteredSamples.length > 0 && (
-            <DatasetFigures samples={filteredSamples} datasetName={activeFolder.name} />
+            <DatasetFigures samples={filteredSamples as any} datasetName={activeFolder.name} />
           )}
           <Button variant="secondary" onClick={() => setExportOpen(true)}>
             <Download className="w-4 h-4 mr-2" />

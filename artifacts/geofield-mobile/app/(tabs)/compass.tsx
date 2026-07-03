@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { type StrikeDipMeasurement, useData } from "@/contexts/DataContext";
 
+const SvgDefs = Defs as React.ComponentType<{ children?: React.ReactNode }>;
+
 const DEG = (r: number) => r * (180 / Math.PI);
 const RAD = (d: number) => d * (Math.PI / 180);
 
@@ -59,7 +61,7 @@ function CompassRose({ heading }: { heading: number | null }) {
 
   return (
     <Svg width={220} height={220} viewBox="0 0 220 220">
-      <Defs>
+      <SvgDefs>
         <RadialGradient id="bezel" cx="40%" cy="35%">
           <Stop offset="0%" stopColor="#2d3448" />
           <Stop offset="100%" stopColor="#0f1117" />
@@ -68,7 +70,7 @@ function CompassRose({ heading }: { heading: number | null }) {
           <Stop offset="0%" stopColor="#1e2435" />
           <Stop offset="100%" stopColor="#111520" />
         </RadialGradient>
-      </Defs>
+      </SvgDefs>
       <Circle cx={cx} cy={cy} r={r + 6} fill="url(#bezel)" />
       <Circle cx={cx} cy={cy} r={r} fill="url(#face)" />
       <Circle cx={cx} cy={cy} r={r - 22} fill="none" stroke="#2a3050" strokeWidth={0.5} />
@@ -77,7 +79,7 @@ function CompassRose({ heading }: { heading: number | null }) {
           stroke={t.isCard ? "#7ba7e8" : "#3d4a6a"} strokeWidth={t.w} strokeLinecap="round" />
       ))}
       {labels.map(({ deg, x, y, isCard, name }) => (
-        <SvgText key={deg} x={x} y={y} textAnchor="middle" dominantBaseline="central"
+        <SvgText key={deg} x={x} y={y} textAnchor="middle"
           fontSize={isCard ? 11 : 8} fontWeight={isCard ? "700" : "400"}
           fill={isCard ? "#a8c4f0" : "#5a6a90"}>
           {isCard ? name : deg}

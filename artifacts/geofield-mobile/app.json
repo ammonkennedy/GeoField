@@ -43,7 +43,8 @@
         "expo-image-picker",
         {
           "photosPermission": "GeoField needs access to your photos to attach images to field samples.",
-          "cameraPermission": "GeoField needs access to your camera to photograph field samples."
+          "cameraPermission": "GeoField needs access to your camera to photograph and record field samples.",
+          "microphonePermission": "GeoField needs microphone access to record sample videos."
         }
       ]
     ],
