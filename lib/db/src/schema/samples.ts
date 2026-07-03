@@ -11,7 +11,7 @@ export const foldersTable = pgTable("folders", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const sampleTypeEnum = ["water", "rock", "soil_sand"] as const;
+export const sampleTypeEnum = ["water", "rock", "soil_sand", "other"] as const;
 
 export const samplesTable = pgTable("samples", {
   id: serial("id").primaryKey(),

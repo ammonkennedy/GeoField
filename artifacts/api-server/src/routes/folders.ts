@@ -4,6 +4,12 @@ import { eq, and } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+function parseRequiredId(value: string | undefined): number | null {
+  if (!value) return null;
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 router.get("/folders", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -42,7 +48,11 @@ router.put("/folders/:id", async (req, res) => {
     return;
   }
   const userId = req.user!.id;
-  const id = parseInt(req.params.id, 10);
+  const id = parseRequiredId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Invalid folder id" });
+    return;
+  }
   const { name, description } = req.body;
   if (!name || typeof name !== "string") {
     res.status(400).json({ error: "name is required" });
@@ -66,7 +76,11 @@ router.delete("/folders/:id", async (req, res) => {
     return;
   }
   const userId = req.user!.id;
-  const id = parseInt(req.params.id, 10);
+  const id = parseRequiredId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Invalid folder id" });
+    return;
+  }
   const deleted = await db
     .delete(foldersTable)
     .where(and(eq(foldersTable.id, id), eq(foldersTable.userId, userId)))

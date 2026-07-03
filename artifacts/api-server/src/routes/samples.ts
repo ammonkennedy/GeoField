@@ -1,8 +1,35 @@
 import { Router, type IRouter } from "express";
-import { db, samplesTable } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { db, foldersTable, sampleTypeEnum, samplesTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 
 const router: IRouter = Router();
+const validSampleTypes = new Set<string>(sampleTypeEnum);
+
+function parseRequiredId(value: string | undefined): number | null {
+  if (!value) return null;
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function parseOptionalId(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? id : undefined;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function userOwnsFolder(userId: string, folderId: number): Promise<boolean> {
+  const [folder] = await db
+    .select({ id: foldersTable.id })
+    .from(foldersTable)
+    .where(and(eq(foldersTable.id, folderId), eq(foldersTable.userId, userId)));
+
+  return Boolean(folder);
+}
 
 router.get("/samples", async (req, res) => {
   if (!req.isAuthenticated()) {
@@ -14,7 +41,11 @@ router.get("/samples", async (req, res) => {
 
   let samples;
   if (folderIdParam !== undefined && folderIdParam !== null && folderIdParam !== "") {
-    const folderId = parseInt(folderIdParam as string, 10);
+    const folderId = parseOptionalId(folderIdParam);
+    if (folderId === undefined || folderId === null) {
+      res.status(400).json({ error: "Invalid folderId" });
+      return;
+    }
     samples = await db
       .select()
       .from(samplesTable)
@@ -39,12 +70,26 @@ router.post("/samples", async (req, res) => {
   const userId = req.user!.id;
   const { sampleType, sampleId, folderId, notes, fields } = req.body;
 
-  if (!sampleType || !["water", "rock", "soil_sand"].includes(sampleType)) {
+  if (!sampleType || !validSampleTypes.has(sampleType)) {
     res.status(400).json({ error: "Invalid sampleType" });
     return;
   }
   if (!sampleId || typeof sampleId !== "string") {
     res.status(400).json({ error: "sampleId is required" });
+    return;
+  }
+  if (fields !== undefined && !isPlainObject(fields)) {
+    res.status(400).json({ error: "fields must be an object" });
+    return;
+  }
+
+  const parsedFolderId = parseOptionalId(folderId);
+  if (parsedFolderId === undefined) {
+    res.status(400).json({ error: "Invalid folderId" });
+    return;
+  }
+  if (parsedFolderId !== null && !(await userOwnsFolder(userId, parsedFolderId))) {
+    res.status(400).json({ error: "Dataset not found" });
     return;
   }
 
@@ -54,7 +99,7 @@ router.post("/samples", async (req, res) => {
       sampleType,
       sampleId,
       userId,
-      folderId: folderId ?? null,
+      folderId: parsedFolderId,
       notes: notes ?? null,
       fields: fields ?? {},
     })
@@ -68,7 +113,11 @@ router.get("/samples/:id", async (req, res) => {
     return;
   }
   const userId = req.user!.id;
-  const id = parseInt(req.params.id, 10);
+  const id = parseRequiredId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Invalid sample id" });
+    return;
+  }
   const [sample] = await db
     .select()
     .from(samplesTable)
@@ -86,14 +135,41 @@ router.put("/samples/:id", async (req, res) => {
     return;
   }
   const userId = req.user!.id;
-  const id = parseInt(req.params.id, 10);
+  const id = parseRequiredId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Invalid sample id" });
+    return;
+  }
   const { sampleId, folderId, notes, fields } = req.body;
 
   const updates: Record<string, unknown> = {};
-  if (sampleId !== undefined) updates.sampleId = sampleId;
-  if (folderId !== undefined) updates.folderId = folderId;
+  if (sampleId !== undefined) {
+    if (typeof sampleId !== "string" || !sampleId) {
+      res.status(400).json({ error: "sampleId must be a non-empty string" });
+      return;
+    }
+    updates.sampleId = sampleId;
+  }
+  if (folderId !== undefined) {
+    const parsedFolderId = parseOptionalId(folderId);
+    if (parsedFolderId === undefined) {
+      res.status(400).json({ error: "Invalid folderId" });
+      return;
+    }
+    if (parsedFolderId !== null && !(await userOwnsFolder(userId, parsedFolderId))) {
+      res.status(400).json({ error: "Dataset not found" });
+      return;
+    }
+    updates.folderId = parsedFolderId;
+  }
   if (notes !== undefined) updates.notes = notes;
-  if (fields !== undefined) updates.fields = fields;
+  if (fields !== undefined) {
+    if (!isPlainObject(fields)) {
+      res.status(400).json({ error: "fields must be an object" });
+      return;
+    }
+    updates.fields = fields;
+  }
 
   const [sample] = await db
     .update(samplesTable)
@@ -113,7 +189,11 @@ router.delete("/samples/:id", async (req, res) => {
     return;
   }
   const userId = req.user!.id;
-  const id = parseInt(req.params.id, 10);
+  const id = parseRequiredId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Invalid sample id" });
+    return;
+  }
   const deleted = await db
     .delete(samplesTable)
     .where(and(eq(samplesTable.id, id), eq(samplesTable.userId, userId)))
@@ -131,12 +211,25 @@ router.patch("/samples/:id/move", async (req, res) => {
     return;
   }
   const userId = req.user!.id;
-  const id = parseInt(req.params.id, 10);
+  const id = parseRequiredId(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Invalid sample id" });
+    return;
+  }
   const { folderId } = req.body;
+  const parsedFolderId = parseOptionalId(folderId);
+  if (parsedFolderId === undefined) {
+    res.status(400).json({ error: "Invalid folderId" });
+    return;
+  }
+  if (parsedFolderId !== null && !(await userOwnsFolder(userId, parsedFolderId))) {
+    res.status(400).json({ error: "Dataset not found" });
+    return;
+  }
 
   const [sample] = await db
     .update(samplesTable)
-    .set({ folderId: folderId ?? null })
+    .set({ folderId: parsedFolderId })
     .where(and(eq(samplesTable.id, id), eq(samplesTable.userId, userId)))
     .returning();
   if (!sample) {

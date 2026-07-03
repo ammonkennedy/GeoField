@@ -156,6 +156,8 @@ paths:
                 $ref: "#/components/schemas/Folder"
         "401":
           description: Unauthorized
+        "400":
+          description: Invalid folder id
         "404":
           description: Not found
     delete:
@@ -173,6 +175,8 @@ paths:
           description: Deleted
         "401":
           description: Unauthorized
+        "400":
+          description: Invalid folder id
         "404":
           description: Not found
   /samples:
@@ -197,6 +201,8 @@ paths:
                   $ref: "#/components/schemas/Sample"
         "401":
           description: Unauthorized
+        "400":
+          description: Invalid folder id
     post:
       operationId: createSample
       tags: [samples]
@@ -216,6 +222,8 @@ paths:
                 $ref: "#/components/schemas/Sample"
         "401":
           description: Unauthorized
+        "400":
+          description: Invalid request
   /samples/{id}:
     get:
       operationId: getSample
@@ -236,6 +244,8 @@ paths:
                 $ref: "#/components/schemas/Sample"
         "401":
           description: Unauthorized
+        "400":
+          description: Invalid sample id
         "404":
           description: Not found
     put:
@@ -263,6 +273,8 @@ paths:
                 $ref: "#/components/schemas/Sample"
         "401":
           description: Unauthorized
+        "400":
+          description: Invalid request
         "404":
           description: Not found
     delete:
@@ -280,6 +292,8 @@ paths:
           description: Deleted
         "401":
           description: Unauthorized
+        "400":
+          description: Invalid sample id
         "404":
           description: Not found
   /samples/{id}/move:
@@ -308,6 +322,8 @@ paths:
                 $ref: "#/components/schemas/Sample"
         "401":
           description: Unauthorized
+        "400":
+          description: Invalid request
         "404":
           description: Not found
 
@@ -390,7 +406,7 @@ components:
           type: integer
         sampleType:
           type: string
-          enum: [water, rock, soil_sand]
+          enum: [water, rock, soil_sand, other]
         sampleId:
           type: string
         userId:
@@ -414,7 +430,7 @@ components:
       properties:
         sampleType:
           type: string
-          enum: [water, rock, soil_sand]
+          enum: [water, rock, soil_sand, other]
         sampleId:
           type: string
           minLength: 1

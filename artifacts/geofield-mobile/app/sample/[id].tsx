@@ -24,6 +24,7 @@ const SAMPLE_TYPES: { value: SampleType; label: string; icon: string; color: str
   { value: "water", label: "Water", icon: "droplet", color: "#2E86B0" },
   { value: "rock", label: "Rock", icon: "hexagon", color: "#8A6040" },
   { value: "soil_sand", label: "Soil / Sand", icon: "circle", color: "#A08030" },
+  { value: "other", label: "Other", icon: "file-text", color: "#64748B" },
 ];
 
 const WATER_FIELDS = [
@@ -52,14 +53,21 @@ const SOIL_FIELDS = [
   { key: "depth", label: "Depth (cm)", placeholder: "e.g. 0–20", keyboardType: "default" as const },
 ];
 
+const OTHER_FIELDS = [
+  { key: "material", label: "Material", placeholder: "e.g. Core, sediment, fossil", keyboardType: "default" as const },
+  { key: "description", label: "Description", placeholder: "Key field observations", keyboardType: "default" as const },
+  { key: "purpose", label: "Collection Purpose", placeholder: "e.g. assay, reference, QA/QC", keyboardType: "default" as const },
+];
+
 function getFields(type: SampleType) {
   if (type === "water") return WATER_FIELDS;
   if (type === "rock") return ROCK_FIELDS;
+  if (type === "other") return OTHER_FIELDS;
   return SOIL_FIELDS;
 }
 
 function generateSampleId(type: SampleType) {
-  const prefix = type === "water" ? "WS" : type === "rock" ? "RS" : "SS";
+  const prefix = type === "water" ? "WS" : type === "rock" ? "RS" : type === "other" ? "OS" : "SS";
   const ts = Date.now().toString().slice(-4);
   return `${prefix}-${ts}`;
 }
