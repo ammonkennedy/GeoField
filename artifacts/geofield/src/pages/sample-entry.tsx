@@ -170,7 +170,10 @@ export default function SampleEntry() {
     setGpsStatus("loading");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setValue("fields.location", `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`);
+        setValue("fields.location", `${pos.coords.latitude.toFixed(7)}, ${pos.coords.longitude.toFixed(7)}`);
+        if (Number.isFinite(pos.coords.accuracy)) {
+          setValue("fields.gpsAccuracy", Math.round(pos.coords.accuracy));
+        }
         setGpsStatus("success");
       },
       (err) => { setGpsStatus(err.code === 1 ? "denied" : "error"); },

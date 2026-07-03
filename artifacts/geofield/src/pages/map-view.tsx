@@ -1,23 +1,38 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
-import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon } from "lucide-react";
+import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loadCustomLayers, addCustomLayer, deleteCustomLayer, safeAddCustomLayer, safeRemoveCustomLayer, type CustomMapLayer } from "@/lib/custom-layers";
+import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
+import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const TYPE_COLORS: Record<string, string> = {
   water: "#2d7dd2",
   rock: "#8b5e3c",
   soil_sand: "#c49a3c",
+  other: "#64748b",
 };
 const TYPE_LABELS: Record<string, string> = {
   water: "Water",
   rock: "Rock",
   soil_sand: "Soil/Sediment",
+  other: "Other",
 };
+
+function formatCoord(value: number) {
+  return value.toFixed(7);
+}
+
+function getSampleLabel(sample: any) {
+  if (sample.sampleType === "other") {
+    return sample.fields?.otherSampleTitle || sample.fields?.title || sample.sampleId || "Other";
+  }
+  return TYPE_LABELS[sample.sampleType] || sample.sampleType || "Sample";
+}
 
 type BaseLayer = "street" | "satellite";
 type OverlayLayer = "none" | "geology" | "soil" | "trails";
@@ -127,12 +142,15 @@ interface GeoInfo {
 }
 
 export default function MapViewPage() {
-  const [selectedFolderId, setSelectedFolderId] = useState<number | "all">("all");
+  const [selectedFolderId, setSelectedFolderId] = useState<number | string | "all">("all");
   const [baseLayer, setBaseLayer] = useState<BaseLayer>("satellite");
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
   const [terrain, setTerrain] = useState(true);
   const [geoInfo, setGeoInfo] = useState<GeoInfo | null>(null);
   const [customLayers, setCustomLayers] = useState<CustomMapLayer[]>(loadCustomLayers);
+  const [queuedSamples, setQueuedSamples] = useState(getQueue);
+  const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
+  const [sampleSearch, setSampleSearch] = useState("");
   const [layerModalOpen, setLayerModalOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerColor, setNewLayerColor] = useState("#e63946");
@@ -140,21 +158,16 @@ export default function MapViewPage() {
   const [newLayerError, setNewLayerError] = useState("");
   const [newLayerFileName, setNewLayerFileName] = useState("");
 
-  const { data: serverSamples } = useGetSamples();
-
-const offlineQueue = JSON.parse(localStorage.getItem("geofield_offline_queue") || "[]");
-
-const offlineSamples = offlineQueue.map((item: any, index: number) => ({
-  id: `offline-${index}`,
-  ...item.payload,
-  offline: true,
-}));
-
-const allSamples = [
-  ...(serverSamples || []),
-  ...offlineSamples,
-];
   const { data: folders } = useGetFolders();
+  const { data: serverSamples } = useGetSamples();
+  const offlineSamples = useMemo(() => queuedSamples.map((item: any, index: number) => ({
+    id: item.queuedId || `offline-${index}`,
+    ...item.payload,
+    offline: true,
+    queuedAt: item.queuedAt,
+  })), [queuedSamples]);
+  const allSamples = useMemo(() => [...(serverSamples || []), ...offlineSamples], [serverSamples, offlineSamples]);
+  const allFolders = [...(folders || []), ...localDatasets];
 
   const mapRef = useRef<any>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -167,15 +180,47 @@ const allSamples = [
   const mapLoadedRef = useRef(false);
 
   const filteredSamples = (allSamples || []).filter((s) =>
-    selectedFolderId === "all" ? true : s.folderId === selectedFolderId
+    selectedFolderId === "all" ? true : String(s.folderId ?? "") === String(selectedFolderId)
   );
   const samplesWithCoords = filteredSamples.filter((s) => parseCoords((s.fields as any)?.location));
   const samplesWithoutCoords = filteredSamples.filter((s) => !parseCoords((s.fields as any)?.location));
+  const searchableSamples = (allSamples || [])
+    .map((sample) => ({ sample, coords: parseCoords((sample.fields as any)?.location) }))
+    .filter((entry) => entry.coords);
+  const searchMatches = sampleSearch.trim()
+    ? searchableSamples
+        .filter(({ sample }) => {
+          const query = sampleSearch.trim().toLowerCase();
+          return String(sample.sampleId || "").toLowerCase().includes(query) ||
+            getSampleLabel(sample).toLowerCase().includes(query);
+        })
+        .slice(0, 8)
+    : [];
 
   // Keep overlayLayerRef in sync with state
   useEffect(() => {
     overlayLayerRef.current = overlayLayer;
   }, [overlayLayer]);
+
+  useEffect(() => {
+    const refreshQueue = () => setQueuedSamples(getQueue());
+    window.addEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
+    window.addEventListener("storage", refreshQueue);
+    return () => {
+      window.removeEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
+      window.removeEventListener("storage", refreshQueue);
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshDatasets = () => setLocalDatasets(getLocalDatasets());
+    window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
+    window.addEventListener("storage", refreshDatasets);
+    return () => {
+      window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
+      window.removeEventListener("storage", refreshDatasets);
+    };
+  }, []);
 
   // Sync customLayers from localStorage changes (e.g. after delete)
   useEffect(() => {
@@ -347,10 +392,9 @@ const allSamples = [
     popupRef.current = popup;
 
     const currentFiltered = (allSamples || []).filter((s) =>
-      selectedFolderId === "all" ? true : s.folderId === selectedFolderId
+      selectedFolderId === "all" ? true : String(s.folderId ?? "") === String(selectedFolderId)
     );
 
-    const bounds: [[number, number], [number, number]] | null = null;
     const allCoords: [number, number][] = [];
 
     currentFiltered.forEach((sample) => {
@@ -359,8 +403,8 @@ const allSamples = [
       allCoords.push([coords[1], coords[0]]);
 
       const color = TYPE_COLORS[sample.sampleType] || "#666";
-      const label = TYPE_LABELS[sample.sampleType] || sample.sampleType;
-      const letter = sample.sampleType === "water" ? "W" : sample.sampleType === "rock" ? "R" : "S";
+      const label = getSampleLabel(sample);
+      const letter = sample.sampleType === "water" ? "W" : sample.sampleType === "rock" ? "R" : sample.sampleType === "other" ? String(label).charAt(0).toUpperCase() || "O" : "S";
       const dateStr = (sample.fields as any)?.collectionDate
         ? new Date((sample.fields as any).collectionDate).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
         : "";
@@ -391,7 +435,7 @@ const allSamples = [
                 <strong style="font-size:13px;">${sample.sampleId}</strong>
               </div>
               ${dateStr ? `<div style="font-size:11px;color:#666;margin-bottom:3px;">📅 ${dateStr}</div>` : ""}
-              <div style="font-size:11px;color:#666;">📍 ${coords[0].toFixed(5)}, ${coords[1].toFixed(5)}</div>
+              <div style="font-size:11px;color:#666;">📍 ${formatCoord(coords[0])}, ${formatCoord(coords[1])}</div>
               <a href="/sample/${sample.id}" style="display:block;margin-top:10px;background:${color};color:white;text-align:center;border-radius:6px;padding:5px;font-size:12px;text-decoration:none;font-weight:600;">View Sample →</a>
             </div>
           `)
@@ -427,6 +471,18 @@ const allSamples = [
     });
   }, [allSamples, selectedFolderId]);
 
+  function focusSample(coords: [number, number]) {
+    setSelectedFolderId("all");
+    setSampleSearch("");
+    if (!mapRef.current) return;
+    mapRef.current.flyTo({
+      center: [coords[1], coords[0]],
+      zoom: Math.max(mapRef.current.getZoom?.() ?? 0, 16),
+      pitch: terrain ? 45 : 0,
+      essential: true,
+    });
+  }
+
   return (
     <Layout>
       <div className="flex flex-col gap-4 mb-4">
@@ -438,21 +494,50 @@ const allSamples = [
             </h1>
             <p className="text-muted-foreground mt-1">
               {samplesWithCoords.length} sample{samplesWithCoords.length !== 1 ? "s" : ""} plotted
-              {selectedFolderId !== "all" && folders && (
-                <span className="ml-1">from <strong>{folders.find((f) => f.id === selectedFolderId)?.name}</strong></span>
+              {selectedFolderId !== "all" && (
+                <span className="ml-1">from <strong>{allFolders.find((f: any) => String(f.id) === String(selectedFolderId))?.name}</strong></span>
               )}
             </p>
           </div>
-          <div className="relative">
-            <select
-              className="flex items-center pl-8 pr-4 h-9 rounded-lg border border-border bg-card text-sm font-medium shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
-              value={selectedFolderId}
-              onChange={(e) => setSelectedFolderId(e.target.value === "all" ? "all" : Number(e.target.value))}
-            >
-              <option value="all">All Datasets</option>
-              {folders?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-            </select>
-            <FolderOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Input
+                value={sampleSearch}
+                onChange={(e) => setSampleSearch(e.target.value)}
+                placeholder="Find sample ID..."
+                className="h-9 pl-8 w-full sm:w-56 bg-card"
+              />
+              {searchMatches.length > 0 && (
+                <div className="absolute right-0 top-10 z-30 w-full sm:w-72 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+                  {searchMatches.map(({ sample, coords }) => (
+                    <button
+                      key={sample.id}
+                      type="button"
+                      onClick={() => coords && focusSample(coords)}
+                      className="w-full text-left px-3 py-2 hover:bg-muted transition-colors border-b border-border/50 last:border-b-0"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-sm truncate">{sample.sampleId}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">{formatCoord(coords![0])}, {formatCoord(coords![1])}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">{getSampleLabel(sample)}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="relative">
+              <select
+                className="flex items-center pl-8 pr-4 h-9 rounded-lg border border-border bg-card text-sm font-medium shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none w-full sm:w-auto"
+                value={selectedFolderId}
+                onChange={(e) => setSelectedFolderId(e.target.value === "all" ? "all" : e.target.value)}
+              >
+                <option value="all">All Datasets</option>
+                {allFolders.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+              <FolderOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            </div>
           </div>
         </div>
 
@@ -579,7 +664,7 @@ const allSamples = [
               <button onClick={() => setGeoInfo(null)} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
             </div>
             {geoInfo.lngLat && (
-              <p className="text-xs text-muted-foreground">📍 {geoInfo.lngLat[1].toFixed(4)}, {geoInfo.lngLat[0].toFixed(4)}</p>
+              <p className="text-xs text-muted-foreground">📍 {formatCoord(geoInfo.lngLat[1])}, {formatCoord(geoInfo.lngLat[0])}</p>
             )}
             {geoInfo.loading && (
               <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-4 bg-muted animate-pulse rounded" />)}</div>

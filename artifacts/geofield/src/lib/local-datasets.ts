@@ -6,6 +6,7 @@ export interface LocalDataset {
   description?: string;
   createdAt: string;
   isLocal: true;
+  tripId?: string;
 }
 
 const LOCAL_DATASETS_KEY = "geofield_local_datasets";
@@ -31,6 +32,23 @@ export function createLocalDataset(input: { name: string; description?: string }
     description: input.description?.trim() || "",
     createdAt: new Date().toISOString(),
     isLocal: true,
+  };
+
+  saveLocalDatasets([...getLocalDatasets(), dataset]);
+  return dataset;
+}
+
+export function createTripDataset(input: { tripId: string; name: string; description?: string }): LocalDataset {
+  const existing = getLocalDatasets().find((dataset) => dataset.tripId === input.tripId);
+  if (existing) return existing;
+
+  const dataset: LocalDataset = {
+    id: -Date.now(),
+    name: input.name.trim(),
+    description: input.description?.trim() || "",
+    createdAt: new Date().toISOString(),
+    isLocal: true,
+    tripId: input.tripId,
   };
 
   saveLocalDatasets([...getLocalDatasets(), dataset]);

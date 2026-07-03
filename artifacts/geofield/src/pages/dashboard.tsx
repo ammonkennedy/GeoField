@@ -21,6 +21,13 @@ const typeStyles = {
   other: { label: "Other", variant: "secondary" as const },
 };
 
+function getSampleTypeLabel(sample: any) {
+  if (sample.sampleType === "other") {
+    return sample.fields?.otherSampleTitle || sample.fields?.title || sample.sampleId || "Other";
+  }
+  return typeStyles[sample.sampleType as keyof typeof typeStyles]?.label || "Sample";
+}
+
 function parseRouteId(value?: string): string | number | undefined {
   if (!value) return undefined;
   const numeric = Number(value);
@@ -84,6 +91,7 @@ export default function Dashboard() {
 
   const filteredSamples = allSamples.filter((s: any) =>
     String(s.sampleId || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    String(getSampleTypeLabel(s)).toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(s.notes || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(s.fields?.location || "").toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
@@ -190,7 +198,7 @@ export default function Dashboard() {
                 <div className="p-5 flex-1 cursor-pointer" onClick={() => setLocation(`/sample/${sample.id}`)}>
                   <div className="flex justify-between items-start mb-4 gap-2">
                     <Badge variant={style.variant} className="capitalize text-sm px-3 py-1">
-                      {style.label}{sample.isOffline ? " · Offline" : ""}
+                      {getSampleTypeLabel(sample)}{sample.isOffline ? " · Offline" : ""}
                     </Badge>
                     <span className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded-md truncate">
                       {sample.sampleId}

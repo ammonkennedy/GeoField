@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { createTripDataset, deleteLocalDataset, updateLocalDataset } from "@/lib/local-datasets";
+import { getQueue, setQueue, type QueuedSample } from "@/lib/offline-queue";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -59,6 +61,7 @@ export interface PlannedSite {
   lat: number;
   lng: number;
   addedAt: string;
+  queuedSampleId?: string;
 }
 
 export interface Trip {
@@ -68,6 +71,7 @@ export interface Trip {
   sites: PlannedSite[];
   createdAt: string;
   updatedAt: string;
+  datasetId?: number;
 }
 
 const TRIPS_KEY = "geofield_trips";
@@ -85,6 +89,20 @@ export function saveTrips(trips: Trip[]) {
 }
 
 const MAP_MODAL_HEIGHT = "90vh";
+
+function formatCoord(value: number) {
+  return value.toFixed(7);
+}
+
+function siteSampleId(siteName: string, siteIndex: number) {
+  const slug = siteName
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 18);
+  return slug ? `SITE-${siteIndex + 1}-${slug}` : `SITE-${siteIndex + 1}`;
+}
 
 // ── Initial map style (mirrors map-view.tsx) ──────────────────────────────────
 const TRIP_MAP_STYLE: any = {
@@ -200,13 +218,20 @@ export default function TripPlannerPage() {
   // Create a new trip when navigating to /trip/new
   useEffect(() => {
     if (tripId === "new") {
+      const tripIdValue = `trip_${Date.now()}`;
+      const dataset = createTripDataset({
+        tripId: tripIdValue,
+        name: "New Trip",
+        description: "Planned sample sites from Trip Planner",
+      });
       const newTrip: Trip = {
-        id: `trip_${Date.now()}`,
+        id: tripIdValue,
         name: "New Trip",
         notes: "",
         sites: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        datasetId: dataset.id,
       };
       const updated = [...loadTrips(), newTrip];
       saveTrips(updated);
@@ -217,10 +242,76 @@ export default function TripPlannerPage() {
 
   const activeTrip = tripId && tripId !== "new" ? trips.find((t) => t.id === tripId) : null;
 
-  const updateTrip = (updates: Partial<Trip>) => {
-    const updated = trips.map((t) =>
-      t.id === activeTrip?.id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t
+  const ensureTripDataset = (trip: Trip): { trip: Trip; datasetId: number } => {
+    const dataset = createTripDataset({
+      tripId: trip.id,
+      name: trip.name || "New Trip",
+      description: "Planned sample sites from Trip Planner",
+    });
+
+    if (dataset.name !== trip.name && trip.name.trim()) {
+      updateLocalDataset(dataset.id, {
+        name: trip.name,
+        description: dataset.description || "Planned sample sites from Trip Planner",
+      });
+    }
+
+    return { trip: { ...trip, datasetId: dataset.id }, datasetId: dataset.id };
+  };
+
+  const upsertPlannedSiteSample = (trip: Trip, site: PlannedSite, datasetId: number, siteIndex: number): PlannedSite => {
+    const queue = getQueue();
+    const queuedId = site.queuedSampleId || `q_site_${site.id}`;
+    const payload: QueuedSample["payload"] = {
+      sampleType: "other",
+      sampleId: siteSampleId(site.name, siteIndex),
+      folderId: datasetId,
+      notes: site.description || "Planned future sample site",
+      fields: {
+        location: `${formatCoord(site.lat)}, ${formatCoord(site.lng)}`,
+        otherSampleTitle: site.name,
+        collectionStatus: "planned",
+        plannedSiteId: site.id,
+        tripId: trip.id,
+        tripName: trip.name,
+      },
+    };
+    const item: QueuedSample = {
+      queuedId,
+      queuedAt: site.addedAt,
+      payload,
+    };
+    const existingIndex = queue.findIndex((q) => q.queuedId === queuedId || q.payload.fields?.plannedSiteId === site.id);
+    const nextQueue = [...queue];
+    if (existingIndex >= 0) nextQueue[existingIndex] = { ...nextQueue[existingIndex], ...item };
+    else nextQueue.push(item);
+    setQueue(nextQueue);
+    return { ...site, queuedSampleId: queuedId };
+  };
+
+  const removePlannedSiteSample = (site: PlannedSite) => {
+    setQueue(
+      getQueue().filter((item) =>
+        item.queuedId !== site.queuedSampleId && item.payload.fields?.plannedSiteId !== site.id
+      )
     );
+  };
+
+  const updateTrip = (updates: Partial<Trip>) => {
+    const updated = trips.map((t) => {
+      if (t.id !== activeTrip?.id) return t;
+      const nextTrip = { ...t, ...updates, updatedAt: new Date().toISOString() };
+      if (nextTrip.datasetId) {
+        updateLocalDataset(nextTrip.datasetId, {
+          name: nextTrip.name,
+          description: "Planned sample sites from Trip Planner",
+        });
+        nextTrip.sites = nextTrip.sites.map((site, index) =>
+          upsertPlannedSiteSample(nextTrip, site, nextTrip.datasetId!, index)
+        );
+      }
+      return nextTrip;
+    });
     saveTrips(updated);
     setTrips(updated);
   };
@@ -235,6 +326,8 @@ export default function TripPlannerPage() {
   const deleteTrip = () => {
     if (!activeTrip) return;
     if (!confirm(`Delete "${activeTrip.name}"? This cannot be undone.`)) return;
+    activeTrip.sites.forEach(removePlannedSiteSample);
+    if (activeTrip.datasetId) deleteLocalDataset(activeTrip.datasetId);
     const updated = trips.filter((t) => t.id !== activeTrip.id);
     saveTrips(updated);
     setTrips(updated);
@@ -243,13 +336,21 @@ export default function TripPlannerPage() {
 
   const addSite = (site: Omit<PlannedSite, "id" | "addedAt">) => {
     if (!activeTrip) return;
-    const newSite: PlannedSite = { ...site, id: `site_${Date.now()}`, addedAt: new Date().toISOString() };
-    updateTrip({ sites: [...activeTrip.sites, newSite] });
+    const { trip, datasetId } = ensureTripDataset(activeTrip);
+    const siteIndex = trip.sites.length;
+    const newSiteBase: PlannedSite = { ...site, id: `site_${Date.now()}`, addedAt: new Date().toISOString() };
+    const newSite = upsertPlannedSiteSample(trip, newSiteBase, datasetId, siteIndex);
+    const updatedTrip = { ...trip, sites: [...trip.sites, newSite], updatedAt: new Date().toISOString() };
+    const updated = trips.map((t) => t.id === updatedTrip.id ? updatedTrip : t);
+    saveTrips(updated);
+    setTrips(updated);
     return newSite;
   };
 
   const removeSite = (id: string) => {
     if (!activeTrip) return;
+    const site = activeTrip.sites.find((s) => s.id === id);
+    if (site) removePlannedSiteSample(site);
     updateTrip({ sites: activeTrip.sites.filter((s) => s.id !== id) });
   };
 
@@ -443,7 +544,7 @@ export default function TripPlannerPage() {
     const popup = new L.Popup({ closeButton: false, offset: [0, -18] }).setHTML(
       `<div style="font-family:system-ui,sans-serif;"><strong>${site.name}</strong>${
         site.description ? `<br/><span style="font-size:12px;color:#555;">${site.description}</span>` : ""
-      }<br/><span style="font-size:11px;color:#888;">${site.lat.toFixed(5)}, ${site.lng.toFixed(5)}</span></div>`
+      }<br/><span style="font-size:11px;color:#888;">${formatCoord(site.lat)}, ${formatCoord(site.lng)}</span></div>`
     );
 
     const marker = new L.Marker({ element: el, anchor: "center" }).setLngLat([site.lng, site.lat]).addTo(map);
@@ -579,7 +680,7 @@ export default function TripPlannerPage() {
                       <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{site.description}</p>
                     )}
                     <p className="text-xs font-mono text-muted-foreground mt-1.5">
-                      📍 {site.lat.toFixed(5)}, {site.lng.toFixed(5)}
+                      📍 {formatCoord(site.lat)}, {formatCoord(site.lng)}
                     </p>
                   </div>
                   <button
@@ -737,7 +838,7 @@ export default function TripPlannerPage() {
                     <button onClick={() => setGeoInfo(null)} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
                   </div>
                   {geoInfo.lngLat && (
-                    <p className="text-xs text-muted-foreground">📍 {geoInfo.lngLat[1].toFixed(4)}, {geoInfo.lngLat[0].toFixed(4)}</p>
+                    <p className="text-xs text-muted-foreground">📍 {formatCoord(geoInfo.lngLat[1])}, {formatCoord(geoInfo.lngLat[0])}</p>
                   )}
                   {geoInfo.loading && (
                     <div className="space-y-1.5">{[1,2,3].map((i) => <div key={i} className="h-3.5 bg-muted animate-pulse rounded" />)}</div>
@@ -772,7 +873,7 @@ export default function TripPlannerPage() {
                     </button>
                   </div>
                   <p className="text-xs text-muted-foreground mb-3 font-mono bg-muted/50 rounded px-2 py-1">
-                    {pendingCoords[0].toFixed(5)}, {pendingCoords[1].toFixed(5)}
+                    {formatCoord(pendingCoords[0])}, {formatCoord(pendingCoords[1])}
                   </p>
                   <div className="space-y-3">
                     <div className="space-y-1.5">

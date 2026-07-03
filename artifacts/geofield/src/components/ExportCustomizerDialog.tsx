@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Download, ChevronUp, ChevronDown, GripVertical, Eye, EyeOff, RotateCcw, Plus, Trash2 } from "lucide-react";
+import { Download, ChevronUp, ChevronDown, GripVertical, RotateCcw, Plus, Trash2, ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type ExportColumn, type ExportFormatConfig, type ExportCustomRow,
@@ -33,12 +33,14 @@ export function ExportCustomizerDialog({
 }: ExportCustomizerDialogProps) {
   const [columns, setColumns] = useState<ExportColumn[]>(initialColumns);
   const [sheetName, setSheetName] = useState(initialConfig.sheetName);
+  const [orientation, setOrientation] = useState<ExportFormatConfig["orientation"]>(initialConfig.orientation || "normal");
   const [customRows, setCustomRows] = useState<ExportCustomRow[]>(initialConfig.customRows || []);
 
   const handleOpenChange = (v: boolean) => {
     if (v) {
       setColumns(initialColumns);
       setSheetName(initialConfig.sheetName);
+      setOrientation(initialConfig.orientation || "normal");
       setCustomRows(initialConfig.customRows || []);
     }
     onOpenChange(v);
@@ -83,6 +85,7 @@ export function ExportCustomizerDialog({
       ...DEFAULT_FORMAT_CONFIG,
       ...initialConfig,
       sheetName: sheetName || "Data",
+      orientation,
       customRows,
     };
     saveColumnPrefs(configKey, columns);
@@ -119,6 +122,40 @@ export function ExportCustomizerDialog({
               placeholder="Data"
               className="h-9 max-w-xs"
             />
+          </div>
+
+          {/* Orientation */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Spreadsheet Layout
+            </Label>
+            <button
+              type="button"
+              onClick={() => setOrientation((current) => current === "normal" ? "transposed" : "normal")}
+              className={cn(
+                "w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-all",
+                orientation === "transposed"
+                  ? "border-primary bg-primary/5 text-primary"
+                  : "border-border bg-card hover:border-primary/30"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <ArrowLeftRight className="w-4 h-4 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">
+                    {orientation === "normal" ? "Records as rows" : "Parameters as rows"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {orientation === "normal"
+                      ? "Each sample or measurement is one row. Press to flip."
+                      : "Each parameter is one row, with records across columns. Press to flip back."}
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-medium rounded-full bg-muted px-2 py-1 text-muted-foreground">
+                Flip
+              </span>
+            </button>
           </div>
 
           {/* Custom rows */}

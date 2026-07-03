@@ -18,6 +18,7 @@ export interface ExportCustomRow {
 /* ── Format config ──────────────────────────────────────────────────────── */
 export interface ExportFormatConfig {
   sheetName: string;
+  orientation: "normal" | "transposed";
   headerBold: boolean;
   headerBgColor: string;    // 6-char hex WITHOUT #
   headerTextLight: boolean; // true = white text on dark bg
@@ -29,6 +30,7 @@ export interface ExportFormatConfig {
 
 export const DEFAULT_FORMAT_CONFIG: ExportFormatConfig = {
   sheetName: "Data",
+  orientation: "normal",
   headerBold: true,
   headerBgColor: "1e3a5f",
   headerTextLight: true,
@@ -94,6 +96,8 @@ export const FIELD_LABELS: Record<string, string> = {
 export const STRIKE_DIP_COLUMNS: ExportColumn[] = [
   { key: "index",       label: "#",                enabled: true,  defaultWidth: 4  },
   { key: "label",       label: "Label",            enabled: true,  defaultWidth: 28 },
+  { key: "dataset",     label: "Dataset",          enabled: true,  defaultWidth: 20 },
+  { key: "rockLayerType", label: "Rock / Layer Type", enabled: true, defaultWidth: 20 },
   { key: "strike",      label: "Strike",           enabled: true,  defaultWidth: 10 },
   { key: "dip",         label: "Dip",              enabled: true,  defaultWidth: 8  },
   { key: "dipDir",      label: "Dip Direction",    enabled: true,  defaultWidth: 14 },
@@ -137,12 +141,14 @@ export function getSampleColumns(samples: Sample[]): ExportColumn[] {
 
 export function sampleToDataRow(sample: Sample, folderName: string): Record<string, any> {
   const fields = (sample.fields as Record<string, any>) || {};
+  const sampleTypeLabel = sample.sampleType === "other"
+    ? fields.otherSampleTitle || fields.title || sample.sampleId || "Other"
+    : sample.sampleType === "soil_sand"
+      ? "Soil/Sand"
+      : sample.sampleType.charAt(0).toUpperCase() + sample.sampleType.slice(1);
   const row: Record<string, any> = {
     _sampleId: sample.sampleId,
-    _sampleType:
-      sample.sampleType === "soil_sand"
-        ? "Soil/Sand"
-        : sample.sampleType.charAt(0).toUpperCase() + sample.sampleType.slice(1),
+    _sampleType: sampleTypeLabel,
     _folder: folderName,
     _notes: sample.notes || "",
     _createdAt: format(new Date(sample.createdAt), "yyyy-MM-dd HH:mm"),
@@ -161,30 +167,50 @@ export function buildStyledWorksheet(
   config: ExportFormatConfig
 ): XLSX.WorkSheet {
   const enabled = columns.filter((c) => c.enabled);
-  const headers = enabled.map((c) => c.label);
   const customRows = config.customRows || [];
   const customRowCount = customRows.length;
+  const isTransposed = config.orientation === "transposed";
+
+  const normalHeaderRow = enabled.map((c) => c.label);
+  const normalDataRows = dataRows.map((row) =>
+    enabled.map((c) => {
+      const v = row[c.key];
+      return v !== undefined && v !== null ? v : "";
+    })
+  );
+  const transposedHeaderRow = [
+    "Parameter",
+    ...dataRows.map((row, index) =>
+      row._sampleId || row.label || row.index || `Record ${index + 1}`
+    ),
+  ];
+  const transposedDataRows = enabled.map((column) => [
+    column.label,
+    ...dataRows.map((row) => {
+      const v = row[column.key];
+      return v !== undefined && v !== null ? v : "";
+    }),
+  ]);
+  const headers = isTransposed ? transposedHeaderRow : normalHeaderRow;
+  const renderedRows = isTransposed ? transposedDataRows : normalDataRows;
 
   const aoa = [
     ...customRows.map((row) => {
-      const values = new Array(Math.max(enabled.length, 1)).fill("");
+      const values = new Array(Math.max(headers.length, 1)).fill("");
       values[0] = row.text || "";
       return values;
     }),
     headers,
-    ...dataRows.map((row) =>
-      enabled.map((c) => {
-        const v = row[c.key];
-        return v !== undefined && v !== null ? v : "";
-      })
-    ),
+    ...renderedRows,
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"] = enabled.map((c) => ({ wch: c.defaultWidth ?? 15 }));
+  ws["!cols"] = isTransposed
+    ? [{ wch: 24 }, ...dataRows.map(() => ({ wch: 18 }))]
+    : enabled.map((c) => ({ wch: c.defaultWidth ?? 15 }));
 
   if (config.freezeHeader) {
-    (ws as any)["!freeze"] = { xSplit: 0, ySplit: customRowCount + 1 };
+    (ws as any)["!freeze"] = { xSplit: isTransposed ? 1 : 0, ySplit: customRowCount + 1 };
   }
 
   const range = XLSX.utils.decode_range(ws["!ref"] || "A1");

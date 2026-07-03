@@ -3,17 +3,24 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createSample, getGetSamplesQueryKey } from "@workspace/api-client-react";
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 
+function getSyncableQueue() {
+  return getQueue().filter((item) =>
+    item.payload.fields?.collectionStatus !== "planned" &&
+    !(typeof item.payload.folderId === "number" && item.payload.folderId < 0)
+  );
+}
+
 export function useOfflineSync() {
   const queryClient = useQueryClient();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [queueCount, setQueueCount] = useState(() => getQueue().length);
+  const [queueCount, setQueueCount] = useState(() => getSyncableQueue().length);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncedCount, setSyncedCount] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
   const syncingRef = useRef(false);
 
   const refreshCount = useCallback(() => {
-    setQueueCount(getQueue().length);
+    setQueueCount(getSyncableQueue().length);
   }, []);
 
   useEffect(() => {
@@ -27,7 +34,7 @@ export function useOfflineSync() {
 
   const sync = useCallback(async () => {
     if (syncingRef.current) return;
-    const queue = getQueue();
+    const queue = getSyncableQueue();
     if (queue.length === 0) return;
 
     syncingRef.current = true;
@@ -36,6 +43,9 @@ export function useOfflineSync() {
     let synced = 0;
 
     for (const item of queue) {
+      if (item.payload.fields?.collectionStatus === "planned" || (typeof item.payload.folderId === "number" && item.payload.folderId < 0)) {
+        continue;
+      }
       try {
         await createSample({ data: item.payload as any });
         removeFromQueue(item.queuedId);

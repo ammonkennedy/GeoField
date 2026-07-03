@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useGetFolders } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CompassModal } from "@/components/CompassModal";
 import { ExportCustomizerDialog } from "@/components/ExportCustomizerDialog";
-import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, MapPin } from "lucide-react";
+import { FolderDialog } from "@/components/FolderDialog";
+import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, MapPin, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import {
@@ -14,6 +16,7 @@ import {
   type ExportColumn, type ExportFormatConfig,
 } from "@/lib/export-config";
 import { format as fmtDate } from "date-fns";
+import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 export interface StrikeDipMeasurement {
@@ -25,6 +28,8 @@ export interface StrikeDipMeasurement {
   location: string;
   date: string;
   featureType: string;
+  rockLayerType: string;
+  datasetId?: number | string | null;
   notes: string;
   photo?: string;
   latitude?: number;
@@ -55,7 +60,7 @@ function deriveDipDir(strikeStr: string): string {
   return dirs[Math.round(((n + 90) % 360) / 22.5) % 16];
 }
 
-function blankMeasurement(): StrikeDipMeasurement {
+function blankMeasurement(datasetId?: number | string | null): StrikeDipMeasurement {
   return {
     id: crypto.randomUUID(),
     label: "",
@@ -65,6 +70,8 @@ function blankMeasurement(): StrikeDipMeasurement {
     location: "",
     date: new Date().toISOString().slice(0, 10),
     featureType: "",
+    rockLayerType: "",
+    datasetId: datasetId ?? null,
     notes: "",
   };
 }
@@ -98,16 +105,18 @@ function formatNumber(value: number | undefined, fractionDigits = 0): string {
 
 /* ── Row component ──────────────────────────────────────────────────────── */
 function MeasurementRow({
-  measurement, index, onChange, onDelete,
+  measurement, index, allFolders, onChange, onDelete,
 }: {
   measurement: StrikeDipMeasurement;
   index: number;
+  allFolders: Array<{ id: number | string; name: string; isLocal?: boolean }>;
   onChange: (m: StrikeDipMeasurement) => void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const upd = (k: keyof StrikeDipMeasurement, v: string) => onChange({ ...measurement, [k]: v });
+  const setDatasetId = (value: string) => onChange({ ...measurement, datasetId: value ? value : null });
   const hasGps = typeof measurement.latitude === "number" && typeof measurement.longitude === "number";
   const hasUtm = typeof measurement.utmEasting === "number" && typeof measurement.utmNorthing === "number" && !!measurement.utmZone;
 
@@ -148,6 +157,9 @@ function MeasurementRow({
             </span>
             {measurement.featureType && (
               <span className="text-xs text-muted-foreground">{measurement.featureType}</span>
+            )}
+            {measurement.rockLayerType && (
+              <span className="text-xs text-muted-foreground">{measurement.rockLayerType}</span>
             )}
             {measurement.location && (
               <span className="text-xs text-muted-foreground truncate">{measurement.location}</span>
@@ -239,6 +251,43 @@ function MeasurementRow({
                 <option>Contact</option>
                 <option>Unconformity</option>
                 <option>Other</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Rock / Layer Type</Label>
+              <select
+                className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
+                value={measurement.rockLayerType ?? ""}
+                onChange={(e) => upd("rockLayerType", e.target.value)}
+              >
+                <option value="">Select...</option>
+                <option>Sandstone bed</option>
+                <option>Siltstone bed</option>
+                <option>Shale layer</option>
+                <option>Limestone bed</option>
+                <option>Dolostone bed</option>
+                <option>Conglomerate bed</option>
+                <option>Basalt flow</option>
+                <option>Intrusive contact</option>
+                <option>Metamorphic foliation layer</option>
+                <option>Ore / mineralized zone</option>
+                <option>Soil / regolith layer</option>
+                <option>Other layer</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Dataset</Label>
+              <select
+                className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
+                value={measurement.datasetId ?? ""}
+                onChange={(e) => setDatasetId(e.target.value)}
+              >
+                <option value="">Uncategorized</option>
+                {allFolders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}{folder.isLocal ? " (local)" : ""}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-1">
@@ -359,10 +408,35 @@ export default function StrikeDipPage() {
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
   const [compassOpen, setCompassOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<"all" | "uncategorized" | string>("all");
+  const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
+  const { data: folders } = useGetFolders();
+  const allFolders = useMemo(() => [...(folders || []), ...localDatasets], [folders, localDatasets]);
+  const visibleMeasurements = useMemo(() => {
+    if (selectedDatasetId === "all") return measurements;
+    if (selectedDatasetId === "uncategorized") return measurements.filter((m) => !m.datasetId);
+    return measurements.filter((m) => String(m.datasetId ?? "") === selectedDatasetId);
+  }, [measurements, selectedDatasetId]);
+  const selectedDatasetName = selectedDatasetId === "all"
+    ? "All Datasets"
+    : selectedDatasetId === "uncategorized"
+      ? "Uncategorized"
+      : allFolders.find((folder: any) => String(folder.id) === selectedDatasetId)?.name || "Dataset";
 
   useEffect(() => {
     saveMeasurements(measurements);
   }, [measurements]);
+
+  useEffect(() => {
+    const refreshDatasets = () => setLocalDatasets(getLocalDatasets());
+    window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
+    window.addEventListener("storage", refreshDatasets);
+    return () => {
+      window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
+      window.removeEventListener("storage", refreshDatasets);
+    };
+  }, []);
 
   const addMeasurementWithGps = (measurement: StrikeDipMeasurement, successTitle?: string, successDescription?: string) => {
     if (!navigator.geolocation) {
@@ -389,19 +463,19 @@ export default function StrikeDipPage() {
   };
 
   const addManual = () => {
-    addMeasurementWithGps(blankMeasurement());
+    addMeasurementWithGps(blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId));
   };
 
-  const updateMeasurement = (idx: number, m: StrikeDipMeasurement) => {
-    setMeasurements((prev) => { const next = [...prev]; next[idx] = m; return next; });
+  const updateMeasurementById = (id: string, m: StrikeDipMeasurement) => {
+    setMeasurements((prev) => prev.map((item) => item.id === id ? m : item));
   };
 
-  const deleteMeasurement = (idx: number) => {
-    setMeasurements((prev) => prev.filter((_, i) => i !== idx));
+  const deleteMeasurementById = (id: string) => {
+    setMeasurements((prev) => prev.filter((item) => item.id !== id));
   };
 
   const openExport = () => {
-    if (measurements.length === 0) {
+    if (visibleMeasurements.length === 0) {
       toast({ title: "Nothing to export", description: "Add at least one measurement first.", variant: "destructive" });
       return;
     }
@@ -409,9 +483,13 @@ export default function StrikeDipPage() {
   };
 
   const handleDoExport = (columns: ExportColumn[], config: ExportFormatConfig) => {
-    const dataRows = measurements.map((m, i) => ({
+    const dataRows = visibleMeasurements.map((m, i) => ({
       index: i + 1,
       label: m.label,
+      dataset: m.datasetId
+        ? allFolders.find((folder: any) => String(folder.id) === String(m.datasetId))?.name || ""
+        : "Uncategorized",
+      rockLayerType: m.rockLayerType || "",
       strike: m.strike,
       dip: m.dip,
       dipDir: m.dipDir,
@@ -430,7 +508,7 @@ export default function StrikeDipPage() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, config.sheetName || "Strike & Dip");
     XLSX.writeFile(wb, `strike_dip_${fmtDate(new Date(), "yyyyMMdd-HHmm")}.xlsx`);
-    toast({ title: "Exported", description: `${measurements.length} measurements saved to Excel (photos not included).` });
+    toast({ title: "Exported", description: `${visibleMeasurements.length} measurements saved to Excel (photos not included).` });
   };
 
   const clearAll = () => {
@@ -449,7 +527,7 @@ export default function StrikeDipPage() {
               Strike &amp; Dip
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {measurements.length} measurement{measurements.length !== 1 ? "s" : ""} recorded
+              {visibleMeasurements.length} of {measurements.length} measurement{measurements.length !== 1 ? "s" : ""} shown
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -468,6 +546,31 @@ export default function StrikeDipPage() {
           </div>
         </div>
 
+        {/* Dataset filter */}
+        <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2">
+          <FolderOpen className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
+            Dataset
+          </Label>
+          <select
+            className="flex h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm"
+            value={selectedDatasetId}
+            onChange={(e) => setSelectedDatasetId(e.target.value)}
+          >
+            <option value="all">All Datasets</option>
+            {allFolders.map((folder: any) => (
+              <option key={folder.id} value={folder.id}>
+                {folder.name}{folder.isLocal ? " (local)" : ""}
+              </option>
+            ))}
+            <option value="uncategorized">Uncategorized</option>
+          </select>
+          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => setFolderDialogOpen(true)}>
+            <Plus className="w-3.5 h-3.5 mr-1" />
+            New
+          </Button>
+        </div>
+
         {/* Add buttons */}
         <div className="flex gap-3">
           <Button onClick={() => setCompassOpen(true)} className="flex-1 gap-2">
@@ -481,25 +584,30 @@ export default function StrikeDipPage() {
         </div>
 
         {/* Measurement list */}
-        {measurements.length === 0 ? (
+        {visibleMeasurements.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-4 py-20 text-muted-foreground">
             <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center">
               <Compass className="w-10 h-10 opacity-30" />
             </div>
             <div className="text-center">
-              <p className="font-medium">No measurements yet</p>
-              <p className="text-sm mt-1">Use the compass button to capture a reading from your phone,<br />or enter strike and dip values manually.</p>
+              <p className="font-medium">{measurements.length === 0 ? "No measurements yet" : "No measurements in this dataset"}</p>
+              <p className="text-sm mt-1">
+                {measurements.length === 0
+                  ? "Use the compass button to capture a reading from your phone, or enter strike and dip values manually."
+                  : "Choose another dataset or assign measurements to this dataset from each row."}
+              </p>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            {measurements.map((m, idx) => (
+            {visibleMeasurements.map((m, idx) => (
               <MeasurementRow
                 key={m.id}
                 measurement={m}
                 index={idx}
-                onChange={(updated) => updateMeasurement(idx, updated)}
-                onDelete={() => deleteMeasurement(idx)}
+                allFolders={allFolders}
+                onChange={(updated) => updateMeasurementById(m.id, updated)}
+                onDelete={() => deleteMeasurementById(m.id)}
               />
             ))}
           </div>
@@ -511,7 +619,7 @@ export default function StrikeDipPage() {
         onClose={() => setCompassOpen(false)}
         onCapture={(strike, dip) => {
           const m: StrikeDipMeasurement = {
-            ...blankMeasurement(),
+            ...blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId),
             strike,
             dip,
             dipDir: deriveDipDir(strike),
@@ -520,15 +628,17 @@ export default function StrikeDipPage() {
         }}
       />
 
+      <FolderDialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen} />
+
       <ExportCustomizerDialog
         open={exportOpen}
         onOpenChange={setExportOpen}
         title="Customize Strike & Dip Export"
-        subtitle={`${measurements.length} measurement${measurements.length !== 1 ? "s" : ""} · photos not included`}
+        subtitle={`${visibleMeasurements.length} measurement${visibleMeasurements.length !== 1 ? "s" : ""} from "${selectedDatasetName}" · photos not included`}
         initialColumns={loadColumnPrefs("strikedip", STRIKE_DIP_COLUMNS)}
         initialConfig={loadExportConfig("strikedip")}
         configKey="strikedip"
-        exportLabel={`Export ${measurements.length} measurement${measurements.length !== 1 ? "s" : ""}`}
+        exportLabel={`Export ${visibleMeasurements.length} measurement${visibleMeasurements.length !== 1 ? "s" : ""}`}
         onExport={handleDoExport}
       />
     </Layout>
