@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { QueryKey, UseMutationOptions, UseQueryOptions, UseQueryResult } from "@tanstack/react-query";
 import { Amplify } from "aws-amplify";
-import { confirmSignUp, fetchUserAttributes, getCurrentUser, signIn, signOut, signUp } from "aws-amplify/auth";
+import { confirmSignUp, fetchAuthSession, fetchUserAttributes, getCurrentUser, signIn, signOut, signUp } from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
 import outputs from "../../../../amplify_outputs.json";
 import type {
@@ -44,7 +44,17 @@ function normalizeFolderId(folderId: unknown): string | null | undefined {
   if (typeof folderId === "number" && Number.isNaN(folderId)) return null;
   const value = String(folderId).trim();
   if (!value || value === "NaN" || value === "undefined" || value === "null") return null;
+  if (Number(value) < 0) return null;
   return value;
+}
+
+async function hasCurrentUser() {
+  try {
+    await getCurrentUser();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function currentSampleIdFallback(id: string | number | null | undefined): string | number {
@@ -149,8 +159,15 @@ export function useGetCurrentAuthUser<TData = AuthUserEnvelope>(options?: QueryO
 }
 
 export async function signInUser(input: { email: string; password: string }) {
-  const result = await signIn({ username: input.email.trim(), password: input.password });
-  return result;
+  try {
+    return await signIn({ username: input.email.trim(), password: input.password });
+  } catch (error: any) {
+    if (error?.name === "UserAlreadyAuthenticatedException") {
+      await signOut();
+      return signIn({ username: input.email.trim(), password: input.password });
+    }
+    throw error;
+  }
 }
 export async function signUpUser(input: { email: string; password: string }) {
   return signUp({ username: input.email.trim(), password: input.password, options: { userAttributes: { email: input.email.trim() } } });
@@ -160,6 +177,13 @@ export async function confirmSignUpUser(input: { email: string; code: string }) 
 }
 export async function signOutUser() {
   await signOut();
+}
+
+export async function getCurrentAccountToken(): Promise<string> {
+  const session = await fetchAuthSession();
+  const token = session.tokens?.idToken?.toString();
+  if (!token) throw new Error("Sign in before managing billing.");
+  return token;
 }
 
 export const getBeginBrowserLoginUrl = () => "/login";
@@ -173,6 +197,7 @@ export function useBeginBrowserLogin<TData = unknown>(options?: QueryOptions<any
 
 export const getGetFoldersQueryKey = () => ["datasets"] as const;
 export async function getFolders(): Promise<Folder[]> {
+  if (!(await hasCurrentUser())) return [];
   const { data, errors } = await client.models.Dataset.list();
   if (errors?.length) throw new Error(errorMessage(errors));
   return (data ?? []).map(asFolder);
@@ -184,6 +209,7 @@ export function useGetFolders<TData = Folder[]>(options?: QueryOptions<any>): Us
 }
 
 export async function createFolder({ data }: { data: CreateFolderRequest }): Promise<Folder> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before creating datasets.");
   const result = await client.models.Dataset.create({ name: data.name, description: data.description ?? "", createdAt: nowIso(), updatedAt: nowIso() });
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFolder(result.data);
@@ -193,6 +219,7 @@ export function useCreateFolder(options?: MutationOptions<Folder, { data: Create
 }
 
 export async function updateFolder({ id, data }: { id: string | number; data: CreateFolderRequest }): Promise<Folder> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before updating datasets.");
   const result = await client.models.Dataset.update(cleanObject({ id: String(id), name: data.name, description: data.description ?? "", updatedAt: nowIso() }));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFolder(result.data);
@@ -202,6 +229,16 @@ export function useUpdateFolder(options?: MutationOptions<Folder, { id: string |
 }
 
 export async function deleteFolder({ id }: { id: string | number }): Promise<void> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before deleting datasets.");
+  const samples = await getSamples({ folderId: id });
+  await Promise.all(
+    samples.map((sample) =>
+      client.models.Sample.update({
+        id: String(sample.id),
+        datasetId: null,
+      } as any),
+    ),
+  );
   const result = await client.models.Dataset.delete({ id: String(id) });
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
@@ -211,6 +248,7 @@ export function useDeleteFolder(options?: MutationOptions<void, { id: string | n
 
 export const getGetSamplesQueryKey = (params?: GetSamplesParams) => params?.folderId ? ["samples", String(params.folderId)] as const : ["samples"] as const;
 export async function getSamples(params?: GetSamplesParams): Promise<Sample[]> {
+  if (!(await hasCurrentUser())) return [];
   const { data, errors } = await client.models.Sample.list();
   if (errors?.length) throw new Error(errorMessage(errors));
   const samples = (data ?? []).map(asSample);
@@ -225,6 +263,7 @@ export function useGetSamples<TData = Sample[]>(params?: GetSamplesParams, optio
 
 export const getGetSampleQueryKey = (id: string | number) => ["sample", String(id)] as const;
 export async function getSample(id: string | number): Promise<Sample> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before loading samples.");
   const sampleId = currentSampleIdFallback(id);
   const result = await client.models.Sample.get({ id: String(sampleId) });
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
@@ -249,6 +288,7 @@ async function createSampleWithInput(input: Record<string, unknown>) {
 }
 
 export async function createSample({ data }: { data: CreateSampleRequest }): Promise<Sample> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before saving samples.");
   const folderId = normalizeFolderId(data.folderId);
   const baseInput = cleanObject({
     sampleType: (data.sampleType || "rock") as any,
@@ -275,6 +315,7 @@ export function useCreateSample(options?: MutationOptions<Sample, { data: Create
 }
 
 export async function updateSample({ id, data }: { id: string | number; data: UpdateSampleRequest }): Promise<Sample> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before updating samples.");
   const folderId = normalizeFolderId(data.folderId);
   const sampleId = currentSampleIdFallback(id);
   const result = await client.models.Sample.update(cleanObject({
@@ -292,6 +333,7 @@ export function useUpdateSample(options?: MutationOptions<Sample, { id: string |
 }
 
 export async function deleteSample({ id }: { id: string | number }): Promise<void> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before deleting samples.");
   const sampleId = currentSampleIdFallback(id);
   const result = await client.models.Sample.delete({ id: String(sampleId) });
   if (result.errors?.length) throw new Error(errorMessage(result.errors));

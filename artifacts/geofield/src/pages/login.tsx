@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useGetCurrentAuthUser, signInUser, signUpUser, confirmSignUpUser } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Pickaxe, Compass, Map } from "lucide-react";
 export default function Login() {
   const { data, isLoading, refetch } = useGetCurrentAuthUser();
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [mode, setMode] = useState<"signin" | "signup" | "confirm">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,12 +19,11 @@ export default function Login() {
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  if (isLoading) return null;
+  useEffect(() => {
+    if (data?.user) setLocation("/");
+  }, [data?.user, setLocation]);
 
-  if (data?.user) {
-    setLocation("/");
-    return null;
-  }
+  if (isLoading || data?.user) return null;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -41,6 +42,7 @@ export default function Login() {
       } else {
         await signInUser({ email, password });
         localStorage.removeItem("geofield-demo-mode");
+        queryClient.clear();
         await refetch();
         setLocation("/");
       }

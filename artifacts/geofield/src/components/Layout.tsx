@@ -1,27 +1,40 @@
 import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, CreditCard } from "lucide-react";
+import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, CreditCard, PanelsTopLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
-import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const { data: authData } = useGetCurrentAuthUser();
-  const { data: folders } = useGetFolders();
   const [datasetDialogOpen, setDatasetDialogOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>(loadTrips);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
 
   const user = authData?.user;
-  const { isOnline, queueCount, isSyncing, syncedCount, sync } = useOfflineSync();
-  const allFolders = [...(folders || []), ...localDatasets];
+  const { data: folders } = useGetFolders({
+    query: { enabled: Boolean(user) }
+  });
+  const { isOnline, queueCount, isSyncing, syncedCount, lastError, sync } = useOfflineSync();
+  const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
+  const allFolders = [...(folders || []), ...visibleLocalDatasets];
+
+  const handleSignOut = async () => {
+    await signOutUser();
+    localStorage.removeItem("geofield-demo-mode");
+    queryClient.clear();
+    setSidebarOpen(false);
+    setLocation("/login");
+  };
 
   // Keep trips list in sync
   useEffect(() => {
@@ -94,6 +107,17 @@ export function Layout({ children }: { children: ReactNode }) {
               >
                 <Map className="w-4 h-4" />
                 Map View
+              </Link>
+              <Link
+                href="/design-mockups"
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                  location === "/design-mockups" ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                )}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <PanelsTopLeft className="w-4 h-4" />
+                Design Mockups
               </Link>
             </nav>
           </div>
@@ -194,7 +218,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <div className="flex items-center justify-between gap-2 mb-1">
               <span className="flex items-center gap-1.5 font-semibold">
                 <WifiOff className="w-3.5 h-3.5" />
-                {queueCount} sample{queueCount !== 1 ? "s" : ""} pending sync
+                {queueCount} item{queueCount !== 1 ? "s" : ""} pending sync
               </span>
               {isOnline && !isSyncing && (
                 <button
@@ -208,12 +232,12 @@ export function Layout({ children }: { children: ReactNode }) {
               {isSyncing && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
             </div>
             <p className="text-amber-700 leading-tight">
-              {isOnline ? "Connected — tap Sync now or wait for auto-sync." : "Will sync when back online."}
+              {lastError || (isOnline ? "Connected — tap Sync now or wait for auto-sync." : "Will sync when back online.")}
             </p>
           </div>
         )}
 
-        {/* Subscription link */}
+        {/* Billing link */}
         <div className="px-4 pb-2">
           <Link
             href="/subscription"
@@ -226,7 +250,7 @@ export function Layout({ children }: { children: ReactNode }) {
             onClick={() => setSidebarOpen(false)}
           >
             <CreditCard className="w-4 h-4 shrink-0" />
-            <span className="flex-1">Subscription</span>
+            <span className="flex-1">Billing</span>
             {location === "/subscription" && <ChevronRight className="w-4 h-4 shrink-0" />}
           </Link>
         </div>
@@ -242,13 +266,13 @@ export function Layout({ children }: { children: ReactNode }) {
                 <p className="text-sm font-semibold truncate">{user.firstName || 'User'}</p>
                 <p className="text-xs text-muted-foreground truncate">{user.email}</p>
               </div>
-              <a href="/api/logout" className="p-2 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground">
+              <button type="button" onClick={handleSignOut} className="p-2 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground">
                 <LogOut className="w-4 h-4" />
-              </a>
+              </button>
             </div>
           ) : (
             <Button asChild className="w-full">
-              <a href="/api/login">Log In</a>
+              <Link href="/login">Log In</Link>
             </Button>
           )}
         </div>
@@ -271,13 +295,13 @@ export function Layout({ children }: { children: ReactNode }) {
         {isOnline && isSyncing && (
           <div className="flex items-center gap-2.5 px-4 py-2.5 bg-blue-50 border-b border-blue-200 text-blue-800 text-sm sticky top-0 z-20">
             <RefreshCw className="w-4 h-4 shrink-0 animate-spin" />
-            <span>Syncing {queueCount} offline sample{queueCount !== 1 ? "s" : ""} to the server…</span>
+            <span>Syncing {queueCount} offline item{queueCount !== 1 ? "s" : ""} to your account…</span>
           </div>
         )}
         {isOnline && syncedCount > 0 && !isSyncing && (
           <div className="flex items-center gap-2.5 px-4 py-2.5 bg-green-50 border-b border-green-200 text-green-800 text-sm sticky top-0 z-20">
             <Check className="w-4 h-4 shrink-0" />
-            <span>{syncedCount} offline sample{syncedCount !== 1 ? "s" : ""} synced successfully.</span>
+            <span>{syncedCount} offline item{syncedCount !== 1 ? "s" : ""} synced successfully.</span>
           </div>
         )}
 

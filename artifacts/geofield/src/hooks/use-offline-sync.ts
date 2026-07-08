@@ -1,49 +1,112 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { createSample, getGetSamplesQueryKey } from "@workspace/api-client-react";
+import {
+  createFolder,
+  createSample,
+  getGetFoldersQueryKey,
+  getGetSamplesQueryKey,
+} from "@workspace/api-client-react";
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
+import {
+  getPendingLocalDatasets,
+  markLocalDatasetSynced,
+  setLocalDatasetSyncStatus,
+  LOCAL_DATASETS_UPDATED_EVENT,
+  type LocalDataset,
+} from "@/lib/local-datasets";
+
+function isLocalDatasetId(value: unknown) {
+  if (value === null || value === undefined || value === "") return false;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric < 0;
+}
 
 function getSyncableQueue() {
   return getQueue().filter((item) =>
-    item.payload.fields?.collectionStatus !== "planned" &&
-    !(typeof item.payload.folderId === "number" && item.payload.folderId < 0)
+    item.payload.fields?.collectionStatus !== "planned"
   );
+}
+
+function getPendingSyncCount() {
+  if (localStorage.getItem("geofield-demo-mode") === "true") return 0;
+  return getPendingLocalDatasets().length + getSyncableQueue().length;
+}
+
+async function syncLocalDataset(dataset: LocalDataset) {
+  if (dataset.cloudId) return dataset.cloudId;
+  setLocalDatasetSyncStatus(dataset.id, "syncing");
+  try {
+    const created = await createFolder({
+      data: {
+        name: dataset.name,
+        description: dataset.description || null,
+      },
+    });
+    const cloudId = String(created.id);
+    markLocalDatasetSynced(dataset.id, cloudId);
+    return cloudId;
+  } catch (error) {
+    setLocalDatasetSyncStatus(dataset.id, "error");
+    throw error;
+  }
 }
 
 export function useOfflineSync() {
   const queryClient = useQueryClient();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [queueCount, setQueueCount] = useState(() => getSyncableQueue().length);
+  const [queueCount, setQueueCount] = useState(getPendingSyncCount);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncedCount, setSyncedCount] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
   const syncingRef = useRef(false);
 
   const refreshCount = useCallback(() => {
-    setQueueCount(getSyncableQueue().length);
+    setQueueCount(getPendingSyncCount());
   }, []);
 
   useEffect(() => {
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshCount);
+    window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
     window.addEventListener("storage", refreshCount);
     return () => {
       window.removeEventListener(QUEUE_UPDATED_EVENT, refreshCount);
+      window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
       window.removeEventListener("storage", refreshCount);
     };
   }, [refreshCount]);
 
   const sync = useCallback(async () => {
     if (syncingRef.current) return;
-    const queue = getSyncableQueue();
-    if (queue.length === 0) return;
+    if (localStorage.getItem("geofield-demo-mode") === "true") return;
+    const pendingDatasets = getPendingLocalDatasets();
+    const initialQueue = getSyncableQueue();
+    if (pendingDatasets.length === 0 && initialQueue.length === 0) return;
 
     syncingRef.current = true;
     setIsSyncing(true);
     setLastError(null);
     let synced = 0;
 
+    try {
+      for (const dataset of pendingDatasets) {
+        await syncLocalDataset(dataset);
+        synced++;
+      }
+    } catch (error: any) {
+      setLastError(error?.message || "Could not sync datasets. Make sure you are signed in, then try again.");
+      refreshCount();
+      syncingRef.current = false;
+      setIsSyncing(false);
+      return;
+    }
+
+    const queue = getSyncableQueue();
     for (const item of queue) {
-      if (item.payload.fields?.collectionStatus === "planned" || (typeof item.payload.folderId === "number" && item.payload.folderId < 0)) {
+      if (item.payload.fields?.collectionStatus === "planned" || isLocalDatasetId(item.payload.folderId)) {
+        if (isLocalDatasetId(item.payload.folderId)) {
+          setLastError("A sample is still assigned to a local dataset. Try syncing again.");
+          break;
+        }
         continue;
       }
       try {
@@ -58,6 +121,7 @@ export function useOfflineSync() {
 
     if (synced > 0) {
       setSyncedCount(synced);
+      queryClient.invalidateQueries({ queryKey: getGetFoldersQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetSamplesQueryKey() });
       setTimeout(() => setSyncedCount(0), 5000);
     }
@@ -81,6 +145,10 @@ export function useOfflineSync() {
       window.removeEventListener("offline", handleOffline);
     };
   }, [sync]);
+
+  useEffect(() => {
+    if (isOnline && queueCount > 0) sync();
+  }, [isOnline, queueCount, sync]);
 
   return { isOnline, queueCount, isSyncing, syncedCount, lastError, sync };
 }

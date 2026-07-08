@@ -15,7 +15,7 @@ import { useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { enqueue, getQueue, updateQueuedSample } from "@/lib/offline-queue";
 import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
-import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { BaseFields, WaterFields, RockFields, SoilFields, OtherFields } from "@/components/fields/SchemaForms";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -80,6 +80,12 @@ function getTypeLabel(type: string) {
   return "Sample";
 }
 
+function isLocalDatasetId(value: unknown) {
+  if (value === null || value === undefined || value === "") return false;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric < 0;
+}
+
 async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlot, MediaSlot, MediaSlot]> {
   const empty: [MediaSlot, MediaSlot, MediaSlot] = [null, null, null];
 
@@ -128,7 +134,8 @@ export default function SampleEntry() {
   const { data: folders } = useGetFolders();
   const { createSample, updateSample } = useSamplesMutations();
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
-  const allFolders = [...(folders || []), ...localDatasets];
+  const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
+  const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
   const [mediaSlots, setMediaSlots] = useState<[MediaSlot, MediaSlot, MediaSlot]>([null, null, null]);
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("idle");
@@ -406,11 +413,19 @@ export default function SampleEntry() {
     const nonEmptyParams = customParams.filter((p) => p.label.trim());
     if (nonEmptyParams.length > 0) processedFields.customParams = nonEmptyParams.map((p) => ({ label: p.label.trim(), value: p.value }));
 
-    const folderId = data.folderId ? Number(data.folderId) : null;
+    const selectedFolderId = data.folderId || null;
+    const syncedLocalDataset = localDatasets.find(
+      (dataset) => String(dataset.id) === String(selectedFolderId) && dataset.cloudId
+    );
+    const folderId = syncedLocalDataset?.cloudId ?? selectedFolderId;
+    const shouldSaveOffline =
+      !navigator.onLine ||
+      localStorage.getItem("geofield-demo-mode") === "true" ||
+      isLocalDatasetId(folderId);
     const payload = {
       sampleType: data.sampleType,
       sampleId: data.sampleId,
-      folderId: Number.isFinite(folderId) ? folderId : null,
+      folderId,
       notes: data.notes,
       fields: processedFields,
     };
@@ -421,12 +436,29 @@ export default function SampleEntry() {
       setLocation("/");
     } else if (isEdit && id) {
       updateSample.mutate({ id, data: payload }, { onSuccess: () => setLocation("/") });
-    } else if (!navigator.onLine || localStorage.getItem("geofield-demo-mode") === "true") {
+    } else if (shouldSaveOffline) {
       enqueue(payload);
-      toast({ title: "Saved offline", description: filledSlots ? "Your sample is stored on this device. Photos/videos are kept in local media storage until cloud sync is added." : "Your sample is stored on this device and will sync automatically when you're back online." });
+      toast({
+        title: "Saved offline",
+        description: isLocalDatasetId(folderId)
+          ? "This dataset is local to this device. Create a cloud dataset to sync it across devices."
+          : filledSlots
+            ? "Your sample is stored on this device. Photos/videos are kept in local media storage until cloud sync is added."
+            : "Your sample is stored on this device and will sync automatically when you're back online."
+      });
       setLocation("/");
     } else {
-      createSample.mutate({ data: payload }, { onSuccess: () => setLocation("/") });
+      createSample.mutate({ data: payload }, {
+        onSuccess: () => setLocation("/"),
+        onError: () => {
+          enqueue(payload);
+          toast({
+            title: "Saved offline",
+            description: "GeoField could not reach your account data service, so this sample was saved on this device and will sync later."
+          });
+          setLocation("/");
+        }
+      });
     }
   };
 

@@ -12,7 +12,7 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { DatasetFigures } from "@/components/DatasetFigures";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
-import { deleteLocalDataset, getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 
 const typeStyles = {
   water: { label: "Water", variant: "water" as const },
@@ -73,7 +73,8 @@ export default function Dashboard() {
     };
   }, []);
 
-  const allFolders = [...(folders || []), ...localDatasets];
+  const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
+  const allFolders = [...(folders || []), ...visibleLocalDatasets];
   const activeFolder = allFolders.find((f: any) => String(f.id) === String(activeFolderId));
 
   const localSamples = queuedSamples

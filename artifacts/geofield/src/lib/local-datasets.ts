@@ -7,6 +7,9 @@ export interface LocalDataset {
   createdAt: string;
   isLocal: true;
   tripId?: string;
+  cloudId?: string;
+  syncStatus?: "local" | "syncing" | "synced" | "error";
+  syncedAt?: string;
 }
 
 const LOCAL_DATASETS_KEY = "geofield_local_datasets";
@@ -23,6 +26,52 @@ export function getLocalDatasets(): LocalDataset[] {
 function saveLocalDatasets(datasets: LocalDataset[]) {
   localStorage.setItem(LOCAL_DATASETS_KEY, JSON.stringify(datasets));
   window.dispatchEvent(new CustomEvent(LOCAL_DATASETS_UPDATED_EVENT));
+}
+
+export function getPendingLocalDatasets(): LocalDataset[] {
+  return getLocalDatasets().filter((dataset) => !dataset.cloudId);
+}
+
+export function getVisibleLocalDatasets(
+  localDatasets: LocalDataset[],
+  cloudDatasets: Array<{ id: number | string }> | undefined,
+): LocalDataset[] {
+  const cloudIds = new Set((cloudDatasets || []).map((dataset) => String(dataset.id)));
+  return localDatasets.filter((dataset) => !dataset.cloudId || !cloudIds.has(String(dataset.cloudId)));
+}
+
+export function setLocalDatasetSyncStatus(
+  id: number | string,
+  syncStatus: LocalDataset["syncStatus"],
+) {
+  saveLocalDatasets(
+    getLocalDatasets().map((dataset) =>
+      String(dataset.id) === String(id) ? { ...dataset, syncStatus } : dataset
+    )
+  );
+}
+
+export function markLocalDatasetSynced(id: number | string, cloudId: string) {
+  saveLocalDatasets(
+    getLocalDatasets().map((dataset) =>
+      String(dataset.id) === String(id)
+        ? {
+            ...dataset,
+            cloudId,
+            syncStatus: "synced",
+            syncedAt: new Date().toISOString(),
+          }
+        : dataset
+    )
+  );
+
+  setQueue(
+    getQueue().map((item) =>
+      String(item.payload.folderId) === String(id)
+        ? { ...item, payload: { ...item.payload, folderId: cloudId } }
+        : item
+    )
+  );
 }
 
 export function createLocalDataset(input: { name: string; description?: string }): LocalDataset {
@@ -58,20 +107,20 @@ export function createTripDataset(input: { tripId: string; name: string; descrip
 export function updateLocalDataset(id: number, input: { name: string; description?: string }) {
   saveLocalDatasets(
     getLocalDatasets().map((dataset) =>
-      dataset.id === id
+      String(dataset.id) === String(id)
         ? { ...dataset, name: input.name.trim(), description: input.description?.trim() || "" }
         : dataset
     )
   );
 }
 
-export function deleteLocalDataset(id: number) {
-  saveLocalDatasets(getLocalDatasets().filter((dataset) => dataset.id !== id));
+export function deleteLocalDataset(id: number | string) {
+  saveLocalDatasets(getLocalDatasets().filter((dataset) => String(dataset.id) !== String(id)));
 
   // Keep samples instead of deleting them: move samples from the deleted local dataset to Uncategorized.
   setQueue(
     getQueue().map((item) =>
-      item.payload.folderId === id
+      String(item.payload.folderId) === String(id)
         ? { ...item, payload: { ...item.payload, folderId: null } }
         : item
     )

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loadCustomLayers, addCustomLayer, deleteCustomLayer, safeAddCustomLayer, safeRemoveCustomLayer, type CustomMapLayer } from "@/lib/custom-layers";
 import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
-import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -170,7 +170,8 @@ export default function MapViewPage() {
     queuedAt: item.queuedAt,
   })), [queuedSamples]);
   const allSamples = useMemo(() => [...(serverSamples || []), ...offlineSamples], [serverSamples, offlineSamples]);
-  const allFolders = [...(folders || []), ...localDatasets];
+  const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
+  const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
   const mapRef = useRef<any>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);

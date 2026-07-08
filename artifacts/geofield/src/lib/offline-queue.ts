@@ -4,7 +4,7 @@ export interface QueuedSample {
   payload: {
     sampleType: string;
     sampleId: string;
-    folderId: number | null;
+    folderId: number | string | null;
     notes?: string;
     fields: Record<string, any>;
   };

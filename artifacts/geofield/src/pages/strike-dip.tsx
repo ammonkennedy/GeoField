@@ -16,7 +16,7 @@ import {
   type ExportColumn, type ExportFormatConfig,
 } from "@/lib/export-config";
 import { format as fmtDate } from "date-fns";
-import { getLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 
 /* ── Types ─────────────────────────────────────────────────────────────── */
 export interface StrikeDipMeasurement {
@@ -412,7 +412,10 @@ export default function StrikeDipPage() {
   const [selectedDatasetId, setSelectedDatasetId] = useState<"all" | "uncategorized" | string>("all");
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const { data: folders } = useGetFolders();
-  const allFolders = useMemo(() => [...(folders || []), ...localDatasets], [folders, localDatasets]);
+  const allFolders = useMemo(
+    () => [...(folders || []), ...getVisibleLocalDatasets(localDatasets, folders)],
+    [folders, localDatasets],
+  );
   const visibleMeasurements = useMemo(() => {
     if (selectedDatasetId === "all") return measurements;
     if (selectedDatasetId === "uncategorized") return measurements.filter((m) => !m.datasetId);
