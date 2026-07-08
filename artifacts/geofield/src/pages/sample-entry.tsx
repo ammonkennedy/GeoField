@@ -9,14 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck, FileQuestion } from "lucide-react";
+import { Droplet, Mountain, Sprout, Wind, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck, FileQuestion } from "lucide-react";
 import { useSamplesMutations } from "@/hooks/use-geofield";
 import { useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { enqueue, getQueue, updateQueuedSample } from "@/lib/offline-queue";
 import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-import { BaseFields, WaterFields, RockFields, SoilFields, OtherFields } from "@/components/fields/SchemaForms";
+import { BaseFields, WaterFields, RockFields, SoilFields, AirFields, OtherFields } from "@/components/fields/SchemaForms";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
@@ -25,11 +25,12 @@ const sampleTypes = [
   { id: 'water', label: 'Water', icon: Droplet, color: 'text-[var(--color-water)]', bg: 'bg-[var(--color-water)]/10' },
   { id: 'rock', label: 'Rock', icon: Mountain, color: 'text-[var(--color-rock)]', bg: 'bg-[var(--color-rock)]/10' },
   { id: 'soil_sand', label: 'Soil/Sediment', icon: Sprout, color: 'text-[var(--color-soil)]', bg: 'bg-[var(--color-soil)]/10' },
+  { id: 'air', label: 'Air', icon: Wind, color: 'text-[var(--color-air)]', bg: 'bg-[var(--color-air)]/10' },
   { id: 'other', label: 'Other', icon: FileQuestion, color: 'text-muted-foreground', bg: 'bg-muted' },
 ] as const;
 
 const formSchema = z.object({
-  sampleType: z.enum(['water', 'rock', 'soil_sand', 'other']),
+  sampleType: z.enum(['water', 'rock', 'soil_sand', 'air', 'other']),
   sampleId: z.string().min(1, "Sample ID is required"),
   folderId: z.string().optional(),
   notes: z.string().optional(),
@@ -38,7 +39,7 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 type GpsStatus = "idle" | "loading" | "success" | "error" | "denied";
-type SampleTypeId = 'water' | 'rock' | 'soil_sand' | 'other';
+type SampleTypeId = 'water' | 'rock' | 'soil_sand' | 'air' | 'other';
 
 type MediaSlot = {
   type: "photo" | "video";
@@ -76,6 +77,7 @@ function getTypeLabel(type: string) {
   if (type === "water") return "Water";
   if (type === "rock") return "Rock";
   if (type === "soil_sand") return "Soil/Sediment";
+  if (type === "air") return "Air";
   if (type === "other") return "Other";
   return "Sample";
 }
@@ -485,7 +487,7 @@ export default function SampleEntry() {
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 pb-20">
         <div className="space-y-3">
           <Label className="text-base">Sample Type</Label>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             {sampleTypes.map((type) => {
               const isSelected = currentType === type.id;
               const Icon = type.icon;
@@ -511,7 +513,7 @@ export default function SampleEntry() {
 
             <div className="space-y-4">
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>Parameters</h3>
-              <AnimatePresence mode="wait"><motion.div key={currentType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>{currentType === "water" && <WaterFields register={register} />}{currentType === "rock" && <RockFields register={register} />}{currentType === "soil_sand" && <SoilFields register={register} />}{currentType === "other" && <OtherFields register={register} />}</motion.div></AnimatePresence>
+              <AnimatePresence mode="wait"><motion.div key={currentType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>{currentType === "water" && <WaterFields register={register} />}{currentType === "rock" && <RockFields register={register} />}{currentType === "soil_sand" && <SoilFields register={register} />}{currentType === "air" && <AirFields register={register} />}{currentType === "other" && <OtherFields register={register} />}</motion.div></AnimatePresence>
             </div>
 
             <div className="h-px bg-border/60 w-full" />

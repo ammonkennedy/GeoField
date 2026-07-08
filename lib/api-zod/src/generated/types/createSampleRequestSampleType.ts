@@ -13,5 +13,6 @@ export const CreateSampleRequestSampleType = {
   water: "water",
   rock: "rock",
   soil_sand: "soil_sand",
+  air: "air",
   other: "other",
 } as const;

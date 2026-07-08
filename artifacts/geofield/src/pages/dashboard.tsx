@@ -18,6 +18,7 @@ const typeStyles = {
   water: { label: "Water", variant: "water" as const },
   rock: { label: "Rock", variant: "rock" as const },
   soil_sand: { label: "Soil", variant: "soil" as const },
+  air: { label: "Air", variant: "air" as const },
   other: { label: "Other", variant: "secondary" as const },
 };
 

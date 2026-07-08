@@ -2,7 +2,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: "default" | "secondary" | "destructive" | "outline" | "water" | "rock" | "soil";
+  variant?: "default" | "secondary" | "destructive" | "outline" | "water" | "rock" | "soil" | "air";
 }
 
 function Badge({ className, variant = "default", ...props }: BadgeProps) {
@@ -18,6 +18,7 @@ function Badge({ className, variant = "default", ...props }: BadgeProps) {
           "border-transparent bg-[var(--color-water)] text-white shadow-sm": variant === "water",
           "border-transparent bg-[var(--color-rock)] text-white shadow-sm": variant === "rock",
           "border-transparent bg-[var(--color-soil)] text-white shadow-sm": variant === "soil",
+          "border-transparent bg-[var(--color-air)] text-white shadow-sm": variant === "air",
         },
         className
       )}

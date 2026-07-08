@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-export type SampleType = "water" | "rock" | "soil_sand" | "other";
+export type SampleType = "water" | "rock" | "soil_sand" | "air" | "other";
 
 export interface GeoLocation {
   lat: number;

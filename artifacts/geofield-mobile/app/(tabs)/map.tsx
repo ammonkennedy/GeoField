@@ -16,12 +16,14 @@ import NativeMapView, { type MarkerData } from "@/components/NativeMapView";
 function typeColor(type: SampleType, colors: ReturnType<typeof useColors>) {
   if (type === "water") return colors.water;
   if (type === "rock") return colors.rock;
+  if (type === "air") return colors.air;
   if (type === "other") return colors.mutedForeground;
   return colors.soil;
 }
 
 function typeLabel(type: SampleType) {
   if (type === "soil_sand") return "Soil";
+  if (type === "air") return "Air";
   if (type === "other") return "Other";
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
@@ -64,6 +66,8 @@ export default function MapTab() {
         ? "droplet"
         : s.sampleType === "rock"
         ? "hexagon"
+        : s.sampleType === "air"
+        ? "wind"
         : s.sampleType === "other"
         ? "square"
         : "circle",
@@ -135,7 +139,7 @@ export default function MapTab() {
           },
         ]}
       >
-        {(["water", "rock", "soil_sand", "other"] as SampleType[]).map((t) => (
+        {(["water", "rock", "soil_sand", "air", "other"] as SampleType[]).map((t) => (
           <View key={t} style={styles.legendItem}>
             <View
               style={[

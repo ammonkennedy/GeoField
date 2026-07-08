@@ -22,12 +22,14 @@ import { type Sample, type SampleType, useData } from "@/contexts/DataContext";
 function typeColor(type: SampleType, colors: ReturnType<typeof useColors>) {
   if (type === "water") return colors.water;
   if (type === "rock") return colors.rock;
+  if (type === "air") return colors.air;
   if (type === "other") return colors.mutedForeground;
   return colors.soil;
 }
 
 function typeLabel(type: SampleType) {
   if (type === "soil_sand") return "Soil";
+  if (type === "air") return "Air";
   if (type === "other") return "Other";
   return type.charAt(0).toUpperCase() + type.slice(1);
 }

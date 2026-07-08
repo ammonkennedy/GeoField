@@ -60,7 +60,7 @@ export interface PlannedSite {
   id: string;
   name: string;
   description: string;
-  sampleType?: "water" | "rock" | "soil_sand" | "other";
+  sampleType?: "water" | "rock" | "soil_sand" | "air" | "other";
   lat: number;
   lng: number;
   addedAt: string;
@@ -112,6 +112,7 @@ function plannedSiteTitle(site: PlannedSite) {
   if (sampleType === "water") return "Water";
   if (sampleType === "rock") return "Rock";
   if (sampleType === "soil_sand") return "Soil / Sediment";
+  if (sampleType === "air") return "Air";
   return site.name;
 }
 
@@ -120,6 +121,7 @@ function plannedSiteSampleTypeLabel(site: PlannedSite) {
   if (sampleType === "water") return "Water";
   if (sampleType === "rock") return "Rock";
   if (sampleType === "soil_sand") return "Soil / Sediment";
+  if (sampleType === "air") return "Air";
   return "Other";
 }
 
@@ -924,6 +926,7 @@ export default function TripPlannerPage() {
                         <option value="rock">Rock</option>
                         <option value="water">Water</option>
                         <option value="soil_sand">Soil / Sediment</option>
+                        <option value="air">Air</option>
                         <option value="other">Other</option>
                       </select>
                     </div>

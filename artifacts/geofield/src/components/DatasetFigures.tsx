@@ -32,12 +32,23 @@ const NUMERIC_PARAMS: Record<string, { label: string; unit: string; type: string
   weight:         { label: "Weight",              unit: "g",      type: "any"   },
   depth:          { label: "Depth",               unit: "cm",     type: "soil_sand" },
   organicMatter:  { label: "Organic Matter",      unit: "%",      type: "soil_sand" },
+  pidReading:     { label: "PID Reading",         unit: "",       type: "air" },
+  correctionFactor:{ label: "Correction Factor",  unit: "",       type: "air" },
+  calibrationConcentration:{ label: "Calibration Concentration", unit: "", type: "air" },
+  alarmLevel:     { label: "Alarm Level",         unit: "",       type: "air" },
+  sampleDuration: { label: "Sample Duration",     unit: "s",      type: "air" },
+  airFlowRate:    { label: "Flow Rate",           unit: "L/min",  type: "air" },
+  ambientTemperature:{ label: "Ambient Temp",     unit: "°C",     type: "air" },
+  relativeHumidity:{ label: "Relative Humidity",  unit: "%",      type: "air" },
+  barometricPressure:{ label: "Barometric Pressure", unit: "",    type: "air" },
+  windSpeed:      { label: "Wind Speed",          unit: "",       type: "air" },
 };
 
 const TYPE_COLORS: Record<string, string> = {
   water:     "#2d7dd2",
   rock:      "#8b5e3c",
   soil_sand: "#c49a3c",
+  air:       "#1f9d8a",
 };
 
 type ChartType = "bar" | "scatter" | "compare";

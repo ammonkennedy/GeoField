@@ -18,7 +18,7 @@ const schema = a.schema({
 
   Sample: a
     .model({
-      sampleType: a.enum(["water", "rock", "soil_sand", "other"]),
+      sampleType: a.enum(["water", "rock", "soil_sand", "air", "other"]),
       sampleId: a.string().required(),
       datasetId: a.id(),
       notes: a.string(),

@@ -28,6 +28,7 @@
   --color-water: hsl(200 70% 45%);
   --color-rock: hsl(30 30% 45%);
   --color-soil: hsl(45 50% 50%);
+  --color-air: hsl(170 55% 38%);
 }
 
 :root {

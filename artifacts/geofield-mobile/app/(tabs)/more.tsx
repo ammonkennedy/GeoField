@@ -194,6 +194,7 @@ export default function MoreTab() {
           { type: "Water", color: colors.water, icon: "droplet", desc: "pH, temperature, conductivity, DO, turbidity" },
           { type: "Rock", color: colors.rock, icon: "hexagon", desc: "Lithology, grain size, structure, weathering" },
           { type: "Soil / Sand", color: colors.soil, icon: "circle", desc: "Texture, color, organic content, moisture" },
+          { type: "Air", color: colors.air, icon: "wind", desc: "PID readings, VOCs, calibration, alarms, ambient conditions" },
           { type: "Other", color: colors.mutedForeground, icon: "file-text", desc: "Flexible material notes, purpose, and field context" },
         ].map((t) => (
           <View key={t.type} style={[styles.legendRow, { borderBottomColor: colors.border }]}>

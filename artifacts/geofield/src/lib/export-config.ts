@@ -90,6 +90,26 @@ export const FIELD_LABELS: Record<string, string> = {
   depth: "Depth (cm)",
   structure: "Structure",
   organicMatter: "Organic Matter (%)",
+  pidReading: "PID Reading",
+  pidUnits: "PID Units",
+  targetCompound: "Target Compound / VOC",
+  lampEnergy: "PID Lamp Energy",
+  correctionFactor: "Correction Factor",
+  calibrationGas: "Calibration Gas",
+  calibrationConcentration: "Calibration Concentration",
+  calibrationUnits: "Calibration Units",
+  instrumentModel: "Instrument Model",
+  instrumentSerial: "Instrument Serial #",
+  alarmLevel: "Alarm Level",
+  alarmStatus: "Alarm Status",
+  samplingMode: "Sampling Mode",
+  sampleDuration: "Sample Duration (s)",
+  airFlowRate: "Flow Rate (L/min)",
+  ambientTemperature: "Ambient Temp (°C)",
+  relativeHumidity: "Relative Humidity (%)",
+  barometricPressure: "Barometric Pressure",
+  windDirection: "Wind Direction",
+  windSpeed: "Wind Speed",
 };
 
 /* ── Strike-dip default columns ─────────────────────────────────────────── */
@@ -145,6 +165,8 @@ export function sampleToDataRow(sample: Sample, folderName: string): Record<stri
     ? fields.otherSampleTitle || fields.title || sample.sampleId || "Other"
     : sample.sampleType === "soil_sand"
       ? "Soil/Sand"
+      : sample.sampleType === "air"
+        ? "Air"
       : sample.sampleType.charAt(0).toUpperCase() + sample.sampleType.slice(1);
   const row: Record<string, any> = {
     _sampleId: sample.sampleId,

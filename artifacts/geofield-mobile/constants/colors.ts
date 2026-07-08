@@ -21,6 +21,7 @@ const colors = {
     water: "#2E86B0",
     rock: "#8A6040",
     soil: "#A08030",
+    air: "#1F9D8A",
   },
   dark: {
     text: "#EDE9E2",
@@ -44,6 +45,7 @@ const colors = {
     water: "#4AADE8",
     rock: "#C09060",
     soil: "#D4A84D",
+    air: "#3DCBB7",
   },
   radius: 8,
 };
