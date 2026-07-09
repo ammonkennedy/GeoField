@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, CreditCard, Cloud, ShieldCheck } from "lucide-react";
+import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, CreditCard, PanelsTopLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
@@ -61,54 +61,36 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex flex-col md:flex-row">
       {/* Mobile Header */}
-      <div className="md:hidden flex items-center justify-between p-4 border-b bg-card/95 backdrop-blur">
-        <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-white shadow-sm">
-            <Pickaxe className="w-5 h-5" />
-          </div>
+      <div className="md:hidden flex items-center justify-between p-4 border-b bg-card">
+        <div className="flex items-center gap-2 text-primary font-display font-bold text-xl">
+          <Pickaxe className="w-6 h-6" />
           <span>GeoField</span>
         </div>
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setSidebarOpen(!sidebarOpen)}>
+        <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
           <Menu className="w-6 h-6" />
         </Button>
       </div>
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed md:sticky top-0 left-0 z-40 h-screen w-[280px] bg-sidebar border-r flex flex-col transition-transform duration-300 ease-in-out shadow-[12px_0_40px_rgba(15,23,42,0.04)]",
+        "fixed md:sticky top-0 left-0 z-40 h-screen w-64 bg-sidebar border-r flex flex-col transition-transform duration-300 ease-in-out",
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
-        <div className="p-6 hidden md:flex items-center gap-3 border-b border-border/70">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-950 text-white shadow-sm">
-            <Pickaxe className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-slate-950 font-display font-bold text-2xl leading-none">GeoField</div>
-            <div className="mt-1 text-xs font-medium text-muted-foreground">Collect. Analyze. Understand.</div>
-          </div>
+        <div className="p-6 hidden md:flex items-center gap-2 text-primary font-display font-bold text-2xl border-b border-border/50">
+          <Pickaxe className="w-7 h-7" />
+          <span>GeoField</span>
         </div>
 
-        <div className="mx-4 mt-4 hidden rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-xs text-white md:block">
-          <div className="flex items-center gap-2 font-semibold">
-            <ShieldCheck className="h-4 w-4 text-blue-300" />
-            Field-ready workspace
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-300">
-            <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />GPS accurate</span>
-            <span className="flex items-center gap-1.5"><Cloud className="h-3.5 w-3.5" />Offline sync</span>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto py-5 flex flex-col gap-6">
+        <div className="flex-1 overflow-y-auto py-6 flex flex-col gap-6">
           {/* Main Nav */}
           <div className="px-4">
-            <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.18em] mb-3 px-2">Views</h3>
-            <nav className="space-y-1.5">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Views</h3>
+            <nav className="space-y-1">
               <Link
                 href="/"
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-                  location === "/" ? "bg-slate-950 text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                  location === "/" ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
                 )}
                 onClick={() => setSidebarOpen(false)}
               >
@@ -118,13 +100,24 @@ export function Layout({ children }: { children: ReactNode }) {
               <Link
                 href="/map"
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-                  location === "/map" ? "bg-slate-950 text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                  location === "/map" ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
                 )}
                 onClick={() => setSidebarOpen(false)}
               >
                 <Map className="w-4 h-4" />
                 Map View
+              </Link>
+              <Link
+                href="/design-mockups"
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                  location === "/design-mockups" ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                )}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <PanelsTopLeft className="w-4 h-4" />
+                Design Mockups
               </Link>
             </nav>
           </div>

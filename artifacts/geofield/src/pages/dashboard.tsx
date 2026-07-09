@@ -5,7 +5,7 @@ import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar, Radio, Cloud, ShieldCheck, Database } from "lucide-react";
+import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useSamplesMutations, useFoldersMutations } from "@/hooks/use-geofield";
 import { ExportDialog } from "@/components/ExportDialog";
@@ -122,90 +122,48 @@ export default function Dashboard() {
     deleteSample.mutate({ id: deleteId }, { onSuccess: () => setDeleteId(null) });
   };
 
-  const totalSamples = allSamples.length;
-  const mappedSamples = allSamples.filter((sample: any) => sample.fields?.location).length;
-  const pendingSamples = localSamples.length;
-  const datasetCount = allFolders.length;
-  const pageTitle = activeFolder ? activeFolder.name : "Field Samples";
-  const pageSubtitle = activeFolder?.description || "Field data that's accurate, organized, and always with you.";
-
   return (
     <Layout>
-      <div className="mb-8 overflow-hidden rounded-[28px] border border-slate-200 bg-card shadow-sm">
-        <div className="border-b border-border/70 bg-gradient-to-br from-white via-white to-blue-50/70 px-5 py-6 md:px-7 md:py-7">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="mb-3 flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                  <Radio className="h-3.5 w-3.5" /> GPS Accurate
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
-                  <Cloud className="h-3.5 w-3.5" /> Works Offline
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  <ShieldCheck className="h-3.5 w-3.5" /> Syncs Securely
-                </span>
-              </div>
-              <h1 className="flex items-center gap-3 text-3xl font-bold font-display md:text-4xl">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold font-display flex items-center gap-3">
             {activeFolder ? (
               <>
-                    <FolderOpen className="h-9 w-9 text-slate-950" />
-                    {pageTitle}
+                <FolderOpen className="text-primary w-8 h-8" />
+                {activeFolder.name}
               </>
-                ) : pageTitle}
-              </h1>
-              <p className="mt-2 max-w-2xl text-base text-muted-foreground">{pageSubtitle}</p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              {activeFolder && (
-                <Button variant="outline" className="border-destructive/20 text-destructive hover:bg-destructive/10" onClick={handleDeleteFolder}>
-                  Delete Dataset
-                </Button>
-              )}
-              {activeFolder && filteredSamples.length > 0 && (
-                <DatasetFigures samples={filteredSamples as any} datasetName={activeFolder.name} />
-              )}
-              <Button variant="secondary" className="rounded-full bg-white shadow-sm" onClick={() => setExportOpen(true)}>
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
-              <Button className="rounded-full bg-slate-950 px-5 text-white shadow-sm hover:bg-slate-800" onClick={() => setLocation("/sample/new")}>
-                <Plus className="w-4 h-4 mr-2" />
-                New Sample
-              </Button>
-            </div>
-          </div>
+            ) : "All Field Samples"}
+          </h1>
+          {activeFolder?.description && (
+            <p className="text-muted-foreground mt-2 max-w-2xl">{activeFolder.description}</p>
+          )}
         </div>
 
-        <div className="grid grid-cols-2 divide-x divide-y divide-border/70 md:grid-cols-4 md:divide-y-0">
-          {[
-            { label: "Samples", value: totalSamples, icon: Database },
-            { label: "Mapped", value: mappedSamples, icon: MapPin },
-            { label: "Datasets", value: datasetCount, icon: FolderOpen },
-            { label: "Pending Sync", value: pendingSamples, icon: Cloud },
-          ].map((stat) => {
-            const Icon = stat.icon;
-            return (
-              <div key={stat.label} className="flex items-center gap-3 px-5 py-4">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-slate-950 text-white">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold leading-none">{stat.value}</div>
-                  <div className="mt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{stat.label}</div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-3">
+          {activeFolder && (
+            <Button variant="outline" className="text-destructive border-destructive/20 hover:bg-destructive/10" onClick={handleDeleteFolder}>
+              Delete Dataset
+            </Button>
+          )}
+          {activeFolder && filteredSamples.length > 0 && (
+            <DatasetFigures samples={filteredSamples as any} datasetName={activeFolder.name} />
+          )}
+          <Button variant="secondary" onClick={() => setExportOpen(true)}>
+            <Download className="w-4 h-4 mr-2" />
+            Export Excel
+          </Button>
+          <Button onClick={() => setLocation("/sample/new")}>
+            <Plus className="w-4 h-4 mr-2" />
+            New Sample
+          </Button>
         </div>
       </div>
 
       <div className="mb-6 relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
         <Input
           placeholder="Search by ID, location, or notes..."
-          className="h-12 rounded-2xl border-border/80 bg-card pl-12 text-base shadow-sm"
+          className="pl-10 h-12 text-base rounded-xl shadow-sm border-border/50"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -216,8 +174,8 @@ export default function Dashboard() {
           {[1, 2, 3].map(i => <div key={i} className="h-48 bg-muted/50 rounded-xl animate-pulse" />)}
         </div>
       ) : filteredSamples.length === 0 ? (
-        <Card className="p-12 flex flex-col items-center justify-center text-center border-dashed bg-card/90 shadow-sm">
-          <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
+        <Card className="p-12 flex flex-col items-center justify-center text-center border-dashed">
+          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
             <Search className="w-8 h-8 text-muted-foreground" />
           </div>
           <h3 className="text-xl font-semibold">No samples found</h3>
@@ -229,7 +187,7 @@ export default function Dashboard() {
           )}
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredSamples.map((sample: any) => {
             const style = typeStyles[sample.sampleType as keyof typeof typeStyles] || typeStyles.rock;
             const folder = allFolders.find((f: any) => String(f.id) === String(sample.folderId));
@@ -238,8 +196,7 @@ export default function Dashboard() {
             const locationStr = sample.fields?.location as string;
 
             return (
-              <Card key={sample.id} className="group overflow-hidden border-border/80 bg-card shadow-sm hover:-translate-y-0.5 hover:shadow-xl hover:border-primary/30 transition-all duration-300 flex flex-col">
-                <div className="h-1.5 bg-slate-950" />
+              <Card key={sample.id} className="group hover:shadow-lg hover:border-primary/30 transition-all duration-300 flex flex-col">
                 <div className="p-5 flex-1 cursor-pointer" onClick={() => setLocation(`/sample/${sample.id}`)}>
                   <div className="flex justify-between items-start mb-4 gap-2">
                     <Badge variant={style.variant} className="capitalize text-sm px-3 py-1">
@@ -250,27 +207,27 @@ export default function Dashboard() {
                     </span>
                   </div>
 
-                  <div className="space-y-3 mt-5">
+                  <div className="space-y-3 mt-4">
                     <div className="flex items-center gap-2 text-sm text-foreground/80">
-                      <Calendar className="w-4 h-4 text-primary" />
+                      <Calendar className="w-4 h-4 text-muted-foreground" />
                       {date}
                     </div>
                     {locationStr && (
                       <div className="flex items-start gap-2 text-sm text-foreground/80">
-                        <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                        <MapPin className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
                         <span className="line-clamp-2">{locationStr}</span>
                       </div>
                     )}
                     {folder && !activeFolder && (
                       <div className="flex items-center gap-2 text-sm text-foreground/80">
-                        <FolderOpen className="w-4 h-4 text-primary" />
+                        <FolderOpen className="w-4 h-4 text-muted-foreground" />
                         <span className="truncate">{folder.name}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="border-t border-border/60 bg-slate-50/70 p-3 flex justify-end gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="border-t border-border/50 bg-muted/20 p-3 flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Button variant="ghost" size="sm" onClick={() => setLocation(`/sample/${sample.id}`)}>
                     <Edit2 className="w-4 h-4 mr-2" /> Edit
                   </Button>
