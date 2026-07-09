@@ -63,7 +63,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between p-4 border-b bg-card/95 backdrop-blur">
         <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+          <div className="grid h-9 w-9 place-items-center rounded-xl bg-slate-950 text-white shadow-sm">
             <Pickaxe className="w-5 h-5" />
           </div>
           <span>GeoField</span>
@@ -79,21 +79,21 @@ export function Layout({ children }: { children: ReactNode }) {
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
         <div className="p-6 hidden md:flex items-center gap-3 border-b border-border/70">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-950 text-white shadow-sm">
             <Pickaxe className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-primary font-display font-bold text-2xl leading-none">GeoField</div>
+            <div className="text-slate-950 font-display font-bold text-2xl leading-none">GeoField</div>
             <div className="mt-1 text-xs font-medium text-muted-foreground">Collect. Analyze. Understand.</div>
           </div>
         </div>
 
-        <div className="mx-4 mt-4 hidden rounded-2xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-xs text-blue-900 md:block">
+        <div className="mx-4 mt-4 hidden rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-xs text-white md:block">
           <div className="flex items-center gap-2 font-semibold">
-            <ShieldCheck className="h-4 w-4 text-blue-600" />
+            <ShieldCheck className="h-4 w-4 text-blue-300" />
             Field-ready workspace
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-blue-800">
+          <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-300">
             <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />GPS accurate</span>
             <span className="flex items-center gap-1.5"><Cloud className="h-3.5 w-3.5" />Offline sync</span>
           </div>
@@ -108,7 +108,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 href="/"
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-                  location === "/" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  location === "/" ? "bg-slate-950 text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
                 onClick={() => setSidebarOpen(false)}
               >
@@ -119,7 +119,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 href="/map"
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-                  location === "/map" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  location === "/map" ? "bg-slate-950 text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
                 onClick={() => setSidebarOpen(false)}
               >

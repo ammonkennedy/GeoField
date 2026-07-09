@@ -131,7 +131,7 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <div className="mb-8 overflow-hidden rounded-[28px] border border-border bg-card shadow-sm">
+      <div className="mb-8 overflow-hidden rounded-[28px] border border-slate-200 bg-card shadow-sm">
         <div className="border-b border-border/70 bg-gradient-to-br from-white via-white to-blue-50/70 px-5 py-6 md:px-7 md:py-7">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
@@ -149,7 +149,7 @@ export default function Dashboard() {
               <h1 className="flex items-center gap-3 text-3xl font-bold font-display md:text-4xl">
             {activeFolder ? (
               <>
-                    <FolderOpen className="h-9 w-9 text-primary" />
+                    <FolderOpen className="h-9 w-9 text-slate-950" />
                     {pageTitle}
               </>
                 ) : pageTitle}
@@ -170,7 +170,7 @@ export default function Dashboard() {
                 <Download className="w-4 h-4 mr-2" />
                 Export
               </Button>
-              <Button className="rounded-full px-5 shadow-sm" onClick={() => setLocation("/sample/new")}>
+              <Button className="rounded-full bg-slate-950 px-5 text-white shadow-sm hover:bg-slate-800" onClick={() => setLocation("/sample/new")}>
                 <Plus className="w-4 h-4 mr-2" />
                 New Sample
               </Button>
@@ -188,7 +188,7 @@ export default function Dashboard() {
             const Icon = stat.icon;
             return (
               <div key={stat.label} className="flex items-center gap-3 px-5 py-4">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-slate-950 text-white">
                   <Icon className="h-5 w-5" />
                 </div>
                 <div>
@@ -239,7 +239,7 @@ export default function Dashboard() {
 
             return (
               <Card key={sample.id} className="group overflow-hidden border-border/80 bg-card shadow-sm hover:-translate-y-0.5 hover:shadow-xl hover:border-primary/30 transition-all duration-300 flex flex-col">
-                <div className="h-1.5 bg-primary/80" />
+                <div className="h-1.5 bg-slate-950" />
                 <div className="p-5 flex-1 cursor-pointer" onClick={() => setLocation(`/sample/${sample.id}`)}>
                   <div className="flex justify-between items-start mb-4 gap-2">
                     <Badge variant={style.variant} className="capitalize text-sm px-3 py-1">

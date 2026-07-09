@@ -153,7 +153,7 @@ export const AirFields = ({ register }: any) => (
     </div>
     <div className="space-y-2"><Label>Target Compound / VOC</Label><Input {...register("fields.targetCompound")} placeholder="e.g. Benzene, total VOCs" /></div>
     <div className="space-y-2">
-      <Label>PID Lamp Energy</Label>
+      <Label>Lamp Energy</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.lampEnergy")}>
         <option value="">Select lamp...</option>
         <option value="9.8 eV">9.8 eV</option>
@@ -161,13 +161,7 @@ export const AirFields = ({ register }: any) => (
         <option value="11.7 eV">11.7 eV</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Correction Factor</Label><Input type="number" step="0.001" {...register("fields.correctionFactor")} placeholder="e.g. 1.000" /></div>
     <div className="space-y-2"><Label>Calibration Gas</Label><Input {...register("fields.calibrationGas")} placeholder="e.g. Isobutylene" /></div>
-    <div className="space-y-2"><Label>Calibration Concentration</Label><Input type="number" step="0.001" {...register("fields.calibrationConcentration")} placeholder="e.g. 100" /></div>
-    <div className="space-y-2"><Label>Calibration Units</Label><Input {...register("fields.calibrationUnits")} placeholder="e.g. ppm" /></div>
-    <div className="space-y-2"><Label>Instrument Model</Label><Input {...register("fields.instrumentModel")} placeholder="e.g. MiniRAE 3000" /></div>
-    <div className="space-y-2"><Label>Instrument Serial #</Label><Input {...register("fields.instrumentSerial")} /></div>
-    <div className="space-y-2"><Label>Alarm Level</Label><Input type="number" step="0.001" {...register("fields.alarmLevel")} /></div>
     <div className="space-y-2">
       <Label>Alarm Status</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.alarmStatus")}>
@@ -189,13 +183,8 @@ export const AirFields = ({ register }: any) => (
         <option value="Breathing Zone">Breathing Zone</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Sample Duration (s)</Label><Input type="number" step="1" {...register("fields.sampleDuration")} /></div>
-    <div className="space-y-2"><Label>Flow Rate (L/min)</Label><Input type="number" step="0.01" {...register("fields.airFlowRate")} /></div>
     <div className="space-y-2"><Label>Ambient Temp (°C)</Label><Input type="number" step="0.1" {...register("fields.ambientTemperature")} /></div>
     <div className="space-y-2"><Label>Relative Humidity (%)</Label><Input type="number" step="0.1" min="0" max="100" {...register("fields.relativeHumidity")} /></div>
-    <div className="space-y-2"><Label>Barometric Pressure</Label><Input type="number" step="0.1" {...register("fields.barometricPressure")} placeholder="e.g. 101.3 kPa" /></div>
-    <div className="space-y-2"><Label>Wind Direction</Label><Input {...register("fields.windDirection")} placeholder="e.g. NW" /></div>
-    <div className="space-y-2"><Label>Wind Speed</Label><Input type="number" step="0.1" {...register("fields.windSpeed")} placeholder="e.g. m/s or mph" /></div>
     <div className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, solvent, petroleum" /></div>
   </div>
 );
