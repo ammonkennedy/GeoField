@@ -10,7 +10,6 @@ import SampleEntry from "@/pages/sample-entry";
 import MapViewPage from "@/pages/map-view";
 import TripPlannerPage from "@/pages/trip-planner";
 import StrikeDipPage from "@/pages/strike-dip";
-import DesignMockupsPage from "@/pages/design-mockups";
 import SubscriptionPage from "@/pages/subscription";
 import NotFound from "@/pages/not-found";
 
@@ -48,9 +47,6 @@ function Router() {
       </Route>
       <Route path="/strike-dip">
         <ProtectedRoute component={StrikeDipPage} />
-      </Route>
-      <Route path="/design-mockups">
-        <ProtectedRoute component={DesignMockupsPage} />
       </Route>
       <Route path="/sample/:id">
         <ProtectedRoute component={SampleEntry} />
