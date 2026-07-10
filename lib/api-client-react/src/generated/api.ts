@@ -1,7 +1,18 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { QueryKey, UseMutationOptions, UseQueryOptions, UseQueryResult } from "@tanstack/react-query";
 import { Amplify } from "aws-amplify";
-import { confirmSignUp, fetchAuthSession, fetchUserAttributes, getCurrentUser, signIn, signOut, signUp } from "aws-amplify/auth";
+import {
+  confirmSignUp,
+  confirmUserAttribute,
+  fetchAuthSession,
+  fetchUserAttributes,
+  getCurrentUser,
+  signIn,
+  signOut,
+  signUp,
+  updatePassword,
+  updateUserAttribute,
+} from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
 import outputs from "../../../../amplify_outputs.json";
 import type {
@@ -177,6 +188,29 @@ export async function confirmSignUpUser(input: { email: string; code: string }) 
 }
 export async function signOutUser() {
   await signOut();
+}
+
+export async function updateAccountEmail(input: { email: string }) {
+  return updateUserAttribute({
+    userAttribute: {
+      attributeKey: "email",
+      value: input.email.trim(),
+    },
+  });
+}
+
+export async function confirmAccountEmail(input: { code: string }) {
+  return confirmUserAttribute({
+    userAttributeKey: "email",
+    confirmationCode: input.code.trim(),
+  });
+}
+
+export async function updateAccountPassword(input: { currentPassword: string; newPassword: string }) {
+  return updatePassword({
+    oldPassword: input.currentPassword,
+    newPassword: input.newPassword,
+  });
 }
 
 export async function getCurrentAccountToken(): Promise<string> {
