@@ -1,9 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Download, ChevronUp, ChevronDown, GripVertical, RotateCcw, Plus, Trash2, ArrowLeftRight } from "lucide-react";
+import { Download, GripVertical, RotateCcw, Plus, Trash2, ArrowLeftRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type ExportColumn, type ExportFormatConfig, type ExportCustomRow,
@@ -35,6 +35,8 @@ export function ExportCustomizerDialog({
   const [sheetName, setSheetName] = useState(initialConfig.sheetName);
   const [orientation, setOrientation] = useState<ExportFormatConfig["orientation"]>(initialConfig.orientation || "normal");
   const [customRows, setCustomRows] = useState<ExportCustomRow[]>(initialConfig.customRows || []);
+  const dragIndexRef = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const handleOpenChange = (v: boolean) => {
     if (v) {
@@ -46,22 +48,35 @@ export function ExportCustomizerDialog({
     onOpenChange(v);
   };
 
-  const moveUp = (i: number) => {
-    if (i === 0) return;
+  const moveColumn = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return;
     setColumns((prev) => {
+      if (from >= prev.length || to >= prev.length) return prev;
       const next = [...prev];
-      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
       return next;
     });
   };
 
-  const moveDown = (i: number) => {
-    setColumns((prev) => {
-      if (i >= prev.length - 1) return prev;
-      const next = [...prev];
-      [next[i], next[i + 1]] = [next[i + 1], next[i]];
-      return next;
-    });
+  const startColumnDrag = (event: React.DragEvent, index: number) => {
+    dragIndexRef.current = index;
+    setDragOverIndex(index);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", columns[index]?.key ?? String(index));
+  };
+
+  const enterColumnDrag = (index: number) => {
+    const from = dragIndexRef.current;
+    if (from === null || from === index) return;
+    moveColumn(from, index);
+    dragIndexRef.current = index;
+    setDragOverIndex(index);
+  };
+
+  const endColumnDrag = () => {
+    dragIndexRef.current = null;
+    setDragOverIndex(null);
   };
 
   const toggleCol = (i: number) =>
@@ -239,14 +254,34 @@ export function ExportCustomizerDialog({
               {columns.map((col, i) => (
                 <div
                   key={col.key}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                  }}
+                  onDragEnter={() => enterColumnDrag(i)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    endColumnDrag();
+                  }}
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-xl border transition-all",
                     col.enabled
                       ? "bg-card border-border"
-                      : "bg-muted/40 border-dashed border-border/50 opacity-60"
+                      : "bg-muted/40 border-dashed border-border/50 opacity-60",
+                    dragOverIndex === i && "ring-2 ring-primary/30 border-primary/40"
                   )}
                 >
-                  <GripVertical className="w-4 h-4 text-muted-foreground/30 shrink-0" />
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={(e) => startColumnDrag(e, i)}
+                    onDragEnd={endColumnDrag}
+                    className="cursor-grab active:cursor-grabbing rounded p-1 text-muted-foreground/50 hover:bg-muted hover:text-foreground transition-colors shrink-0"
+                    title="Drag to reorder column"
+                    aria-label={`Drag ${col.label} column to reorder`}
+                  >
+                    <GripVertical className="w-4 h-4" />
+                  </button>
 
                   {/* Checkbox */}
                   <button
@@ -275,25 +310,9 @@ export function ExportCustomizerDialog({
                     placeholder="Column header…"
                   />
 
-                  {/* Up / Down */}
-                  <div className="flex gap-0.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => moveUp(i)}
-                      disabled={i === 0}
-                      className="p-1 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <ChevronUp className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveDown(i)}
-                      disabled={i === columns.length - 1}
-                      className="p-1 rounded hover:bg-muted disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <ChevronDown className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums w-5 text-right">
+                    {i + 1}
+                  </span>
                 </div>
               ))}
             </div>
