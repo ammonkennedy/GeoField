@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import {
   MapPin, Plus, Trash2, Save, Map, X, Navigation, Edit3, Bookmark,
-  Layers, Satellite, Mountain,
+  Layers, Satellite, Mountain, Search, Loader2,
 } from "lucide-react";
 import { loadCustomLayers, safeAddCustomLayer, safeRemoveCustomLayer, deleteCustomLayer, type CustomMapLayer } from "@/lib/custom-layers";
 import { Layout } from "@/components/Layout";
@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { createTripDataset, deleteLocalDataset, updateLocalDataset } from "@/lib/local-datasets";
 import { getQueue, setQueue, type QueuedSample } from "@/lib/offline-queue";
+import { geocodeAddress } from "@/lib/geocoding";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -205,6 +206,9 @@ export default function TripPlannerPage() {
   const [pendingSiteName, setPendingSiteName] = useState("");
   const [pendingSiteDesc, setPendingSiteDesc] = useState("");
   const [pendingSampleType, setPendingSampleType] = useState<PlannedSite["sampleType"]>("rock");
+  const [addressSearch, setAddressSearch] = useState("");
+  const [addressLookupLoading, setAddressLookupLoading] = useState(false);
+  const [addressLookupError, setAddressLookupError] = useState("");
 
   // Keep refs in sync
   useEffect(() => { overlayLayerRef.current = overlayLayer; setGeoInfo(null); }, [overlayLayer]);
@@ -596,6 +600,33 @@ export default function TripPlannerPage() {
     setPendingSiteDesc("");
   };
 
+  const handleAddressSearch = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    const query = addressSearch.trim();
+    if (!query || !mapInstanceRef.current) return;
+
+    setAddressLookupLoading(true);
+    setAddressLookupError("");
+    try {
+      const result = await geocodeAddress(query);
+      if (!result) {
+        setAddressLookupError("Address not found.");
+        return;
+      }
+      mapInstanceRef.current.flyTo({
+        center: [result.lng, result.lat],
+        zoom: 16,
+        pitch: terrain ? 45 : 0,
+        essential: true,
+      });
+      setAddressSearch("");
+    } catch {
+      setAddressLookupError("Address lookup failed.");
+    } finally {
+      setAddressLookupLoading(false);
+    }
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
   if (!activeTrip && tripId !== "new") {
     return (
@@ -769,6 +800,29 @@ export default function TripPlannerPage() {
                   </button>
                 ))}
               </div>
+
+              <form className="relative flex-1 min-w-[220px] max-w-sm" onSubmit={handleAddressSearch}>
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={addressSearch}
+                  onChange={(e) => { setAddressSearch(e.target.value); setAddressLookupError(""); }}
+                  placeholder="Search street address..."
+                  className="h-9 pl-8 pr-9 bg-card"
+                />
+                <button
+                  type="submit"
+                  disabled={addressLookupLoading || !addressSearch.trim()}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  title="Go to address"
+                >
+                  {addressLookupLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+                </button>
+                {addressLookupError && (
+                  <div className="absolute left-0 top-10 z-30 w-full rounded-lg border border-destructive/20 bg-card px-3 py-2 text-xs text-destructive shadow-lg">
+                    {addressLookupError}
+                  </div>
+                )}
+              </form>
 
               {/* 3D Terrain toggle */}
               <button

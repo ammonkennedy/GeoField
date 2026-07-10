@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
-import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search } from "lucide-react";
+import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loadCustomLayers, addCustomLayer, deleteCustomLayer, safeAddCustomLayer, safeRemoveCustomLayer, type CustomMapLayer } from "@/lib/custom-layers";
 import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { geocodeAddress } from "@/lib/geocoding";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -156,6 +157,8 @@ export default function MapViewPage() {
   const [queuedSamples, setQueuedSamples] = useState(getQueue);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const [sampleSearch, setSampleSearch] = useState("");
+  const [addressLookupLoading, setAddressLookupLoading] = useState(false);
+  const [addressLookupError, setAddressLookupError] = useState("");
   const [layerModalOpen, setLayerModalOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerColor, setNewLayerColor] = useState("#e63946");
@@ -480,6 +483,7 @@ export default function MapViewPage() {
   function focusSample(coords: [number, number]) {
     setSelectedFolderId("all");
     setSampleSearch("");
+    setAddressLookupError("");
     if (!mapRef.current) return;
     mapRef.current.flyTo({
       center: [coords[1], coords[0]],
@@ -487,6 +491,42 @@ export default function MapViewPage() {
       pitch: terrain ? 45 : 0,
       essential: true,
     });
+  }
+
+  async function handleMapSearch(event?: React.FormEvent) {
+    event?.preventDefault();
+    const query = sampleSearch.trim();
+    if (!query || !mapRef.current) return;
+
+    const exactSample = searchableSamples.find(({ sample }) =>
+      String(sample.sampleId || "").toLowerCase() === query.toLowerCase()
+    );
+    if (exactSample?.coords) {
+      focusSample(exactSample.coords);
+      return;
+    }
+
+    setAddressLookupLoading(true);
+    setAddressLookupError("");
+    try {
+      const result = await geocodeAddress(query);
+      if (!result) {
+        setAddressLookupError("Address not found.");
+        return;
+      }
+      setSelectedFolderId("all");
+      setSampleSearch("");
+      mapRef.current.flyTo({
+        center: [result.lng, result.lat],
+        zoom: 16,
+        pitch: terrain ? 45 : 0,
+        essential: true,
+      });
+    } catch {
+      setAddressLookupError("Address lookup failed.");
+    } finally {
+      setAddressLookupLoading(false);
+    }
   }
 
   return (
@@ -506,14 +546,22 @@ export default function MapViewPage() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative">
+            <form className="relative" onSubmit={handleMapSearch}>
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <Input
                 value={sampleSearch}
-                onChange={(e) => setSampleSearch(e.target.value)}
-                placeholder="Find sample ID..."
-                className="h-9 pl-8 w-full sm:w-56 bg-card"
+                onChange={(e) => { setSampleSearch(e.target.value); setAddressLookupError(""); }}
+                placeholder="Find sample or address..."
+                className="h-9 pl-8 pr-9 w-full sm:w-64 bg-card"
               />
+              <button
+                type="submit"
+                disabled={addressLookupLoading || !sampleSearch.trim()}
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                title="Search map"
+              >
+                {addressLookupLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+              </button>
               {searchMatches.length > 0 && (
                 <div className="absolute right-0 top-10 z-30 w-full sm:w-72 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
                   {searchMatches.map(({ sample, coords }) => (
@@ -532,7 +580,12 @@ export default function MapViewPage() {
                   ))}
                 </div>
               )}
-            </div>
+              {addressLookupError && (
+                <div className="absolute right-0 top-10 z-30 w-full sm:w-72 rounded-lg border border-destructive/20 bg-card px-3 py-2 text-xs text-destructive shadow-lg">
+                  {addressLookupError}
+                </div>
+              )}
+            </form>
             <div className="relative">
               <select
                 className="flex items-center pl-8 pr-4 h-9 rounded-lg border border-border bg-card text-sm font-medium shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none w-full sm:w-auto"
