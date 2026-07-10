@@ -60,6 +60,11 @@ function deriveDipDir(strikeStr: string): string {
   return dirs[Math.round(((n + 90) % 360) / 22.5) % 16];
 }
 
+function toLocalDateTimeInputValue(date = new Date()): string {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
 function blankMeasurement(datasetId?: number | string | null): StrikeDipMeasurement {
   return {
     id: crypto.randomUUID(),
@@ -68,7 +73,7 @@ function blankMeasurement(datasetId?: number | string | null): StrikeDipMeasurem
     dip: "",
     dipDir: "",
     location: "",
-    date: new Date().toISOString().slice(0, 10),
+    date: toLocalDateTimeInputValue(),
     featureType: "",
     rockLayerType: "",
     datasetId: datasetId ?? null,
@@ -102,6 +107,21 @@ function formatNumber(value: number | undefined, fractionDigits = 0): string {
   if (typeof value !== "number" || Number.isNaN(value)) return "";
   return value.toLocaleString(undefined, { maximumFractionDigits: fractionDigits });
 }
+
+const ROCK_LAYER_OPTIONS = [
+  "Sandstone bed",
+  "Siltstone bed",
+  "Shale layer",
+  "Limestone bed",
+  "Dolostone bed",
+  "Conglomerate bed",
+  "Basalt flow",
+  "Intrusive contact",
+  "Metamorphic foliation layer",
+  "Ore / mineralized zone",
+  "Soil / regolith layer",
+  "Other layer",
+];
 
 /* ── Row component ──────────────────────────────────────────────────────── */
 function MeasurementRow({
@@ -255,25 +275,24 @@ function MeasurementRow({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Rock / Layer Type</Label>
-              <select
-                className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
-                value={measurement.rockLayerType ?? ""}
-                onChange={(e) => upd("rockLayerType", e.target.value)}
-              >
-                <option value="">Select...</option>
-                <option>Sandstone bed</option>
-                <option>Siltstone bed</option>
-                <option>Shale layer</option>
-                <option>Limestone bed</option>
-                <option>Dolostone bed</option>
-                <option>Conglomerate bed</option>
-                <option>Basalt flow</option>
-                <option>Intrusive contact</option>
-                <option>Metamorphic foliation layer</option>
-                <option>Ore / mineralized zone</option>
-                <option>Soil / regolith layer</option>
-                <option>Other layer</option>
-              </select>
+              <div className="grid gap-1.5">
+                <select
+                  className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
+                  value={ROCK_LAYER_OPTIONS.includes(measurement.rockLayerType ?? "") ? measurement.rockLayerType : ""}
+                  onChange={(e) => upd("rockLayerType", e.target.value)}
+                >
+                  <option value="">Select preset...</option>
+                  {ROCK_LAYER_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+                <Input
+                  value={measurement.rockLayerType ?? ""}
+                  onChange={(e) => upd("rockLayerType", e.target.value)}
+                  placeholder="Or type your own rock/layer type"
+                  className="h-8 text-sm"
+                />
+              </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Dataset</Label>
@@ -295,8 +314,8 @@ function MeasurementRow({
               <Input value={measurement.location} onChange={(e) => upd("location", e.target.value)} placeholder="e.g. GPS or site name" className="h-8 text-sm" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Date</Label>
-              <Input type="date" value={measurement.date} onChange={(e) => upd("date", e.target.value)} className="h-8 text-sm" />
+              <Label className="text-xs">Date &amp; Time</Label>
+              <Input type="datetime-local" value={measurement.date} onChange={(e) => upd("date", e.target.value)} className="h-8 text-sm" />
             </div>
             {(hasGps || hasUtm) && (
               <div className="col-span-2 sm:col-span-3 rounded-xl border bg-card p-3 text-xs space-y-2">

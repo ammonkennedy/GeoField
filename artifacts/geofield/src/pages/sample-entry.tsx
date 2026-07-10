@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { enqueue, getQueue, updateQueuedSample } from "@/lib/offline-queue";
 import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-import { BaseFields, WaterFields, RockFields, SoilFields, AirFields, OtherFields } from "@/components/fields/SchemaForms";
+import { BaseFields, WaterFields, RockFields, SoilFields, AirFields } from "@/components/fields/SchemaForms";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
@@ -509,12 +509,16 @@ export default function SampleEntry() {
               {(() => { const coords = parseCoordsUTM(locationValue); if (!coords) return null; const utm = latLngToUTM(coords[0], coords[1]); return <div className="flex items-start gap-2.5 bg-muted/40 border border-border rounded-lg px-3.5 py-2.5 text-sm"><MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" /><div><p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">UTM Coordinates (WGS84)</p><p className="font-mono text-sm text-foreground">{utm.display}</p><p className="text-xs text-muted-foreground mt-0.5">Zone {utm.zone}{utm.letter} · {utm.hemisphere === "N" ? "Northern" : "Southern"} Hemisphere</p></div></div>; })()}
             </div>
 
-            <div className="h-px bg-border/60 w-full" />
+            {currentType !== "other" && (
+              <>
+                <div className="h-px bg-border/60 w-full" />
 
-            <div className="space-y-4">
-              <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>Parameters</h3>
-              <AnimatePresence mode="wait"><motion.div key={currentType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>{currentType === "water" && <WaterFields register={register} />}{currentType === "rock" && <RockFields register={register} />}{currentType === "soil_sand" && <SoilFields register={register} />}{currentType === "air" && <AirFields register={register} />}{currentType === "other" && <OtherFields register={register} />}</motion.div></AnimatePresence>
-            </div>
+                <div className="space-y-4">
+                  <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>Parameters</h3>
+                  <AnimatePresence mode="wait"><motion.div key={currentType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>{currentType === "water" && <WaterFields register={register} />}{currentType === "rock" && <RockFields register={register} />}{currentType === "soil_sand" && <SoilFields register={register} />}{currentType === "air" && <AirFields register={register} />}</motion.div></AnimatePresence>
+                </div>
+              </>
+            )}
 
             <div className="h-px bg-border/60 w-full" />
 

@@ -67,17 +67,11 @@ const AIR_FIELDS = [
   { key: "odor", label: "Odor", placeholder: "None, solvent, petroleum", keyboardType: "default" as const },
 ];
 
-const OTHER_FIELDS = [
-  { key: "material", label: "Material", placeholder: "e.g. Core, sediment, fossil", keyboardType: "default" as const },
-  { key: "description", label: "Description", placeholder: "Key field observations", keyboardType: "default" as const },
-  { key: "purpose", label: "Collection Purpose", placeholder: "e.g. assay, reference, QA/QC", keyboardType: "default" as const },
-];
-
 function getFields(type: SampleType) {
   if (type === "water") return WATER_FIELDS;
   if (type === "rock") return ROCK_FIELDS;
   if (type === "air") return AIR_FIELDS;
-  if (type === "other") return OTHER_FIELDS;
+  if (type === "other") return [];
   return SOIL_FIELDS;
 }
 

@@ -25,6 +25,11 @@ function mod360(n: number) {
   return ((n % 360) + 360) % 360;
 }
 
+function localDateTimeValue(date = new Date()) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
 function bearing(deg: number) {
   const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
   return dirs[Math.round(mod360(deg) / 22.5) % 16];
@@ -222,7 +227,7 @@ export default function CompassTab() {
       dipDir,
       featureType: "Bedding",
       location: "",
-      date: new Date().toISOString().slice(0, 10),
+      date: localDateTimeValue(),
       notes: "",
     });
     setLocked(false);

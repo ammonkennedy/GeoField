@@ -129,7 +129,7 @@ export const STRIKE_DIP_COLUMNS: ExportColumn[] = [
   { key: "utmEasting",  label: "UTM Easting (mE)", enabled: true,  defaultWidth: 16 },
   { key: "utmNorthing", label: "UTM Northing (mN)",enabled: true,  defaultWidth: 18 },
   { key: "gpsAccuracy", label: "GPS Accuracy (m)", enabled: false, defaultWidth: 16 },
-  { key: "date",        label: "Date",             enabled: true,  defaultWidth: 12 },
+  { key: "date",        label: "Date & Time",      enabled: true,  defaultWidth: 18 },
   { key: "notes",       label: "Notes",            enabled: true,  defaultWidth: 40 },
 ];
 

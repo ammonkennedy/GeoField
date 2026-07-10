@@ -188,26 +188,3 @@ export const AirFields = ({ register }: any) => (
     <div className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, solvent, petroleum" /></div>
   </div>
 );
-
-export const OtherFields = ({ register }: any) => (
-  <div className="space-y-6">
-    <div className="space-y-2">
-      <Label>Sample Type Title</Label>
-      <Input {...register("fields.otherSampleTitle")} placeholder="e.g. Concrete, Vegetation, Sludge, Unknown material" />
-    </div>
-    <div className="grid grid-cols-1 gap-3">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-3 items-end">
-          <div className="space-y-2">
-            <Label>{`Parameter ${i + 1}`}</Label>
-            <Input {...register(`fields.otherParam${i + 1}Label`)} placeholder="Parameter name" />
-          </div>
-          <div className="space-y-2">
-            <Label>Value</Label>
-            <Input {...register(`fields.otherParam${i + 1}Value`)} placeholder="Value / notes" />
-          </div>
-        </div>
-      ))}
-    </div>
-  </div>
-);
