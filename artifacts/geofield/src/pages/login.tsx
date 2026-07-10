@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Pickaxe, Compass, Map } from "lucide-react";
+import { Compass, Map } from "lucide-react";
+import { GeoFieldLogo } from "@/components/GeoFieldLogo";
 
 export default function Login() {
   const { data, isLoading, refetch } = useGetCurrentAuthUser();
@@ -69,9 +70,7 @@ export default function Login() {
 
       <Card className="relative z-10 w-full max-w-md p-8 md:p-10 shadow-2xl border-primary/10 bg-card/80 backdrop-blur-xl m-4">
         <div className="flex flex-col items-center text-center space-y-6">
-          <div className="w-20 h-20 bg-gradient-to-br from-primary to-accent rounded-2xl shadow-inner flex items-center justify-center text-white transform -rotate-6">
-            <Pickaxe className="w-10 h-10" />
-          </div>
+          <GeoFieldLogo className="h-20 w-20 shadow-xl" />
 
           <div className="space-y-2">
             <h1 className="text-4xl font-display font-bold text-foreground">GeoField</h1>

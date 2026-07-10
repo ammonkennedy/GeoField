@@ -1,0 +1,17 @@
+{
+  "name": "GeoField",
+  "short_name": "GeoField",
+  "description": "Professional geological field data collection.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2d7dd2",
+  "icons": [
+    {
+      "src": "geofield-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

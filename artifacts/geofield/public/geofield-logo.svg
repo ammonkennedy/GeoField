@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">GeoField logo</title>
+  <desc id="desc">Rounded icon with topographic lines, mountain peaks, green field layers, and a white river path.</desc>
+  <defs>
+    <linearGradient id="sky" x1="180" y1="80" x2="860" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ccbd2"/>
+      <stop offset="0.47" stop-color="#3f7f86"/>
+      <stop offset="1" stop-color="#132234"/>
+    </linearGradient>
+    <linearGradient id="hill-a" x1="111" y1="642" x2="950" y2="842" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#94ad55"/>
+      <stop offset="1" stop-color="#466b2f"/>
+    </linearGradient>
+    <linearGradient id="hill-b" x1="110" y1="760" x2="906" y2="940" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6f8f38"/>
+      <stop offset="1" stop-color="#263f20"/>
+    </linearGradient>
+    <linearGradient id="hill-c" x1="128" y1="826" x2="880" y2="962" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ca648"/>
+      <stop offset="1" stop-color="#395f29"/>
+    </linearGradient>
+    <clipPath id="tile">
+      <rect x="82" y="82" width="860" height="860" rx="188"/>
+    </clipPath>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="28" stdDeviation="28" flood-color="#07101d" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="224" fill="#ffffff"/>
+  <g clip-path="url(#tile)">
+    <rect x="82" y="82" width="860" height="860" fill="url(#sky)"/>
+
+    <g fill="none" stroke="#d8edf0" stroke-width="6" opacity="0.32">
+      <path d="M-34 192c108-45 191-40 248 16 55 54 29 122-38 132-82 13-155-41-120-96 29-46 99-41 126-6"/>
+      <path d="M50 146c118-41 211-22 269 55 44 58 19 124-48 143-86 25-189-11-197-82-5-49 41-91 103-88 58 3 100 37 126 89"/>
+      <path d="M386 83c-31 77-16 144 45 199 65 57 150 46 181-21 27-57-8-120-74-135-47-11-85 7-115 54"/>
+      <path d="M588 55c99 36 151 100 156 191 5 81-50 145-127 146-72 1-128-51-119-112 8-54 62-83 123-65"/>
+      <path d="M792 137c95 22 151 74 166 155 13 70-24 130-92 149-74 20-146-10-165-70-16-48 15-92 67-107"/>
+      <path d="M187 421c79-52 162-60 249-24 92 39 148 104 169 195"/>
+      <path d="M-20 442c78-39 157-37 237 8 54 31 115 44 184 39 92-8 164 20 215 83"/>
+      <path d="M696 482c51-44 111-63 180-57 53 5 103 25 150 61"/>
+    </g>
+
+    <g filter="url(#soft-shadow)">
+      <path d="M124 602c115-112 221-161 319-146 112 17 193 83 297 87 70 2 134-18 202-58v188H82v-54c14-2 28-8 42-17z" fill="#203245"/>
+      <path d="M192 590 344 405l54 81 95-178 134 215 61-78 164 174c-107 30-214 31-322 2-103-29-205-39-306-30-16 1-27 1-32-1z" fill="#18283a"/>
+      <path d="M216 593 345 452l49 69 95-177 71 122-50-19-68 141-69-73-42 94-63-66-52 50z" fill="#ffffff"/>
+      <path d="m526 507 98 65 68-77 112 119-116-57-62 62-100-112z" fill="#ffffff"/>
+      <path d="m344 452 50 69 95-177 71 122-49-19-69 141-69-73-29-63z" fill="#eef3f1"/>
+      <path d="M491 344 626 560l-32 20-68-73 98 65 68-77 112 119-164-98-38 30-111-202z" fill="#0f1d2d" opacity="0.5"/>
+    </g>
+
+    <path d="M82 656c117-46 220-71 309-76 104-6 178 26 265 30 112 5 196-43 286-106v174c-109 60-211 92-305 96-95 4-176-31-262-26-91 5-187 44-293 112V656z" fill="url(#hill-a)"/>
+    <path d="M82 733c115-50 226-74 333-72 120 2 205 47 314 38 78-7 148-37 213-77v154c-112 52-211 78-298 78-97 0-174-36-264-31-92 5-191 39-298 103V733z" fill="url(#hill-b)"/>
+    <path d="M82 827c114-68 226-100 336-96 129 5 226 58 350 39 62-10 120-32 174-66v238H82V827z" fill="url(#hill-c)"/>
+
+    <g opacity="0.28" fill="none" stroke="#2d4e22" stroke-width="10">
+      <path d="M109 737c82-39 161-58 237-57 103 0 185 35 279 33 91-1 185-29 283-83"/>
+      <path d="M105 829c89-49 176-74 262-74 93 0 178 32 256 37 84 5 177-15 279-60"/>
+      <path d="M110 900c105-61 209-88 312-80 106 8 199 45 289 41 59-3 122-17 188-43"/>
+    </g>
+
+    <path d="M521 662c-70 19-123 44-157 76-29 28-25 59 8 81 31 21 84 35 110 64 21 24 6 46-44 64h167c42-25 60-57 50-92-11-40-56-66-104-88-51-23-82-42-72-64 8-18 37-32 83-45l-41 4z" fill="#f7f7f1"/>
+    <path d="M544 658c-63 19-108 43-135 72-24 25-18 49 18 71 29 18 74 31 104 55 34 27 31 58-10 86h78c43-27 62-59 56-94-8-43-52-72-101-96-48-24-80-42-71-63 8-17 36-27 79-32l-18 1z" fill="#ffffff"/>
+  </g>
+  <rect x="82" y="82" width="860" height="860" rx="188" fill="none" stroke="rgba(255,255,255,0.62)" stroke-width="18"/>
+  <rect x="82" y="82" width="860" height="860" rx="188" fill="none" stroke="#0d1b2a" stroke-opacity="0.08" stroke-width="3"/>
+</svg>

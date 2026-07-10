@@ -4,11 +4,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, CreditCard, Cloud, ShieldCheck, Settings } from "lucide-react";
+import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, CreditCard, Cloud, ShieldCheck, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { GeoFieldLogo } from "@/components/GeoFieldLogo";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -63,9 +64,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Mobile Header */}
       <div className="md:hidden flex items-center justify-between p-4 border-b bg-card/95 backdrop-blur">
         <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-            <Pickaxe className="w-5 h-5" />
-          </div>
+          <GeoFieldLogo className="h-9 w-9 shadow-sm" />
           <span>GeoField</span>
         </div>
         <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setSidebarOpen(!sidebarOpen)}>
@@ -79,9 +78,7 @@ export function Layout({ children }: { children: ReactNode }) {
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
         <div className="p-6 hidden md:flex items-center gap-3 border-b border-border/70">
-          <div className="grid h-12 w-12 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-            <Pickaxe className="w-6 h-6" />
-          </div>
+          <GeoFieldLogo className="h-12 w-12 shadow-sm" />
           <div>
             <div className="text-primary font-display font-bold text-2xl leading-none">GeoField</div>
             <div className="mt-1 text-xs font-medium text-muted-foreground">Collect. Analyze. Understand.</div>
