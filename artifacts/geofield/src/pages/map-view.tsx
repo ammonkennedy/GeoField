@@ -5,7 +5,16 @@ import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mou
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { loadCustomLayers, addCustomLayer, deleteCustomLayer, safeAddCustomLayer, safeRemoveCustomLayer, type CustomMapLayer } from "@/lib/custom-layers";
+import {
+  loadCustomLayers,
+  addCustomLayer,
+  deleteCustomLayer,
+  safeAddCustomLayer,
+  safeRemoveCustomLayer,
+  parseCustomLayerFile,
+  SUPPORTED_LAYER_ACCEPT,
+  type CustomMapLayer,
+} from "@/lib/custom-layers";
 import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { geocodeAddress } from "@/lib/geocoding";
@@ -165,6 +174,7 @@ export default function MapViewPage() {
   const [newLayerGeoJson, setNewLayerGeoJson] = useState<string | null>(null);
   const [newLayerError, setNewLayerError] = useState("");
   const [newLayerFileName, setNewLayerFileName] = useState("");
+  const [newLayerFileSummary, setNewLayerFileSummary] = useState("");
 
   const { data: folders } = useGetFolders();
   const { data: serverSamples } = useGetSamples();
@@ -647,7 +657,7 @@ export default function MapViewPage() {
             className="gap-1.5"
             onClick={() => {
               setNewLayerName(""); setNewLayerColor("#e63946");
-              setNewLayerGeoJson(null); setNewLayerFileName(""); setNewLayerError("");
+              setNewLayerGeoJson(null); setNewLayerFileName(""); setNewLayerFileSummary(""); setNewLayerError("");
               setLayerModalOpen(true);
             }}
           >
@@ -749,30 +759,27 @@ export default function MapViewPage() {
         </div>
       </div>
 
-      {/* Hidden file input for GeoJSON upload */}
+      {/* Hidden file input for custom map layer upload */}
       <input
         ref={layerFileInputRef}
         type="file"
-        accept=".geojson,.json"
+        accept={SUPPORTED_LAYER_ACCEPT}
         className="hidden"
-        onChange={(e) => {
+        onChange={async (e) => {
           const file = e.target.files?.[0];
           if (!file) return;
           e.target.value = "";
           setNewLayerFileName(file.name);
-          const reader = new FileReader();
-          reader.onload = (ev) => {
-            try {
-              const text = ev.target?.result as string;
-              JSON.parse(text);
-              setNewLayerGeoJson(text);
-              setNewLayerError("");
-            } catch {
-              setNewLayerGeoJson(null);
-              setNewLayerError("Invalid GeoJSON — please check the file and try again.");
-            }
-          };
-          reader.readAsText(file);
+          setNewLayerFileSummary("");
+          try {
+            const parsed = await parseCustomLayerFile(file);
+            setNewLayerGeoJson(parsed.geojson);
+            setNewLayerFileSummary(`${parsed.kind} · ${parsed.featureCount} feature${parsed.featureCount === 1 ? "" : "s"}`);
+            setNewLayerError("");
+          } catch (error) {
+            setNewLayerGeoJson(null);
+            setNewLayerError(error instanceof Error ? error.message : "Invalid map layer file. Please check the file and try again.");
+          }
         }}
       />
 
@@ -790,7 +797,7 @@ export default function MapViewPage() {
               </button>
             </div>
             <p className="text-sm text-muted-foreground">
-              Upload a GeoJSON file to overlay on the map. The layer will also appear in trip planning. Photos are not included in the export.
+              Upload a GeoJSON, KML, GPX, CSV, or TSV file to overlay on the map. CSV files need latitude and longitude columns.
             </p>
 
             <div className="space-y-1">
@@ -826,18 +833,21 @@ export default function MapViewPage() {
             </div>
 
             <div className="space-y-1">
-              <Label className="text-xs">GeoJSON File</Label>
+              <Label className="text-xs">Map Layer File</Label>
               <button
                 type="button"
                 onClick={() => layerFileInputRef.current?.click()}
                 className="w-full flex flex-col items-center justify-center gap-2 py-6 border-2 border-dashed border-border rounded-xl hover:border-primary transition-colors text-muted-foreground hover:text-primary"
               >
                 {newLayerFileName ? (
-                  <p className="text-sm font-medium text-foreground">{newLayerFileName}</p>
+                  <>
+                    <p className="text-sm font-medium text-foreground">{newLayerFileName}</p>
+                    {newLayerFileSummary && <p className="text-xs text-muted-foreground">{newLayerFileSummary}</p>}
+                  </>
                 ) : (
                   <>
                     <Upload className="w-6 h-6" />
-                    <p className="text-sm">Click to upload .geojson or .json</p>
+                    <p className="text-sm">Click to upload .geojson, .kml, .gpx, .csv, or .tsv</p>
                   </>
                 )}
               </button>
@@ -862,6 +872,9 @@ export default function MapViewPage() {
                   };
                   addCustomLayer(layer);
                   setLayerModalOpen(false);
+                  setNewLayerGeoJson(null);
+                  setNewLayerFileName("");
+                  setNewLayerFileSummary("");
                 }}
               >
                 Add to Map
