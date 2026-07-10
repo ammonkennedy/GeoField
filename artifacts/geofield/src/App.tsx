@@ -10,7 +10,6 @@ import SampleEntry from "@/pages/sample-entry";
 import MapViewPage from "@/pages/map-view";
 import TripPlannerPage from "@/pages/trip-planner";
 import StrikeDipPage from "@/pages/strike-dip";
-import SubscriptionPage from "@/pages/subscription";
 import AccountSettingsPage from "@/pages/account-settings";
 import NotFound from "@/pages/not-found";
 
@@ -51,9 +50,6 @@ function Router() {
       </Route>
       <Route path="/sample/:id">
         <ProtectedRoute component={SampleEntry} />
-      </Route>
-      <Route path="/subscription">
-        <ProtectedRoute component={SubscriptionPage} />
       </Route>
       <Route path="/account">
         <ProtectedRoute component={AccountSettingsPage} />

@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import {
   MapPin, Plus, Trash2, Save, Map, X, Navigation, Edit3, Bookmark,
-  Layers, Satellite, Mountain, Search, Loader2,
+  Layers, Satellite, Mountain, Search, Loader2, Upload, Check,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { loadCustomLayers, safeAddCustomLayer, safeRemoveCustomLayer, deleteCustomLayer, type CustomMapLayer } from "@/lib/custom-layers";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -93,6 +94,7 @@ export function saveTrips(trips: Trip[]) {
 }
 
 const MAP_MODAL_HEIGHT = "90vh";
+const SITE_SPREADSHEET_ACCEPT = ".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv";
 
 function formatCoord(value: number) {
   return value.toFixed(7);
@@ -124,6 +126,46 @@ function plannedSiteSampleTypeLabel(site: PlannedSite) {
   if (sampleType === "soil_sand") return "Soil / Sediment";
   if (sampleType === "air") return "Air";
   return "Other";
+}
+
+function normalizeHeader(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function getRowValue(row: Record<string, any>, aliases: string[]) {
+  const normalizedAliases = aliases.map(normalizeHeader);
+  const found = Object.entries(row).find(([key]) => normalizedAliases.includes(normalizeHeader(key)));
+  const value = found?.[1];
+  return value === undefined || value === null ? "" : String(value).trim();
+}
+
+function parseNumber(value: string) {
+  if (!value) return NaN;
+  return Number(value.replace(/[^\d.-]/g, ""));
+}
+
+function normalizeSampleType(value: string): PlannedSite["sampleType"] {
+  const normalized = normalizeHeader(value);
+  if (normalized.includes("water")) return "water";
+  if (normalized.includes("soil") || normalized.includes("sediment") || normalized.includes("sand")) return "soil_sand";
+  if (normalized.includes("air") || normalized.includes("pid") || normalized.includes("voc")) return "air";
+  if (normalized.includes("other")) return "other";
+  return "rock";
+}
+
+function parseSiteRows(rows: Record<string, any>[]): Omit<PlannedSite, "id" | "addedAt">[] {
+  return rows.flatMap((row, index) => {
+    const lat = parseNumber(getRowValue(row, ["lat", "latitude", "y", "northing latitude"]));
+    const lng = parseNumber(getRowValue(row, ["lon", "lng", "long", "longitude", "x", "easting longitude"]));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return [];
+
+    const name =
+      getRowValue(row, ["site name", "site", "name", "sample id", "sampleid", "id", "location"]) ||
+      `Imported Site ${index + 1}`;
+    const description = getRowValue(row, ["description", "notes", "note", "field notes", "target", "comments"]);
+    const sampleType = normalizeSampleType(getRowValue(row, ["sample type", "sampletype", "type"]));
+    return [{ name, description, sampleType, lat, lng }];
+  });
 }
 
 // ── Initial map style (mirrors map-view.tsx) ──────────────────────────────────
@@ -198,6 +240,7 @@ export default function TripPlannerPage() {
   const overlayLayerRef  = useRef<OverlayLayer>("none");
   const pinModeRef       = useRef(false);
   const customLayersRef  = useRef<CustomMapLayer[]>(loadCustomLayers());
+  const spreadsheetInputRef = useRef<HTMLInputElement>(null);
 
   // Interaction state
   const [pinMode,         setPinMode]         = useState(false);
@@ -209,6 +252,9 @@ export default function TripPlannerPage() {
   const [addressSearch, setAddressSearch] = useState("");
   const [addressLookupLoading, setAddressLookupLoading] = useState(false);
   const [addressLookupError, setAddressLookupError] = useState("");
+  const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
+  const [siteImportError, setSiteImportError] = useState("");
+  const [siteImportNotice, setSiteImportNotice] = useState("");
 
   // Keep refs in sync
   useEffect(() => { overlayLayerRef.current = overlayLayer; setGeoInfo(null); }, [overlayLayer]);
@@ -374,11 +420,65 @@ export default function TripPlannerPage() {
     return newSite;
   };
 
+  const addSites = (sites: Omit<PlannedSite, "id" | "addedAt">[]) => {
+    if (!activeTrip || sites.length === 0) return [];
+    const { trip, datasetId } = ensureTripDataset(activeTrip);
+    const addedAt = new Date().toISOString();
+    const newSites = sites.map((site, index) => {
+      const siteIndex = trip.sites.length + index;
+      const newSiteBase: PlannedSite = {
+        ...site,
+        id: `site_${Date.now()}_${index}`,
+        addedAt,
+      };
+      return upsertPlannedSiteSample(trip, newSiteBase, datasetId, siteIndex);
+    });
+    const updatedTrip = { ...trip, sites: [...trip.sites, ...newSites], updatedAt: new Date().toISOString() };
+    const updated = trips.map((t) => t.id === updatedTrip.id ? updatedTrip : t);
+    saveTrips(updated);
+    setTrips(updated);
+    return newSites;
+  };
+
+  const updateSite = (siteId: string, changes: Partial<PlannedSite>) => {
+    if (!activeTrip) return;
+    updateTrip({
+      sites: activeTrip.sites.map((site) =>
+        site.id === siteId ? { ...site, ...changes } : site
+      ),
+    });
+  };
+
   const removeSite = (id: string) => {
     if (!activeTrip) return;
     const site = activeTrip.sites.find((s) => s.id === id);
     if (site) removePlannedSiteSample(site);
     updateTrip({ sites: activeTrip.sites.filter((s) => s.id !== id) });
+  };
+
+  const handleSpreadsheetImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = "";
+    setSiteImportError("");
+    setSiteImportNotice("");
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error("The spreadsheet does not contain any sheets.");
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+      const sites = parseSiteRows(rows);
+      if (sites.length === 0) {
+        throw new Error("No valid rows found. Include latitude and longitude columns.");
+      }
+      addSites(sites);
+      setSiteImportNotice(`Imported ${sites.length} planned site${sites.length !== 1 ? "s" : ""} from ${file.name}.`);
+      setTimeout(() => setSiteImportNotice(""), 5000);
+    } catch (error: any) {
+      setSiteImportError(error?.message || "Could not import the spreadsheet.");
+    }
   };
 
   // ── Map lifecycle: init when mapOpen=true, destroy when false ─────────────
@@ -562,6 +662,16 @@ export default function TripPlannerPage() {
     if (overlayLayer !== "none") safeAddOverlay(mapInstanceRef.current, overlayLayer);
   }, [overlayLayer]);
 
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapLoadedRef.current || !mapOpen) return;
+    mapMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
+    mapMarkersRef.current = [];
+    import("maplibre-gl").then((L) => {
+      if (!mapInstanceRef.current || !mapLoadedRef.current) return;
+      (activeTrip?.sites ?? []).forEach((site) => addSiteMarker(L, mapInstanceRef.current, site));
+    });
+  }, [activeTrip?.sites, mapOpen]);
+
   // ── Site marker helper ─────────────────────────────────────────────────────
   function addSiteMarker(L: any, map: any, site: { name: string; lat: number; lng: number; description?: string }) {
     const el = document.createElement("div");
@@ -583,18 +693,13 @@ export default function TripPlannerPage() {
 
   const handleConfirmSite = () => {
     if (!pendingCoords || !pendingSiteName.trim()) return;
-    const newSite = addSite({
+    addSite({
       name: pendingSiteName.trim(),
       description: pendingSiteDesc.trim(),
       sampleType: pendingSampleType,
       lat: pendingCoords[0],
       lng: pendingCoords[1],
     });
-    if (mapInstanceRef.current && newSite) {
-      import("maplibre-gl").then((L) => {
-        if (mapInstanceRef.current && newSite) addSiteMarker(L, mapInstanceRef.current, newSite);
-      });
-    }
     setPendingCoords(null);
     setPendingSiteName("");
     setPendingSiteDesc("");
@@ -645,6 +750,13 @@ export default function TripPlannerPage() {
 
   return (
     <Layout>
+      <input
+        ref={spreadsheetInputRef}
+        type="file"
+        accept={SITE_SPREADSHEET_ACCEPT}
+        className="hidden"
+        onChange={handleSpreadsheetImport}
+      />
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8 gap-4">
@@ -709,18 +821,36 @@ export default function TripPlannerPage() {
                 <span className="text-sm font-normal text-muted-foreground">({activeTrip?.sites.length})</span>
               )}
             </h2>
-            <Button onClick={() => setMapOpen(true)} className="gap-2">
-              <Map className="w-4 h-4" />
-              Add Sample Sites
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => spreadsheetInputRef.current?.click()} className="gap-2">
+                <Upload className="w-4 h-4" />
+                Import Excel
+              </Button>
+              <Button onClick={() => setMapOpen(true)} className="gap-2">
+                <Map className="w-4 h-4" />
+                Add Sample Sites
+              </Button>
+            </div>
           </div>
+
+          {siteImportNotice && (
+            <div className="flex items-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              <Check className="h-4 w-4" />
+              {siteImportNotice}
+            </div>
+          )}
+          {siteImportError && (
+            <div className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {siteImportError}
+            </div>
+          )}
 
           {(activeTrip?.sites.length ?? 0) === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-border rounded-2xl text-center">
               <MapPin className="w-10 h-10 text-muted-foreground mb-3" />
               <h3 className="font-semibold">No sites planned yet</h3>
               <p className="text-muted-foreground text-sm mt-1 max-w-xs">
-                Click "Add Sample Sites" to pin future collection spots on the map.
+                Click "Add Sample Sites" to pin future collection spots, or import an Excel spreadsheet with latitude and longitude columns.
               </p>
             </div>
           ) : (
@@ -731,22 +861,74 @@ export default function TripPlannerPage() {
                     {idx + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-semibold">{site.name}</p>
-                      <span className="text-xs rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                        {plannedSiteSampleTypeLabel(site)}
-                      </span>
-                    </div>
-                    {site.description && (
-                      <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{site.description}</p>
+                    {editingSiteId === site.id ? (
+                      <div className="grid gap-3">
+                        <div className="grid gap-3 md:grid-cols-[1fr_160px]">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Site Name</Label>
+                            <Input value={site.name} onChange={(e) => updateSite(site.id, { name: e.target.value })} className="h-9" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Sample Type</Label>
+                            <select
+                              className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm"
+                              value={site.sampleType ?? "other"}
+                              onChange={(e) => updateSite(site.id, { sampleType: e.target.value as PlannedSite["sampleType"] })}
+                            >
+                              <option value="rock">Rock</option>
+                              <option value="water">Water</option>
+                              <option value="soil_sand">Soil / Sediment</option>
+                              <option value="air">Air</option>
+                              <option value="other">Other</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Description</Label>
+                          <Textarea value={site.description} onChange={(e) => updateSite(site.id, { description: e.target.value })} className="min-h-16 text-sm" />
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Latitude</Label>
+                            <Input type="number" step="any" value={site.lat} onChange={(e) => updateSite(site.id, { lat: Number(e.target.value) })} className="h-9 font-mono" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Longitude</Label>
+                            <Input type="number" step="any" value={site.lng} onChange={(e) => updateSite(site.id, { lng: Number(e.target.value) })} className="h-9 font-mono" />
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" className="w-fit" onClick={() => setEditingSiteId(null)}>
+                          Done Editing
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold">{site.name}</p>
+                          <span className="text-xs rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                            {plannedSiteSampleTypeLabel(site)}
+                          </span>
+                        </div>
+                        {site.description && (
+                          <p className="text-sm text-muted-foreground mt-0.5 line-clamp-2">{site.description}</p>
+                        )}
+                        <p className="text-xs font-mono text-muted-foreground mt-1.5">
+                          📍 {formatCoord(site.lat)}, {formatCoord(site.lng)}
+                        </p>
+                      </>
                     )}
-                    <p className="text-xs font-mono text-muted-foreground mt-1.5">
-                      📍 {formatCoord(site.lat)}, {formatCoord(site.lng)}
-                    </p>
                   </div>
+                  <button
+                    onClick={() => setEditingSiteId(editingSiteId === site.id ? null : site.id)}
+                    className="text-muted-foreground hover:text-primary p-1 rounded transition-colors shrink-0"
+                    title="Edit site"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => removeSite(site.id)}
                     className="text-muted-foreground hover:text-destructive p-1 rounded transition-colors shrink-0"
+                    title="Remove site"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
