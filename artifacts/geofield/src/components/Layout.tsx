@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, CreditCard, Cloud, ShieldCheck } from "lucide-react";
+import { Pickaxe, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, CreditCard, Cloud, ShieldCheck, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
@@ -244,8 +244,22 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        {/* Billing link */}
-        <div className="px-4 pb-2">
+        {/* Account links */}
+        <div className="space-y-1 px-4 pb-2">
+          <Link
+            href="/account"
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 font-medium w-full",
+              location === "/account"
+                ? "bg-primary text-primary-foreground shadow-md"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+            onClick={() => setSidebarOpen(false)}
+          >
+            <Settings className="w-4 h-4 shrink-0" />
+            <span className="flex-1">Settings</span>
+            {location === "/account" && <ChevronRight className="w-4 h-4 shrink-0" />}
+          </Link>
           <Link
             href="/subscription"
             className={cn(
