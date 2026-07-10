@@ -17,41 +17,7 @@ import {
 } from "@/lib/export-config";
 import { format as fmtDate } from "date-fns";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-
-/* ── Types ─────────────────────────────────────────────────────────────── */
-export interface StrikeDipMeasurement {
-  id: string;
-  label: string;
-  strike: string;
-  dip: string;
-  dipDir: string;
-  location: string;
-  date: string;
-  featureType: string;
-  rockLayerType: string;
-  datasetId?: number | string | null;
-  notes: string;
-  photo?: string;
-  latitude?: number;
-  longitude?: number;
-  gpsAccuracy?: number;
-  utmEasting?: number;
-  utmNorthing?: number;
-  utmZone?: string;
-}
-
-/* ── localStorage ───────────────────────────────────────────────────────── */
-const KEY = "geofield_strike_dip";
-
-export function loadMeasurements(): StrikeDipMeasurement[] {
-  try { return JSON.parse(localStorage.getItem(KEY) || "[]"); }
-  catch { return []; }
-}
-
-function saveMeasurements(items: StrikeDipMeasurement[]) {
-  localStorage.setItem(KEY, JSON.stringify(items));
-  window.dispatchEvent(new Event("strike-dip-updated"));
-}
+import { loadMeasurements, saveMeasurements, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
 function deriveDipDir(strikeStr: string): string {
   const n = parseFloat(strikeStr);

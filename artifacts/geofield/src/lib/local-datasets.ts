@@ -1,4 +1,5 @@
 import { getQueue, setQueue } from "@/lib/offline-queue";
+import { reassignMeasurementsDataset } from "@/lib/strike-dip-measurements";
 
 export interface LocalDataset {
   id: number;
@@ -72,6 +73,7 @@ export function markLocalDatasetSynced(id: number | string, cloudId: string) {
         : item
     )
   );
+  reassignMeasurementsDataset(id, cloudId);
 }
 
 export function createLocalDataset(input: { name: string; description?: string }): LocalDataset {
@@ -117,7 +119,7 @@ export function updateLocalDataset(id: number, input: { name: string; descriptio
 export function deleteLocalDataset(id: number | string) {
   saveLocalDatasets(getLocalDatasets().filter((dataset) => String(dataset.id) !== String(id)));
 
-  // Keep samples instead of deleting them: move samples from the deleted local dataset to Uncategorized.
+  // Keep samples and measurements instead of deleting them: move them to Uncategorized.
   setQueue(
     getQueue().map((item) =>
       String(item.payload.folderId) === String(id)
@@ -125,4 +127,5 @@ export function deleteLocalDataset(id: number | string) {
         : item
     )
   );
+  reassignMeasurementsDataset(id, null);
 }

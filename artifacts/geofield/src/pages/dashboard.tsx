@@ -5,7 +5,7 @@ import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar, Radio, Cloud, ShieldCheck, Database } from "lucide-react";
+import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar, Radio, Cloud, ShieldCheck, Database, Compass } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useSamplesMutations, useFoldersMutations } from "@/hooks/use-geofield";
 import { ExportDialog } from "@/components/ExportDialog";
@@ -13,6 +13,7 @@ import { DatasetFigures } from "@/components/DatasetFigures";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { loadMeasurements, reassignMeasurementsDataset, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
 const typeStyles = {
   water: { label: "Water", variant: "water" as const },
@@ -50,6 +51,7 @@ export default function Dashboard() {
   const [exportOpen, setExportOpen] = useState(false);
   const [queuedSamples, setQueuedSamples] = useState(getQueue);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
+  const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
 
   const { deleteSample } = useSamplesMutations();
   const { deleteFolder } = useFoldersMutations();
@@ -71,6 +73,16 @@ export default function Dashboard() {
     return () => {
       window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
       window.removeEventListener("storage", refreshDatasets);
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshMeasurements = () => setMeasurements(loadMeasurements());
+    window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refreshMeasurements);
+    window.addEventListener("storage", refreshMeasurements);
+    return () => {
+      window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refreshMeasurements);
+      window.removeEventListener("storage", refreshMeasurements);
     };
   }, []);
 
@@ -97,6 +109,12 @@ export default function Dashboard() {
     String(s.notes || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(s.fields?.location || "").toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
+  const datasetMeasurements = activeFolderId
+    ? measurements.filter((measurement) => String(measurement.datasetId ?? "") === String(activeFolderId))
+    : measurements;
+  const newSamplePath = activeFolderId
+    ? `/sample/new?folderId=${encodeURIComponent(String(activeFolderId))}`
+    : "/sample/new";
 
   const handleDeleteFolder = () => {
     if (!activeFolder || !confirm("Are you sure you want to delete this dataset? Samples will become uncategorized.")) return;
@@ -108,7 +126,10 @@ export default function Dashboard() {
     }
 
     deleteFolder.mutate({ id: activeFolder.id }, {
-      onSuccess: () => setLocation("/")
+      onSuccess: () => {
+        reassignMeasurementsDataset(activeFolder.id, null);
+        setLocation("/");
+      }
     });
   };
 
@@ -123,6 +144,7 @@ export default function Dashboard() {
   };
 
   const totalSamples = allSamples.length;
+  const totalMeasurements = datasetMeasurements.length;
   const mappedSamples = allSamples.filter((sample: any) => sample.fields?.location).length;
   const pendingSamples = localSamples.length;
   const datasetCount = allFolders.length;
@@ -170,7 +192,7 @@ export default function Dashboard() {
                 <Download className="w-4 h-4 mr-2" />
                 Export
               </Button>
-              <Button className="rounded-full px-5 shadow-sm" onClick={() => setLocation("/sample/new")}>
+              <Button className="rounded-full px-5 shadow-sm" onClick={() => setLocation(newSamplePath)}>
                 <Plus className="w-4 h-4 mr-2" />
                 New Sample
               </Button>
@@ -181,9 +203,11 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 divide-x divide-y divide-border/70 md:grid-cols-4 md:divide-y-0">
           {[
             { label: "Samples", value: totalSamples, icon: Database },
+            { label: "Strike/Dip", value: totalMeasurements, icon: Compass },
             { label: "Mapped", value: mappedSamples, icon: MapPin },
-            { label: "Datasets", value: datasetCount, icon: FolderOpen },
-            { label: "Pending Sync", value: pendingSamples, icon: Cloud },
+            activeFolder
+              ? { label: "Pending Sync", value: pendingSamples, icon: Cloud }
+              : { label: "Datasets", value: datasetCount, icon: FolderOpen },
           ].map((stat) => {
             const Icon = stat.icon;
             return (
@@ -225,7 +249,7 @@ export default function Dashboard() {
             {searchTerm ? "Try adjusting your search terms." : "You haven't recorded any samples in this view yet."}
           </p>
           {!searchTerm && (
-            <Button className="mt-6" onClick={() => setLocation("/sample/new")}>Record First Sample</Button>
+            <Button className="mt-6" onClick={() => setLocation(newSamplePath)}>Record First Sample</Button>
           )}
         </Card>
       ) : (
@@ -281,6 +305,53 @@ export default function Dashboard() {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {activeFolder && (
+        <div className="mt-8 rounded-2xl border border-border bg-card shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-semibold">
+                <Compass className="h-5 w-5 text-primary" />
+                Strike &amp; Dip Measurements
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                {datasetMeasurements.length} structural measurement{datasetMeasurements.length !== 1 ? "s" : ""} in this dataset
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setLocation("/strike-dip")}>
+              Manage
+            </Button>
+          </div>
+
+          {datasetMeasurements.length === 0 ? (
+            <div className="px-5 py-8 text-sm text-muted-foreground">
+              No strike and dip measurements are assigned to this dataset yet.
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {datasetMeasurements.map((measurement) => (
+                <div key={measurement.id} className="grid gap-2 px-5 py-4 md:grid-cols-[1fr_auto] md:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{measurement.label || "Untitled measurement"}</p>
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                      <span className="font-mono text-primary">
+                        Strike {measurement.strike || "--"} / Dip {measurement.dip || "--"}{measurement.dipDir ? ` ${measurement.dipDir}` : ""}
+                      </span>
+                      {measurement.rockLayerType && <span>{measurement.rockLayerType}</span>}
+                      {measurement.location && <span className="truncate">{measurement.location}</span>}
+                    </div>
+                  </div>
+                  {measurement.date && (
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(measurement.date).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

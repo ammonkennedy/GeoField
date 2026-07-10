@@ -123,11 +123,14 @@ async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlo
 }
 
 export default function SampleEntry() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { id } = useParams();
   const isEdit = Boolean(id && id !== "new");
   const isOfflineEdit = Boolean(id?.startsWith("q_"));
   const sampleLookupId = isEdit && !isOfflineEdit && id ? id : "";
+  const initialFolderId = !isEdit
+    ? new URLSearchParams(location.split("?")[1] ?? "").get("folderId") || ""
+    : "";
   const { toast } = useToast();
 
   const { data: existingSample, isLoading: loadingSample } = useGetSample(sampleLookupId, {
@@ -165,11 +168,15 @@ export default function SampleEntry() {
     defaultValues: {
       sampleType: 'rock',
       sampleId: '',
-      folderId: '',
+      folderId: initialFolderId,
       notes: '',
       fields: {}
     }
   });
+
+  useEffect(() => {
+    if (!isEdit && initialFolderId) setValue("folderId", initialFolderId);
+  }, [initialFolderId, isEdit, setValue]);
 
   useEffect(() => {
     if (isEdit) return;
