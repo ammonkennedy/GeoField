@@ -13,6 +13,7 @@ import * as XLSX from "xlsx";
 import {
   STRIKE_DIP_COLUMNS, buildStyledWorksheet,
   loadExportConfig, loadColumnPrefs,
+  strikeDipToDataRow,
   type ExportColumn, type ExportFormatConfig,
 } from "@/lib/export-config";
 import { format as fmtDate } from "date-fns";
@@ -471,27 +472,13 @@ export default function StrikeDipPage() {
   };
 
   const handleDoExport = (columns: ExportColumn[], config: ExportFormatConfig) => {
-    const dataRows = visibleMeasurements.map((m, i) => ({
-      index: i + 1,
-      label: m.label,
-      dataset: m.datasetId
-        ? allFolders.find((folder: any) => String(folder.id) === String(m.datasetId))?.name || ""
+    const dataRows = visibleMeasurements.map((m, i) => strikeDipToDataRow(
+      m,
+      i,
+      m.datasetId
+        ? allFolders.find((folder: any) => String(folder.id) === String(m.datasetId))?.name || "Unknown Dataset"
         : "Uncategorized",
-      rockLayerType: m.rockLayerType || "",
-      strike: m.strike,
-      dip: m.dip,
-      dipDir: m.dipDir,
-      featureType: m.featureType,
-      location: m.location,
-      latitude: typeof m.latitude === "number" ? Number(m.latitude.toFixed(6)) : "",
-      longitude: typeof m.longitude === "number" ? Number(m.longitude.toFixed(6)) : "",
-      utmZone: m.utmZone || "",
-      utmEasting: m.utmEasting ?? "",
-      utmNorthing: m.utmNorthing ?? "",
-      gpsAccuracy: typeof m.gpsAccuracy === "number" ? Number(m.gpsAccuracy.toFixed(1)) : "",
-      date: m.date,
-      notes: m.notes,
-    }));
+    ));
     const ws = buildStyledWorksheet(columns, dataRows, config);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, config.sheetName || "Strike & Dip");

@@ -355,7 +355,14 @@ export default function Dashboard() {
         </div>
       )}
 
-      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} samples={allSamples} />
+      <ExportDialog
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        samples={allSamples}
+        measurements={measurements}
+        initialSelection={activeFolderId ?? "all"}
+        lockSelection={Boolean(activeFolderId)}
+      />
 
       <Dialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
         <DialogHeader>

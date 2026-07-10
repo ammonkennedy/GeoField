@@ -5,13 +5,42 @@ import {
   buildStyledWorksheet,
   getSampleColumns,
   sampleToDataRow,
+  strikeDipToDataRow,
+  STRIKE_DIP_COLUMNS,
   loadExportConfig,
   loadColumnPrefs,
   type ExportColumn,
   type ExportFormatConfig,
 } from "./export-config";
+import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
 export { getSampleColumns } from "./export-config";
+
+export type DatasetLookupItem = { id: number | string; name: string };
+
+function cleanSheetName(name: string) {
+  return (name || "Data").replace(/[\\/?*[\]:]/g, " ").trim().slice(0, 31) || "Data";
+}
+
+function appendSheet(workbook: XLSX.WorkBook, worksheet: XLSX.WorkSheet, requestedName: string) {
+  const baseName = cleanSheetName(requestedName);
+  let sheetName = baseName;
+  let suffix = 2;
+  while (workbook.SheetNames.includes(sheetName)) {
+    const suffixText = ` ${suffix}`;
+    sheetName = `${baseName.slice(0, 31 - suffixText.length)}${suffixText}`;
+    suffix += 1;
+  }
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+}
+
+export function datasetNameForId(
+  datasetId: number | string | null | undefined,
+  datasets: DatasetLookupItem[],
+) {
+  if (datasetId === null || datasetId === undefined || datasetId === "") return "Uncategorized";
+  return datasets.find((dataset) => String(dataset.id) === String(datasetId))?.name || "Unknown Dataset";
+}
 
 /**
  * Export samples with a specific column order and formatting config.
@@ -22,16 +51,68 @@ export function exportSamplesWithConfig(
   folderName: string,
   filename: string,
   columns: ExportColumn[],
-  config: ExportFormatConfig
+  config: ExportFormatConfig,
+  datasets: DatasetLookupItem[] = [],
 ) {
   if (!samples || samples.length === 0) return;
 
-  const dataRows = samples.map((s) => sampleToDataRow(s, folderName));
+  const dataRows = samples.map((s) => sampleToDataRow(
+    s,
+    datasets.length ? datasetNameForId(s.folderId, datasets) : folderName,
+  ));
   const ws = buildStyledWorksheet(columns, dataRows, config);
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, config.sheetName || "Samples");
+  appendSheet(wb, ws, config.sheetName || "Samples");
   XLSX.writeFile(wb, `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`);
+}
+
+export function exportDatasetWorkbookWithConfig({
+  samples,
+  measurements,
+  datasets,
+  folderName,
+  filename,
+  sampleColumns,
+  sampleConfig,
+}: {
+  samples: Sample[];
+  measurements: StrikeDipMeasurement[];
+  datasets: DatasetLookupItem[];
+  folderName: string;
+  filename: string;
+  sampleColumns: ExportColumn[];
+  sampleConfig: ExportFormatConfig;
+}) {
+  if ((!samples || samples.length === 0) && (!measurements || measurements.length === 0)) return;
+
+  const workbook = XLSX.utils.book_new();
+
+  if (samples.length > 0) {
+    const sampleRows = samples.map((sample) =>
+      sampleToDataRow(sample, datasetNameForId(sample.folderId, datasets))
+    );
+    appendSheet(
+      workbook,
+      buildStyledWorksheet(sampleColumns, sampleRows, sampleConfig),
+      sampleConfig.sheetName || "Samples",
+    );
+  }
+
+  if (measurements.length > 0) {
+    const strikeColumns = loadColumnPrefs("strikedip", STRIKE_DIP_COLUMNS);
+    const strikeConfig = { ...loadExportConfig("strikedip"), sheetName: "Strike & Dip" };
+    const strikeRows = measurements.map((measurement, index) =>
+      strikeDipToDataRow(measurement, index, datasetNameForId(measurement.datasetId, datasets))
+    );
+    appendSheet(
+      workbook,
+      buildStyledWorksheet(strikeColumns, strikeRows, strikeConfig),
+      strikeConfig.sheetName,
+    );
+  }
+
+  XLSX.writeFile(workbook, `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`);
 }
 
 /**

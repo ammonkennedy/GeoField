@@ -5,9 +5,10 @@ import { Button } from "./ui/button";
 import { Download, FolderOpen, Layers, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportCustomizerDialog } from "./ExportCustomizerDialog";
-import { exportSamplesWithConfig, getSampleColumns } from "@/lib/export";
+import { exportDatasetWorkbookWithConfig, getSampleColumns } from "@/lib/export";
 import { loadExportConfig, loadColumnPrefs } from "@/lib/export-config";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
 type Selection = "all" | "uncategorized" | number | string;
 
@@ -15,16 +16,24 @@ interface ExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   samples?: any[];
+  measurements?: StrikeDipMeasurement[];
+  initialSelection?: Selection;
+  lockSelection?: boolean;
 }
 
-export function ExportDialog({ open, onOpenChange, samples = [] }: ExportDialogProps) {
-  const [selected, setSelected] = useState<Selection>("all");
+export function ExportDialog({ open, onOpenChange, samples = [], measurements = [], initialSelection = "all", lockSelection = false }: ExportDialogProps) {
+  const [selected, setSelected] = useState<Selection>(initialSelection);
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const { data: folders } = useGetFolders();
   const allSamples = samples;
+  const allMeasurements = measurements;
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
+
+  useEffect(() => {
+    if (open) setSelected(initialSelection);
+  }, [initialSelection, open]);
 
   useEffect(() => {
     const refresh = () => setLocalDatasets(getLocalDatasets());
@@ -43,18 +52,29 @@ export function ExportDialog({ open, onOpenChange, samples = [] }: ExportDialogP
     return allSamples.filter((s) => String(s.folderId ?? "") === String(selected));
   }, [allSamples, selected]);
 
-  const count = samplesToExport.length;
+  const measurementsToExport = useMemo(() => {
+    if (!allMeasurements) return [];
+    if (selected === "all") return allMeasurements;
+    if (selected === "uncategorized") return allMeasurements.filter((m) => !m.datasetId);
+    return allMeasurements.filter((m) => String(m.datasetId ?? "") === String(selected));
+  }, [allMeasurements, selected]);
+
+  const sampleCount = samplesToExport.length;
+  const measurementCount = measurementsToExport.length;
+  const count = sampleCount + measurementCount;
   const selectedFolder =
     selected !== "all" && selected !== "uncategorized"
       ? allFolders.find((f: any) => String(f.id) === String(selected))
       : null;
+  const displayedFolders = lockSelection && selectedFolder ? [selectedFolder] : allFolders;
   const uncategorizedCount = (allSamples || []).filter((s) => !s.folderId).length;
+  const uncategorizedMeasurementCount = (allMeasurements || []).filter((m) => !m.datasetId).length;
 
   const folderName = selectedFolder
     ? selectedFolder.name
     : selected === "uncategorized"
     ? "Uncategorized"
-    : "All Samples";
+    : "All Data";
 
   const filename = selectedFolder
     ? `geofield-${selectedFolder.name.replace(/\s+/g, "-").toLowerCase()}`
@@ -94,32 +114,40 @@ export function ExportDialog({ open, onOpenChange, samples = [] }: ExportDialogP
 
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Choose which samples to include, then customize the column order and formatting.
+              Choose a dataset to export samples and strike/dip measurements together.
             </p>
 
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              <OptionRow
-                icon={<Layers className="w-4 h-4" />}
-                label="All Samples"
-                count={allSamples?.length ?? 0}
-                selected={selected === "all"}
-                onClick={() => setSelected("all")}
-              />
-              {allFolders.map((folder: any) => (
+              {!lockSelection && (
+                <OptionRow
+                  icon={<Layers className="w-4 h-4" />}
+                  label="All Data"
+                  count={(allSamples?.length ?? 0) + (allMeasurements?.length ?? 0)}
+                  detail={`${allSamples?.length ?? 0} samples · ${allMeasurements?.length ?? 0} strike/dip`}
+                  selected={selected === "all"}
+                  onClick={() => setSelected("all")}
+                />
+              )}
+              {displayedFolders.map((folder: any) => (
                 <OptionRow
                   key={folder.id}
                   icon={<FolderOpen className="w-4 h-4" />}
                   label={`${folder.name}${folder.isLocal ? " (local)" : ""}`}
-                  count={(allSamples || []).filter((s) => String(s.folderId ?? "") === String(folder.id)).length}
+                  count={
+                    (allSamples || []).filter((s) => String(s.folderId ?? "") === String(folder.id)).length +
+                    (allMeasurements || []).filter((m) => String(m.datasetId ?? "") === String(folder.id)).length
+                  }
+                  detail={`${(allSamples || []).filter((s) => String(s.folderId ?? "") === String(folder.id)).length} samples · ${(allMeasurements || []).filter((m) => String(m.datasetId ?? "") === String(folder.id)).length} strike/dip`}
                   selected={String(selected) === String(folder.id)}
                   onClick={() => setSelected(folder.id)}
                 />
               ))}
-              {uncategorizedCount > 0 && (
+              {(!lockSelection || selected === "uncategorized") && (uncategorizedCount + uncategorizedMeasurementCount) > 0 && (
                 <OptionRow
                   icon={<FolderOpen className="w-4 h-4 opacity-40" />}
                   label="Uncategorized"
-                  count={uncategorizedCount}
+                  count={uncategorizedCount + uncategorizedMeasurementCount}
+                  detail={`${uncategorizedCount} samples · ${uncategorizedMeasurementCount} strike/dip`}
                   selected={selected === "uncategorized"}
                   onClick={() => setSelected("uncategorized")}
                   muted
@@ -149,13 +177,21 @@ export function ExportDialog({ open, onOpenChange, samples = [] }: ExportDialogP
         open={customizerOpen}
         onOpenChange={setCustomizerOpen}
         title="Customize Export"
-        subtitle={`${count} sample${count !== 1 ? "s" : ""} from "${folderName}"`}
+        subtitle={`${sampleCount} sample${sampleCount !== 1 ? "s" : ""} and ${measurementCount} strike/dip measurement${measurementCount !== 1 ? "s" : ""} from "${folderName}"`}
         initialColumns={derivedColumns}
         initialConfig={savedConfig}
         configKey="samples"
-        exportLabel={`Export ${count} sample${count !== 1 ? "s" : ""}`}
+        exportLabel={`Export ${count} record${count !== 1 ? "s" : ""}`}
         onExport={(columns, config) => {
-          exportSamplesWithConfig(samplesToExport, folderName, filename, columns, config);
+          exportDatasetWorkbookWithConfig({
+            samples: samplesToExport,
+            measurements: measurementsToExport,
+            datasets: allFolders,
+            folderName,
+            filename,
+            sampleColumns: columns,
+            sampleConfig: config,
+          });
         }}
       />
     </>
@@ -163,11 +199,12 @@ export function ExportDialog({ open, onOpenChange, samples = [] }: ExportDialogP
 }
 
 function OptionRow({
-  icon, label, count, selected, onClick, muted,
+  icon, label, count, detail, selected, onClick, muted,
 }: {
   icon: React.ReactNode;
   label: string;
   count: number;
+  detail?: string;
   selected: boolean;
   onClick: () => void;
   muted?: boolean;
@@ -185,7 +222,10 @@ function OptionRow({
     >
       <div className="flex items-center gap-3">
         <span className={muted ? "opacity-50" : ""}>{icon}</span>
-        <span className={cn("truncate max-w-[220px]", muted && "text-muted-foreground")}>{label}</span>
+        <span className="min-w-0">
+          <span className={cn("block truncate max-w-[220px]", muted && "text-muted-foreground")}>{label}</span>
+          {detail && <span className="block text-xs font-normal text-muted-foreground">{detail}</span>}
+        </span>
       </div>
       <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground font-mono shrink-0 ml-2">
         {count}

@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
 import type { Sample } from "@workspace/api-client-react";
+import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
 /* ── Column definition ──────────────────────────────────────────────────── */
 export interface ExportColumn {
@@ -180,6 +181,32 @@ export function sampleToDataRow(sample: Sample, folderName: string): Record<stri
     row[`field_${key}`] = value !== undefined && value !== null ? String(value) : "";
   });
   return row;
+}
+
+export function strikeDipToDataRow(
+  measurement: StrikeDipMeasurement,
+  index: number,
+  datasetName: string,
+): Record<string, any> {
+  return {
+    index: index + 1,
+    label: measurement.label,
+    dataset: datasetName,
+    rockLayerType: measurement.rockLayerType || "",
+    strike: measurement.strike,
+    dip: measurement.dip,
+    dipDir: measurement.dipDir,
+    featureType: measurement.featureType,
+    location: measurement.location,
+    latitude: typeof measurement.latitude === "number" ? Number(measurement.latitude.toFixed(6)) : "",
+    longitude: typeof measurement.longitude === "number" ? Number(measurement.longitude.toFixed(6)) : "",
+    utmZone: measurement.utmZone || "",
+    utmEasting: measurement.utmEasting ?? "",
+    utmNorthing: measurement.utmNorthing ?? "",
+    gpsAccuracy: typeof measurement.gpsAccuracy === "number" ? Number(measurement.gpsAccuracy.toFixed(1)) : "",
+    date: measurement.date,
+    notes: measurement.notes,
+  };
 }
 
 /* ── Worksheet builder ──────────────────────────────────────────────────── */
