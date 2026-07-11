@@ -9,6 +9,7 @@ export const foldersTable = pgTable("folders", {
   description: text("description"),
   userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const sampleTypeEnum = ["water", "rock", "soil_sand", "air", "other"] as const;
@@ -23,12 +24,13 @@ export const samplesTable = pgTable("samples", {
   fields: jsonb("fields").notNull().default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
-export const insertFolderSchema = createInsertSchema(foldersTable).omit({ id: true, createdAt: true });
+export const insertFolderSchema = createInsertSchema(foldersTable).omit({ id: true, createdAt: true, deletedAt: true });
 export type InsertFolder = z.infer<typeof insertFolderSchema>;
 export type Folder = typeof foldersTable.$inferSelect;
 
-export const insertSampleSchema = createInsertSchema(samplesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSampleSchema = createInsertSchema(samplesTable).omit({ id: true, createdAt: true, updatedAt: true, deletedAt: true });
 export type InsertSample = z.infer<typeof insertSampleSchema>;
 export type Sample = typeof samplesTable.$inferSelect;

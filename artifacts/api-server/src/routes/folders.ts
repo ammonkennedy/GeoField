@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, foldersTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, lt } from "drizzle-orm";
+
+const RETENTION_DAYS = 20;
 
 const router: IRouter = Router();
 
@@ -19,7 +21,7 @@ router.get("/folders", async (req, res) => {
   const folders = await db
     .select()
     .from(foldersTable)
-    .where(eq(foldersTable.userId, userId))
+    .where(and(eq(foldersTable.userId, userId), isNull(foldersTable.deletedAt)))
     .orderBy(foldersTable.createdAt);
   res.json(folders);
 });
@@ -70,6 +72,26 @@ router.put("/folders/:id", async (req, res) => {
   res.json(folder);
 });
 
+router.get("/folders/recently-deleted", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const expiresBefore = new Date(Date.now() - RETENTION_DAYS * 86400000);
+  await db.delete(foldersTable).where(and(eq(foldersTable.userId, req.user!.id), lt(foldersTable.deletedAt, expiresBefore)));
+  const rows = await db.select().from(foldersTable)
+    .where(and(eq(foldersTable.userId, req.user!.id), isNotNull(foldersTable.deletedAt)))
+    .orderBy(foldersTable.deletedAt);
+  res.json(rows);
+});
+
+router.post("/folders/:id/restore", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const id = parseRequiredId(req.params.id);
+  if (!id) return void res.status(400).json({ error: "Invalid folder id" });
+  const [folder] = await db.update(foldersTable).set({ deletedAt: null })
+    .where(and(eq(foldersTable.id, id), eq(foldersTable.userId, req.user!.id))).returning();
+  if (!folder) return void res.status(404).json({ error: "Not found" });
+  res.json(folder);
+});
+
 router.delete("/folders/:id", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -82,7 +104,8 @@ router.delete("/folders/:id", async (req, res) => {
     return;
   }
   const deleted = await db
-    .delete(foldersTable)
+    .update(foldersTable)
+    .set({ deletedAt: new Date() })
     .where(and(eq(foldersTable.id, id), eq(foldersTable.userId, userId)))
     .returning();
   if (!deleted.length) {

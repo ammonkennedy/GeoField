@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { loadMeasurements, reassignMeasurementsDataset, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
+import { archiveLocalItem } from "@/lib/recently-deleted";
 
 const typeStyles = {
   water: { label: "Water", variant: "water" as const },
@@ -136,6 +137,8 @@ export default function Dashboard() {
   const handleDeleteSample = () => {
     if (!deleteId) return;
     if (typeof deleteId === "string" && deleteId.startsWith("q_")) {
+      const queued = getQueue().find((item) => item.queuedId === deleteId);
+      if (queued) archiveLocalItem("sample", queued.payload.sampleId || "Offline sample", queued);
       removeFromQueue(deleteId);
       setDeleteId(null);
       return;

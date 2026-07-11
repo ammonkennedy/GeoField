@@ -11,7 +11,12 @@ import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, CheckCircle2, KeyRound, Loader2, Settings, UserRound } from "lucide-react";
+import { AlertCircle, CheckCircle2, KeyRound, Loader2, Settings, UserRound, Trash2, RotateCcw } from "lucide-react";
+import { getLocalDeletedItems, removeLocalDeletedItem, type LocalDeletedItem } from "@/lib/recently-deleted";
+import { restoreLocalDataset } from "@/lib/local-datasets";
+import { getQueue, setQueue } from "@/lib/offline-queue";
+
+type CloudDeletedItem = { id: number; name?: string; sampleId?: string; deletedAt: string; kind: "dataset" | "sample" };
 
 export default function AccountSettingsPage() {
   const queryClient = useQueryClient();
@@ -29,10 +34,49 @@ export default function AccountSettingsPage() {
   const [passwordMessage, setPasswordMessage] = useState("");
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [deletedItems, setDeletedItems] = useState<Array<CloudDeletedItem | LocalDeletedItem>>([]);
+  const [trashLoading, setTrashLoading] = useState(true);
 
   useEffect(() => {
     setEmail(user?.email || "");
   }, [user?.email]);
+
+  const loadDeletedItems = async () => {
+    setTrashLoading(true);
+    const local = getLocalDeletedItems();
+    try {
+      const [datasetsResponse, samplesResponse] = await Promise.all([
+        fetch("/api/folders/recently-deleted", { credentials: "include" }),
+        fetch("/api/samples/recently-deleted", { credentials: "include" }),
+      ]);
+      const datasets = datasetsResponse.ok ? await datasetsResponse.json() : [];
+      const samples = samplesResponse.ok ? await samplesResponse.json() : [];
+      setDeletedItems([
+        ...local,
+        ...datasets.map((item: any) => ({ ...item, kind: "dataset" as const })),
+        ...samples.map((item: any) => ({ ...item, kind: "sample" as const })),
+      ].sort((a, b) => +new Date(b.deletedAt) - +new Date(a.deletedAt)));
+    } catch { setDeletedItems(local); }
+    finally { setTrashLoading(false); }
+  };
+
+  useEffect(() => { loadDeletedItems(); }, []);
+
+  const restoreItem = async (item: CloudDeletedItem | LocalDeletedItem) => {
+    if ("trashId" in item) {
+      if (item.kind === "dataset") restoreLocalDataset(item);
+      else {
+        if (!getQueue().some((queued) => queued.queuedId === item.data.queuedId)) setQueue([...getQueue(), item.data]);
+        removeLocalDeletedItem(item.trashId);
+      }
+    } else {
+      const resource = item.kind === "dataset" ? "folders" : "samples";
+      const response = await fetch(`/api/${resource}/${item.id}/restore`, { method: "POST", credentials: "include" });
+      if (!response.ok) throw new Error("Could not restore item");
+    }
+    queryClient.invalidateQueries();
+    await loadDeletedItems();
+  };
 
   const refreshUser = () => {
     queryClient.invalidateQueries({ queryKey: getGetCurrentAuthUserQueryKey() });
@@ -159,6 +203,33 @@ export default function AccountSettingsPage() {
                   <AlertCircle className="h-4 w-4" />
                   {emailError}
                 </p>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                  <Trash2 className="h-5 w-5 text-destructive" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold">Recently Deleted</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">Datasets and samples can be recovered for 20 days, then are permanently deleted.</p>
+                </div>
+              </div>
+              {trashLoading ? <p className="text-sm text-muted-foreground">Loading deleted items…</p> : deletedItems.length === 0 ? (
+                <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">Nothing has been deleted recently.</p>
+              ) : (
+                <div className="divide-y rounded-xl border">
+                  {deletedItems.map((item) => {
+                    const local = "trashId" in item;
+                    const label = local ? item.name : item.name || item.sampleId || `${item.kind} ${item.id}`;
+                    const days = Math.max(1, Math.ceil((20 * 86400000 - (Date.now() - +new Date(item.deletedAt))) / 86400000));
+                    return <div key={local ? item.trashId : `${item.kind}-${item.id}`} className="flex items-center justify-between gap-4 p-4">
+                      <div><p className="font-medium">{label}</p><p className="text-xs text-muted-foreground capitalize">{item.kind} · {days} day{days === 1 ? "" : "s"} remaining</p></div>
+                      <Button variant="outline" size="sm" onClick={() => restoreItem(item)}><RotateCcw className="mr-2 h-4 w-4" />Restore</Button>
+                    </div>;
+                  })}
+                </div>
               )}
             </div>
 

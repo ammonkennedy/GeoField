@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { db, foldersTable, sampleTypeEnum, samplesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, lt } from "drizzle-orm";
+
+const RETENTION_DAYS = 20;
 
 const router: IRouter = Router();
 const validSampleTypes = new Set<string>(sampleTypeEnum);
@@ -49,13 +51,13 @@ router.get("/samples", async (req, res) => {
     samples = await db
       .select()
       .from(samplesTable)
-      .where(and(eq(samplesTable.userId, userId), eq(samplesTable.folderId, folderId)))
+      .where(and(eq(samplesTable.userId, userId), eq(samplesTable.folderId, folderId), isNull(samplesTable.deletedAt)))
       .orderBy(samplesTable.createdAt);
   } else {
     samples = await db
       .select()
       .from(samplesTable)
-      .where(eq(samplesTable.userId, userId))
+      .where(and(eq(samplesTable.userId, userId), isNull(samplesTable.deletedAt)))
       .orderBy(samplesTable.createdAt);
   }
 
@@ -183,6 +185,26 @@ router.put("/samples/:id", async (req, res) => {
   res.json(sample);
 });
 
+router.get("/samples/recently-deleted", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const expiresBefore = new Date(Date.now() - RETENTION_DAYS * 86400000);
+  await db.delete(samplesTable).where(and(eq(samplesTable.userId, req.user!.id), lt(samplesTable.deletedAt, expiresBefore)));
+  const rows = await db.select().from(samplesTable)
+    .where(and(eq(samplesTable.userId, req.user!.id), isNotNull(samplesTable.deletedAt)))
+    .orderBy(samplesTable.deletedAt);
+  res.json(rows);
+});
+
+router.post("/samples/:id/restore", async (req, res) => {
+  if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
+  const id = parseRequiredId(req.params.id);
+  if (!id) return void res.status(400).json({ error: "Invalid sample id" });
+  const [sample] = await db.update(samplesTable).set({ deletedAt: null })
+    .where(and(eq(samplesTable.id, id), eq(samplesTable.userId, req.user!.id))).returning();
+  if (!sample) return void res.status(404).json({ error: "Not found" });
+  res.json(sample);
+});
+
 router.delete("/samples/:id", async (req, res) => {
   if (!req.isAuthenticated()) {
     res.status(401).json({ error: "Unauthorized" });
@@ -195,7 +217,8 @@ router.delete("/samples/:id", async (req, res) => {
     return;
   }
   const deleted = await db
-    .delete(samplesTable)
+    .update(samplesTable)
+    .set({ deletedAt: new Date() })
     .where(and(eq(samplesTable.id, id), eq(samplesTable.userId, userId)))
     .returning();
   if (!deleted.length) {

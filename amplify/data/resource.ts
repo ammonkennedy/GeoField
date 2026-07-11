@@ -13,6 +13,7 @@ const schema = a.schema({
       description: a.string(),
       createdAt: a.datetime(),
       updatedAt: a.datetime(),
+      deletedAt: a.datetime(),
     })
     .authorization((allow) => [allow.owner()]),
 
@@ -25,6 +26,7 @@ const schema = a.schema({
       fields: a.json(),
       createdAt: a.datetime(),
       updatedAt: a.datetime(),
+      deletedAt: a.datetime(),
     })
     .authorization((allow) => [allow.owner()]),
 

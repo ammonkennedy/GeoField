@@ -1,5 +1,6 @@
 import { getQueue, setQueue } from "@/lib/offline-queue";
 import { reassignMeasurementsDataset } from "@/lib/strike-dip-measurements";
+import { archiveLocalItem, removeLocalDeletedItem, type LocalDeletedItem } from "@/lib/recently-deleted";
 
 export interface LocalDataset {
   id: number;
@@ -117,6 +118,16 @@ export function updateLocalDataset(id: number, input: { name: string; descriptio
 }
 
 export function deleteLocalDataset(id: number | string) {
+  const dataset = getLocalDatasets().find((item) => String(item.id) === String(id));
+  if (dataset) archiveLocalItem("dataset", dataset.name, dataset);
+  // A synced local dataset has two identities. Tombstone the cloud record too so
+  // the next refresh/deploy cannot make it appear again.
+  if (dataset?.cloudId) {
+    fetch(`/api/folders/${encodeURIComponent(dataset.cloudId)}`, {
+      method: "DELETE",
+      credentials: "include",
+    }).catch(() => undefined);
+  }
   saveLocalDatasets(getLocalDatasets().filter((dataset) => String(dataset.id) !== String(id)));
 
   // Keep samples and measurements instead of deleting them: move them to Uncategorized.
@@ -128,4 +139,13 @@ export function deleteLocalDataset(id: number | string) {
     )
   );
   reassignMeasurementsDataset(id, null);
+}
+
+export function restoreLocalDataset(item: LocalDeletedItem) {
+  if (item.kind !== "dataset") return;
+  const datasets = getLocalDatasets();
+  if (!datasets.some((dataset) => String(dataset.id) === String(item.data.id))) {
+    saveLocalDatasets([...datasets, item.data]);
+  }
+  removeLocalDeletedItem(item.trashId);
 }
