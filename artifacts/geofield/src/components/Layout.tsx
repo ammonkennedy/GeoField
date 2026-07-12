@@ -27,7 +27,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: folders } = useGetFolders({
     query: { enabled: Boolean(user) }
   });
-  const { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, lastError, sync } = useOfflineSync();
+  const { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, syncProgress, lastError, sync, rebuildCloudCache } = useOfflineSync();
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
@@ -293,7 +293,16 @@ export function Layout({ children }: { children: ReactNode }) {
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
             <RefreshCw className={cn("h-4 w-4 shrink-0", isSyncing && "animate-spin")} />
-            <span className="flex-1 text-left">{isSyncing ? "Syncing…" : "Sync with Cloud"}</span>
+            <span className="flex-1 text-left">{isSyncing ? (syncProgress || "Syncing…") : "Sync with Cloud"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={rebuildCloudCache}
+            disabled={!isOnline || isSyncing}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          >
+            <Cloud className="h-4 w-4 shrink-0" />
+            <span className="flex-1 text-left">Sync All Cloud Data</span>
           </button>
           <Link
             href="/account"
@@ -351,7 +360,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {isOnline && isSyncing && (
           <div className="flex items-center gap-2.5 px-4 py-2.5 bg-blue-50 border-b border-blue-200 text-blue-800 text-sm sticky top-0 z-20">
             <RefreshCw className="w-4 h-4 shrink-0 animate-spin" />
-            <span>Syncing {queueCount} offline item{queueCount !== 1 ? "s" : ""} to your account…</span>
+            <span>{syncProgress || `Syncing ${queueCount} offline item${queueCount !== 1 ? "s" : ""} to your account…`}</span>
           </div>
         )}
         {isOnline && syncedCount > 0 && !isSyncing && (

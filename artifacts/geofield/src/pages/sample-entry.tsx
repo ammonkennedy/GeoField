@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -122,6 +122,43 @@ async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlo
   return empty;
 }
 
+type DevicePosition = { latitude: number; longitude: number; accuracy?: number | null };
+
+function timeoutPromise<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error("GPS_TIMEOUT")), milliseconds)),
+  ]);
+}
+
+async function getDevicePosition(): Promise<DevicePosition> {
+  const nativeGeolocation = (globalThis as any).Capacitor?.Plugins?.Geolocation;
+  if (nativeGeolocation) {
+    let permission = await nativeGeolocation.checkPermissions();
+    if (permission?.location !== "granted" && permission?.coarseLocation !== "granted") {
+      permission = await nativeGeolocation.requestPermissions({ permissions: ["location"] });
+    }
+    if (permission?.location !== "granted" && permission?.coarseLocation !== "granted") {
+      throw Object.assign(new Error("Location permission denied"), { code: 1 });
+    }
+    const result = await timeoutPromise(nativeGeolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 60000,
+    }), 15000);
+    return result.coords;
+  }
+
+  if (!navigator.geolocation) throw new Error("Geolocation is unavailable");
+  return timeoutPromise(new Promise<DevicePosition>((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve(position.coords),
+      reject,
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
+    );
+  }), 15000);
+}
+
 export default function SampleEntry() {
   const [location, setLocation] = useLocation();
   const { id } = useParams();
@@ -178,26 +215,35 @@ export default function SampleEntry() {
     if (!isEdit && initialFolderId) setValue("folderId", initialFolderId);
   }, [initialFolderId, isEdit, setValue]);
 
+  const captureGps = useCallback(async () => {
+    setGpsStatus("loading");
+    try {
+      const coords = await getDevicePosition();
+      setValue("fields.location", `${coords.latitude.toFixed(7)}, ${coords.longitude.toFixed(7)}`, { shouldDirty: true });
+      if (Number.isFinite(coords.accuracy)) setValue("fields.gpsAccuracy", Math.round(coords.accuracy!), { shouldDirty: true });
+      setGpsStatus("success");
+    } catch (error: any) {
+      console.error("[GeoField GPS] Location capture failed", error);
+      const denied = error?.code === 1 || /denied|permission/i.test(error?.message || "");
+      setGpsStatus(denied ? "denied" : "error");
+      toast({
+        title: denied ? "Location permission required" : "GPS unavailable",
+        description: denied
+          ? "Allow location access for GeoField in iPhone Settings, then tap Try GPS Again."
+          : error?.message === "GPS_TIMEOUT" ? "No GPS fix arrived within 15 seconds. Check Location Services and try again." : "Check Location Services and try again.",
+        variant: "destructive",
+      });
+    }
+  }, [setValue, toast]);
+
   useEffect(() => {
     if (isEdit) return;
     const now = new Date();
     const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     setValue("fields.collectionDate", local);
 
-    if (!navigator.geolocation) { setGpsStatus("error"); return; }
-    setGpsStatus("loading");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setValue("fields.location", `${pos.coords.latitude.toFixed(7)}, ${pos.coords.longitude.toFixed(7)}`);
-        if (Number.isFinite(pos.coords.accuracy)) {
-          setValue("fields.gpsAccuracy", Math.round(pos.coords.accuracy));
-        }
-        setGpsStatus("success");
-      },
-      (err) => { setGpsStatus(err.code === 1 ? "denied" : "error"); },
-      { timeout: 10000, maximumAge: 60000 }
-    );
-  }, [isEdit, setValue]);
+    captureGps();
+  }, [captureGps, isEdit, setValue]);
 
   useEffect(() => {
     if (!isOfflineEdit || !id) return;
@@ -513,6 +559,11 @@ export default function SampleEntry() {
             <div className="space-y-4">
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">1</span>Basic Information{!isEdit && (<span className={cn("ml-2 inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium", gpsStatus === "loading" && "bg-yellow-100 text-yellow-700", gpsStatus === "success" && "bg-green-100 text-green-700", (gpsStatus === "error" || gpsStatus === "denied") && "bg-red-100 text-red-600", gpsStatus === "idle" && "bg-muted text-muted-foreground")}>{gpsStatus === "loading" && <><Loader2 className="w-3 h-3 animate-spin" />Getting GPS...</>}{gpsStatus === "success" && <><MapPin className="w-3 h-3" />GPS captured</>}{gpsStatus === "denied" && <><MapPin className="w-3 h-3" />Location denied</>}{gpsStatus === "error" && <><MapPin className="w-3 h-3" />GPS unavailable</>}</span>)}</h3>
               <BaseFields register={register} errors={errors} />
+              {!isEdit && (gpsStatus === "error" || gpsStatus === "denied") && (
+                <Button type="button" variant="outline" size="sm" className="gap-2" onClick={captureGps}>
+                  <MapPin className="h-4 w-4" />Try GPS Again
+                </Button>
+              )}
               {(() => { const coords = parseCoordsUTM(locationValue); if (!coords) return null; const utm = latLngToUTM(coords[0], coords[1]); return <div className="flex items-start gap-2.5 bg-muted/40 border border-border rounded-lg px-3.5 py-2.5 text-sm"><MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" /><div><p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">UTM Coordinates (WGS84)</p><p className="font-mono text-sm text-foreground">{utm.display}</p><p className="text-xs text-muted-foreground mt-0.5">Zone {utm.zone}{utm.letter} · {utm.hemisphere === "N" ? "Northern" : "Southern"} Hemisphere</p></div></div>; })()}
             </div>
 

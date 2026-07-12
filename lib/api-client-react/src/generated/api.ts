@@ -287,14 +287,20 @@ export function useDeleteFolder(options?: MutationOptions<void, { id: string | n
 }
 
 export const getGetSamplesQueryKey = (params?: GetSamplesParams) => params?.folderId ? ["samples", String(params.folderId)] as const : ["samples"] as const;
-export async function getSamples(params?: GetSamplesParams): Promise<Sample[]> {
+export async function getSamples(
+  params?: GetSamplesParams,
+  onPage?: (progress: { page: number; downloaded: number }) => void,
+): Promise<Sample[]> {
   if (!(await hasCurrentUser())) return [];
   const samples: Sample[] = [];
   let nextToken: string | null | undefined;
+  let page = 0;
   do {
     const result = await client.models.Sample.list({ limit: 1000, nextToken });
     if (result.errors?.length) throw new Error(errorMessage(result.errors));
     samples.push(...(result.data ?? []).map(asSample));
+    page += 1;
+    onPage?.({ page, downloaded: samples.length });
     nextToken = result.nextToken;
   } while (nextToken);
   if (params?.folderId == null) return samples;

@@ -2,6 +2,7 @@ import type { Sample } from "@workspace/api-client-react";
 import { readDurableArray, writeDurableArray } from "@/lib/durable-storage";
 
 const KEY = "geofield_cloud_samples";
+const BACKFILL_KEY = "geofield_cloud_samples_backfill";
 export const CLOUD_SAMPLES_UPDATED_EVENT = "cloud-samples-updated";
 
 export function getCachedCloudSamples(): Sample[] {
@@ -11,6 +12,23 @@ export function getCachedCloudSamples(): Sample[] {
 export function clearCachedCloudSamples() {
   writeDurableArray<Sample>(KEY, []);
   window.dispatchEvent(new CustomEvent(CLOUD_SAMPLES_UPDATED_EVENT));
+}
+
+export function clearCloudBackfill() {
+  localStorage.removeItem(BACKFILL_KEY);
+}
+
+export function markCloudBackfillComplete(count: number) {
+  localStorage.setItem(BACKFILL_KEY, JSON.stringify({ completedAt: new Date().toISOString(), count }));
+}
+
+export function needsCloudBackfill(): boolean {
+  try {
+    const status = JSON.parse(localStorage.getItem(BACKFILL_KEY) || "null");
+    return !status?.completedAt || getCachedCloudSamples().length < Number(status.count || 0);
+  } catch {
+    return true;
+  }
 }
 
 function timestamp(sample: Sample): number {

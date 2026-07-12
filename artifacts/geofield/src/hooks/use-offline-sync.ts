@@ -16,7 +16,7 @@ import {
   LOCAL_DATASETS_UPDATED_EVENT,
   type LocalDataset,
 } from "@/lib/local-datasets";
-import { cacheCloudSamples } from "@/lib/cloud-samples";
+import { cacheCloudSamples, clearCachedCloudSamples, clearCloudBackfill, markCloudBackfillComplete, needsCloudBackfill } from "@/lib/cloud-samples";
 
 function isLocalDatasetId(value: unknown) {
   if (value === null || value === undefined || value === "") return false;
@@ -62,6 +62,7 @@ export function useOfflineSync() {
   const [syncedCount, setSyncedCount] = useState(0);
   const [downloadedCount, setDownloadedCount] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState<string | null>(null);
   const syncingRef = useRef(false);
 
   const refreshCount = useCallback(() => {
@@ -79,13 +80,19 @@ export function useOfflineSync() {
     };
   }, [refreshCount]);
 
-  const sync = useCallback(async () => {
+  const runSync = useCallback(async (rebuild: boolean) => {
     if (syncingRef.current) return;
     if (localStorage.getItem("geofield-demo-mode") === "true") return;
     const pendingDatasets = getPendingLocalDatasets();
     syncingRef.current = true;
     setIsSyncing(true);
     setLastError(null);
+    if (rebuild) {
+      clearCachedCloudSamples();
+      clearCloudBackfill();
+    }
+    const fullBackfill = rebuild || needsCloudBackfill();
+    setSyncProgress(fullBackfill ? "Preparing full cloud backfill…" : "Checking cloud for updates…");
     let synced = 0;
 
     try {
@@ -119,8 +126,12 @@ export function useOfflineSync() {
 
     // Always pull after uploads. A device with nothing pending still needs cloud changes.
     try {
-      const [remoteSamples, remoteFolders] = await Promise.all([getSamples(), getFolders()]);
+      const [remoteSamples, remoteFolders] = await Promise.all([
+        getSamples(undefined, ({ page, downloaded }) => setSyncProgress(`Downloading cloud samples: ${downloaded} received (page ${page})…`)),
+        getFolders(),
+      ]);
       const mergedRemote = cacheCloudSamples(remoteSamples);
+      markCloudBackfillComplete(mergedRemote.length);
       setDownloadedCount(mergedRemote.length);
       setTimeout(() => setDownloadedCount(0), 5000);
       queryClient.setQueryData(getGetSamplesQueryKey(), mergedRemote);
@@ -144,7 +155,11 @@ export function useOfflineSync() {
     refreshCount();
     syncingRef.current = false;
     setIsSyncing(false);
+    setSyncProgress(null);
   }, [queryClient, refreshCount]);
+
+  const sync = useCallback(() => runSync(false), [runSync]);
+  const rebuildCloudCache = useCallback(() => runSync(true), [runSync]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -173,5 +188,5 @@ export function useOfflineSync() {
     return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
   }, [sync]);
 
-  return { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, lastError, sync };
+  return { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, syncProgress, lastError, sync, rebuildCloudCache };
 }
