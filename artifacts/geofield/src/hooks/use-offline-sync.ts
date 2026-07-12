@@ -3,6 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   createFolder,
   createSample,
+  getFolders,
+  getSamples,
   getGetFoldersQueryKey,
   getGetSamplesQueryKey,
 } from "@workspace/api-client-react";
@@ -14,6 +16,7 @@ import {
   LOCAL_DATASETS_UPDATED_EVENT,
   type LocalDataset,
 } from "@/lib/local-datasets";
+import { cacheCloudSamples } from "@/lib/cloud-samples";
 
 function isLocalDatasetId(value: unknown) {
   if (value === null || value === undefined || value === "") return false;
@@ -57,6 +60,7 @@ export function useOfflineSync() {
   const [queueCount, setQueueCount] = useState(getPendingSyncCount);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncedCount, setSyncedCount] = useState(0);
+  const [downloadedCount, setDownloadedCount] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
   const syncingRef = useRef(false);
 
@@ -79,9 +83,6 @@ export function useOfflineSync() {
     if (syncingRef.current) return;
     if (localStorage.getItem("geofield-demo-mode") === "true") return;
     const pendingDatasets = getPendingLocalDatasets();
-    const initialQueue = getSyncableQueue();
-    if (pendingDatasets.length === 0 && initialQueue.length === 0) return;
-
     syncingRef.current = true;
     setIsSyncing(true);
     setLastError(null);
@@ -95,9 +96,6 @@ export function useOfflineSync() {
     } catch (error: any) {
       setLastError(error?.message || "Could not sync datasets. Make sure you are signed in, then try again.");
       refreshCount();
-      syncingRef.current = false;
-      setIsSyncing(false);
-      return;
     }
 
     const queue = getSyncableQueue();
@@ -117,6 +115,23 @@ export function useOfflineSync() {
         setLastError(error?.message || "Could not sync. Make sure you are signed in, then try again.");
         break;
       }
+    }
+
+    // Always pull after uploads. A device with nothing pending still needs cloud changes.
+    try {
+      const [remoteSamples, remoteFolders] = await Promise.all([getSamples(), getFolders()]);
+      const mergedRemote = cacheCloudSamples(remoteSamples);
+      setDownloadedCount(mergedRemote.length);
+      setTimeout(() => setDownloadedCount(0), 5000);
+      queryClient.setQueryData(getGetSamplesQueryKey(), mergedRemote);
+      queryClient.setQueryData(getGetFoldersQueryKey(), remoteFolders);
+      queryClient.invalidateQueries({ queryKey: getGetSamplesQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetFoldersQueryKey() });
+      console.info(`[GeoField sync] Downloaded ${mergedRemote.length} samples and ${remoteFolders.length} datasets.`);
+    } catch (error: any) {
+      const message = error?.message || "Could not download samples from AWS.";
+      console.error("[GeoField sync] Cloud download failed", error);
+      setLastError(`Download failed: ${message}`);
     }
 
     if (synced > 0) {
@@ -147,8 +162,16 @@ export function useOfflineSync() {
   }, [sync]);
 
   useEffect(() => {
-    if (isOnline && queueCount > 0) sync();
-  }, [isOnline, queueCount, sync]);
+    if (isOnline) sync();
+  }, [isOnline, sync]);
 
-  return { isOnline, queueCount, isSyncing, syncedCount, lastError, sync };
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) sync();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => document.removeEventListener("visibilitychange", refreshWhenVisible);
+  }, [sync]);
+
+  return { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, lastError, sync };
 }

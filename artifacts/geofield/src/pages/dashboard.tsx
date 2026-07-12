@@ -14,6 +14,7 @@ import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-qu
 import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { loadMeasurements, reassignMeasurementsDataset, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { archiveLocalItem } from "@/lib/recently-deleted";
+import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 
 const typeStyles = {
   water: { label: "Water", variant: "water" as const },
@@ -52,6 +53,7 @@ export default function Dashboard() {
   const [queuedSamples, setQueuedSamples] = useState(getQueue);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
+  const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
 
   const { deleteSample } = useSamplesMutations();
   const { deleteFolder } = useFoldersMutations();
@@ -63,6 +65,16 @@ export default function Dashboard() {
     return () => {
       window.removeEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
       window.removeEventListener("storage", refreshQueue);
+    };
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => setCachedCloudSamples(getCachedCloudSamples());
+    window.addEventListener(CLOUD_SAMPLES_UPDATED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(CLOUD_SAMPLES_UPDATED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
     };
   }, []);
 
@@ -100,8 +112,9 @@ export default function Dashboard() {
       isOffline: true,
     }));
 
-  const serverSamples = isLocalFolder ? [] : (samples || []);
-  const allSamples = [...serverSamples, ...localSamples];
+  const cachedForView = cachedCloudSamples.filter((sample) => !activeFolderId || String(sample.folderId ?? "") === String(activeFolderId));
+  const serverSamples = isLocalFolder ? [] : (samples ?? cachedForView);
+  const allSamples = mergeCloudAndLocal(serverSamples as any[], localSamples as any[]);
 
   const filteredSamples = allSamples.filter((s: any) =>
     String(s.sampleId || "").toLowerCase().includes(searchTerm.toLowerCase()) ||

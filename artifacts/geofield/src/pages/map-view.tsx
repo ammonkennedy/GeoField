@@ -19,6 +19,7 @@ import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { geocodeAddress } from "@/lib/geocoding";
 import { lookupSoil } from "@/lib/soil-data";
+import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -176,6 +177,7 @@ export default function MapViewPage() {
   const [newLayerError, setNewLayerError] = useState("");
   const [newLayerFileName, setNewLayerFileName] = useState("");
   const [newLayerFileSummary, setNewLayerFileSummary] = useState("");
+  const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
 
   const { data: folders } = useGetFolders();
   const { data: serverSamples } = useGetSamples();
@@ -185,7 +187,7 @@ export default function MapViewPage() {
     offline: true,
     queuedAt: item.queuedAt,
   })), [queuedSamples]);
-  const allSamples = useMemo(() => [...(serverSamples || []), ...offlineSamples], [serverSamples, offlineSamples]);
+  const allSamples = useMemo(() => mergeCloudAndLocal((serverSamples ?? cachedCloudSamples) as any[], offlineSamples as any[]), [serverSamples, cachedCloudSamples, offlineSamples]);
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
@@ -229,6 +231,16 @@ export default function MapViewPage() {
     return () => {
       window.removeEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
       window.removeEventListener("storage", refreshQueue);
+    };
+  }, []);
+
+  useEffect(() => {
+    const refresh = () => setCachedCloudSamples(getCachedCloudSamples());
+    window.addEventListener(CLOUD_SAMPLES_UPDATED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(CLOUD_SAMPLES_UPDATED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
     };
   }, []);
 

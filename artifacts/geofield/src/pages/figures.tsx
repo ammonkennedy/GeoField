@@ -6,6 +6,7 @@ import { DatasetFigures } from "@/components/DatasetFigures";
 import { Label } from "@/components/ui/label";
 import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 
 export default function FiguresPage() {
   const { data: cloudSamples } = useGetSamples();
@@ -13,19 +14,23 @@ export default function FiguresPage() {
   const [selection, setSelection] = useState("all");
   const [queuedSamples, setQueuedSamples] = useState(getQueue);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
+  const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
 
   useEffect(() => {
     const refreshQueue = () => setQueuedSamples(getQueue());
     const refreshDatasets = () => setLocalDatasets(getLocalDatasets());
+    const refreshCloud = () => setCachedCloudSamples(getCachedCloudSamples());
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
     window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
     window.addEventListener("storage", refreshQueue);
     window.addEventListener("storage", refreshDatasets);
+    window.addEventListener(CLOUD_SAMPLES_UPDATED_EVENT, refreshCloud);
     return () => {
       window.removeEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
       window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
       window.removeEventListener("storage", refreshQueue);
       window.removeEventListener("storage", refreshDatasets);
+      window.removeEventListener(CLOUD_SAMPLES_UPDATED_EVENT, refreshCloud);
     };
   }, []);
 
@@ -39,7 +44,7 @@ export default function FiguresPage() {
     createdAt: item.queuedAt,
     updatedAt: item.queuedAt,
   }));
-  const allSamples = [...(cloudSamples || []), ...localSamples] as any[];
+  const allSamples = mergeCloudAndLocal((cloudSamples ?? cachedCloudSamples) as any[], localSamples as any[]) as any[];
   const selectedSamples = selection === "all"
     ? allSamples
     : allSamples.filter((sample) => String(sample.folderId ?? "") === selection);

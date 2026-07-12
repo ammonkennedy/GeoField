@@ -4,12 +4,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, Cloud, ShieldCheck, Settings, X, BarChart2 } from "lucide-react";
+import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, Cloud, ShieldCheck, Settings, X, BarChart2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { GeoFieldLogo } from "@/components/GeoFieldLogo";
+import { clearCachedCloudSamples } from "@/lib/cloud-samples";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -26,13 +27,14 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: folders } = useGetFolders({
     query: { enabled: Boolean(user) }
   });
-  const { isOnline, queueCount, isSyncing, syncedCount, lastError, sync } = useOfflineSync();
+  const { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, lastError, sync } = useOfflineSync();
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
   const handleSignOut = async () => {
     await signOutUser();
     localStorage.removeItem("geofield-demo-mode");
+    clearCachedCloudSamples();
     queryClient.clear();
     setSidebarOpen(false);
     setLocation("/login");
@@ -284,6 +286,15 @@ export function Layout({ children }: { children: ReactNode }) {
 
         {/* Account links */}
         <div className="space-y-1 px-4 pb-2">
+          <button
+            type="button"
+            onClick={sync}
+            disabled={!isOnline || isSyncing}
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          >
+            <RefreshCw className={cn("h-4 w-4 shrink-0", isSyncing && "animate-spin")} />
+            <span className="flex-1 text-left">{isSyncing ? "Syncing…" : "Sync with Cloud"}</span>
+          </button>
           <Link
             href="/account"
             className={cn(
@@ -347,6 +358,19 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2.5 px-4 py-2.5 bg-green-50 border-b border-green-200 text-green-800 text-sm sticky top-0 z-20">
             <Check className="w-4 h-4 shrink-0" />
             <span>{syncedCount} offline item{syncedCount !== 1 ? "s" : ""} synced successfully.</span>
+          </div>
+        )}
+        {isOnline && downloadedCount > 0 && syncedCount === 0 && !isSyncing && (
+          <div className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-green-200 bg-green-50 px-4 py-2.5 text-sm text-green-800">
+            <Cloud className="h-4 w-4 shrink-0" />
+            <span>{downloadedCount} cloud sample{downloadedCount === 1 ? "" : "s"} available on this device.</span>
+          </div>
+        )}
+        {lastError && !isSyncing && (
+          <div className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span className="flex-1">{lastError}</span>
+            <button type="button" className="font-semibold underline" onClick={sync}>Retry</button>
           </div>
         )}
 

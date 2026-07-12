@@ -232,9 +232,15 @@ export function useBeginBrowserLogin<TData = unknown>(options?: QueryOptions<any
 export const getGetFoldersQueryKey = () => ["datasets"] as const;
 export async function getFolders(): Promise<Folder[]> {
   if (!(await hasCurrentUser())) return [];
-  const { data, errors } = await client.models.Dataset.list();
-  if (errors?.length) throw new Error(errorMessage(errors));
-  return (data ?? []).map(asFolder);
+  const folders: Folder[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const result = await client.models.Dataset.list({ limit: 1000, nextToken });
+    if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    folders.push(...(result.data ?? []).map(asFolder));
+    nextToken = result.nextToken;
+  } while (nextToken);
+  return folders;
 }
 export function useGetFolders<TData = Folder[]>(options?: QueryOptions<any>): UseQueryResult<TData, ErrorType<unknown>> & { queryKey: QueryKey } {
   const queryKey = getGetFoldersQueryKey();
@@ -283,9 +289,14 @@ export function useDeleteFolder(options?: MutationOptions<void, { id: string | n
 export const getGetSamplesQueryKey = (params?: GetSamplesParams) => params?.folderId ? ["samples", String(params.folderId)] as const : ["samples"] as const;
 export async function getSamples(params?: GetSamplesParams): Promise<Sample[]> {
   if (!(await hasCurrentUser())) return [];
-  const { data, errors } = await client.models.Sample.list();
-  if (errors?.length) throw new Error(errorMessage(errors));
-  const samples = (data ?? []).map(asSample);
+  const samples: Sample[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const result = await client.models.Sample.list({ limit: 1000, nextToken });
+    if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    samples.push(...(result.data ?? []).map(asSample));
+    nextToken = result.nextToken;
+  } while (nextToken);
   if (params?.folderId == null) return samples;
   return samples.filter((sample: any) => String(sample.folderId ?? "") === String(params.folderId));
 }
