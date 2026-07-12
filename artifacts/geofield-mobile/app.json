@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.geofield.mobile"
+      "bundleIdentifier": "com.geofield.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "GeoField uses your location while the app is open to attach GPS coordinates to field samples and measurements."
+      }
     },
     "android": {
       "package": "com.geofield.mobile"
@@ -36,7 +39,7 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "GeoField needs your location to tag field samples with GPS coordinates.",
-          "locationWhenInUsePermission": "GeoField needs your location to tag field samples with GPS coordinates."
+          "locationWhenInUsePermission": "GeoField uses your location while the app is open to attach GPS coordinates to field samples and measurements."
         }
       ],
       [

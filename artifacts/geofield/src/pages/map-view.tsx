@@ -54,7 +54,7 @@ const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/US
 const GEO_TILES    = "https://tiles.macrostrat.org/carto/{z}/{x}/{y}.png";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
 const SOIL_WMS =
-  "https://maps.isric.org/mapserv?map=/map/wrb.map&SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=TRUE&LAYERS=MostProbable&WIDTH=256&HEIGHT=256&CRS=EPSG%3A3857&BBOX={bbox-epsg-3857}";
+  "https://SDMDataAccess.sc.egov.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=TRUE&LAYERS=mapunitpoly&STYLES=default&WIDTH=256&HEIGHT=256&SRS=EPSG%3A3857&BBOX={bbox-epsg-3857}";
 
 function parseCoords(raw: unknown): [number, number] | null {
   if (!raw && raw !== 0) return null;
@@ -134,7 +134,7 @@ function safeAddOverlay(map: any, overlay: OverlayLayer) {
       map.addSource("geology", { type: "raster", tiles: [GEO_TILES], tileSize: 256, attribution: "© Macrostrat" });
       map.addLayer({ id: "geology-overlay", type: "raster", source: "geology", paint: { "raster-opacity": 0.65 } });
     } else if (overlay === "soil") {
-      map.addSource("soil", { type: "raster", tiles: [SOIL_WMS], tileSize: 256, attribution: "© ISRIC" });
+      map.addSource("soil", { type: "raster", tiles: [SOIL_WMS], tileSize: 256, minzoom: 4, maxzoom: 18, attribution: "USDA NRCS SSURGO via Soil Data Access" });
       map.addLayer({ id: "soil-overlay", type: "raster", source: "soil", paint: { "raster-opacity": 0.65 } });
     } else if (overlay === "trails") {
       map.addSource("trails-src", {
@@ -333,8 +333,10 @@ export default function MapViewPage() {
             const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
             const r = await fetch(`${base}/api/proxy/soil?lat=${lat}&lng=${lng}`);
             const d = await r.json();
-            if (d?.noData || d?.error) {
-              setGeoInfo({ loading: false, lngLat: [lng, lat], data: { Note: "No USDA soil data here. Coverage is US-only." } });
+            if (!r.ok || d?.error) {
+              setGeoInfo({ loading: false, lngLat: [lng, lat], error: d?.error || "USDA soil service is temporarily unavailable." });
+            } else if (d?.noData) {
+              setGeoInfo({ loading: false, lngLat: [lng, lat], data: { Note: "No detailed SSURGO map unit covers this point. USDA coverage is primarily the United States and territories." } });
             } else {
               const info: Record<string, string> = {};
               if (d.mapUnit) info["Map Unit"] = d.mapUnit;
@@ -706,7 +708,7 @@ export default function MapViewPage() {
             <Layers className="w-3.5 h-3.5 text-primary shrink-0" />
             {overlayLayer === "geology"
               ? "Click anywhere to get rock formation and geological age data."
-              : "Click anywhere to get soil classification data (USDA SSURGO, US coverage only)."}
+              : "Click a visible USDA soil map unit to get SSURGO classification data (US coverage)."}
           </div>
         )}
         {samplesWithoutCoords.length > 0 && (
@@ -792,7 +794,12 @@ export default function MapViewPage() {
                 <Layers className="w-5 h-5 text-primary" />
                 Insert Map Layer
               </h2>
-              <button onClick={() => setLayerModalOpen(false)} className="text-muted-foreground hover:text-foreground">
+              <button
+                type="button"
+                onClick={() => setLayerModalOpen(false)}
+                className="flex h-10 w-10 touch-manipulation items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="Close map layer popup"
+              >
                 <XIcon className="w-5 h-5" />
               </button>
             </div>

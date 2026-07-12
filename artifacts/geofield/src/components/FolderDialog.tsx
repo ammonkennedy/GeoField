@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "./ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -81,7 +81,6 @@ export function FolderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
         <DialogTitle>{folder ? "Edit Dataset" : "Create New Dataset"}</DialogTitle>
-        <DialogClose onClick={() => onOpenChange(false)} />
       </DialogHeader>
       <DialogContent>
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">

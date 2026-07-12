@@ -7,6 +7,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Alert,
   Image,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -27,6 +28,16 @@ const SAMPLE_TYPES: { value: SampleType; label: string; icon: string; color: str
   { value: "air", label: "Air", icon: "wind", color: "#1F9D8A" },
   { value: "other", label: "Other", icon: "file-text", color: "#64748B" },
 ];
+
+function withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("LOCATION_TIMEOUT")), milliseconds);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
 
 const WATER_FIELDS = [
   { key: "ph", label: "pH", placeholder: "0–14", keyboardType: "decimal-pad" as const },
@@ -126,22 +137,60 @@ export default function SampleScreen() {
   };
 
   const getLocation = async () => {
+    if (gettingLocation) return;
     setGettingLocation(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Location required", "Allow location access to capture GPS coordinates.");
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        Alert.alert("Location Services are off", "Turn on Location Services in Settings to capture GPS coordinates.", [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => Linking.openSettings() },
+        ]);
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+
+      let permission = await Location.getForegroundPermissionsAsync();
+      if (permission.status !== "granted" && permission.canAskAgain) {
+        permission = await Location.requestForegroundPermissionsAsync();
+      }
+      if (permission.status !== "granted") {
+        Alert.alert(
+          "Location permission required",
+          permission.canAskAgain
+            ? "Choose Allow While Using App to capture GPS coordinates."
+            : "Location access is disabled for GeoField. Enable it in Settings > Privacy & Security > Location Services > GeoField.",
+          permission.canAskAgain
+            ? [{ text: "OK" }]
+            : [{ text: "Cancel", style: "cancel" }, { text: "Open Settings", onPress: () => Linking.openSettings() }],
+        );
+        return;
+      }
+
+      let loc: Location.LocationObject;
+      try {
+        loc = await withTimeout(
+          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+          15000,
+        );
+      } catch (error) {
+        const recent = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000, requiredAccuracy: 250 });
+        if (!recent) throw error;
+        loc = recent;
+        Alert.alert("Using recent GPS", "A new fix was not available, so GeoField used a location captured within the last five minutes.");
+      }
       setLocation({
         lat: loc.coords.latitude,
         lon: loc.coords.longitude,
         altitude: loc.coords.altitude,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch {
-      Alert.alert("Error", "Could not get location.");
+    } catch (error: any) {
+      Alert.alert(
+        "GPS unavailable",
+        error?.message === "LOCATION_TIMEOUT"
+          ? "GeoField could not obtain a GPS fix within 15 seconds. In the Simulator, choose Features > Location and select a simulated location. On iPhone, move where the phone has a clear view of the sky and try again."
+          : "GeoField could not obtain your location. Check Location Services and try again.",
+      );
     } finally {
       setGettingLocation(false);
     }
@@ -294,6 +343,9 @@ export default function SampleScreen() {
         ) : (
           <TouchableOpacity
             onPress={getLocation}
+            disabled={gettingLocation}
+            accessibilityRole="button"
+            accessibilityLabel={gettingLocation ? "Getting GPS location" : "Capture GPS location"}
             style={[styles.gpsBtn, { backgroundColor: colors.primary + "18", borderColor: colors.primary + "44", borderRadius: colors.radius }]}
           >
             <Feather name={gettingLocation ? "loader" : "crosshair"} size={16} color={colors.primary} />

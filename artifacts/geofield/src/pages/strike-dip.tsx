@@ -27,6 +27,12 @@ function deriveDipDir(strikeStr: string): string {
   return dirs[Math.round(((n + 90) % 360) / 22.5) % 16];
 }
 
+function normalizeAngle(value: string, maximum: number): string {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  return String(Math.min(maximum, Math.max(0, number)));
+}
+
 function toLocalDateTimeInputValue(date = new Date()): string {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
@@ -92,17 +98,29 @@ const ROCK_LAYER_OPTIONS = [
 
 /* ── Row component ──────────────────────────────────────────────────────── */
 function MeasurementRow({
-  measurement, index, allFolders, onChange, onDelete,
+  measurement, index, allFolders, initiallyOpen = false, onChange, onDelete,
 }: {
   measurement: StrikeDipMeasurement;
   index: number;
   allFolders: Array<{ id: number | string; name: string; isLocal?: boolean }>;
+  initiallyOpen?: boolean;
   onChange: (m: StrikeDipMeasurement) => void;
   onDelete: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const upd = (k: keyof StrikeDipMeasurement, v: string) => onChange({ ...measurement, [k]: v });
+  const upd = (k: keyof StrikeDipMeasurement, v: string) => {
+    if (k === "strike") {
+      const cleanStrike = v.replace(/[^0-9.]/g, "");
+      onChange({ ...measurement, strike: cleanStrike, dipDir: deriveDipDir(cleanStrike) });
+      return;
+    }
+    if (k === "dip") {
+      onChange({ ...measurement, dip: v.replace(/[^0-9.]/g, "") });
+      return;
+    }
+    onChange({ ...measurement, [k]: v });
+  };
   const setDatasetId = (value: string) => onChange({ ...measurement, datasetId: value ? value : null });
   const hasGps = typeof measurement.latitude === "number" && typeof measurement.longitude === "number";
   const hasUtm = typeof measurement.utmEasting === "number" && typeof measurement.utmNorthing === "number" && !!measurement.utmZone;
@@ -154,8 +172,8 @@ function MeasurementRow({
           </div>
         </div>
 
-        <button onClick={() => setOpen((o) => !o)} className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground">
-          {open ? <ChevronUp className="w-4 h-4" /> : <Pencil className="w-4 h-4" />}
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex min-h-10 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-expanded={open}>
+          {open ? <><ChevronUp className="w-4 h-4" />Done</> : <><Pencil className="w-4 h-4" />Edit</>}
         </button>
         <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground">
           <Trash2 className="w-4 h-4" />
@@ -207,15 +225,15 @@ function MeasurementRow({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="col-span-2 sm:col-span-3 space-y-1">
               <Label className="text-xs">Label / Name</Label>
-              <Input value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder="e.g. Outcrop A — bedding plane" className="h-8 text-sm" />
+              <Input autoFocus={initiallyOpen} value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder="e.g. Outcrop A — bedding plane" className="h-9 text-sm" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Strike</Label>
-              <Input value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} placeholder="e.g. 045°" className="h-8 text-sm font-mono" />
+              <Input type="text" inputMode="decimal" value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} onBlur={() => upd("strike", normalizeAngle(measurement.strike, 359))} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Strike in degrees" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Dip</Label>
-              <Input value={measurement.dip} onChange={(e) => upd("dip", e.target.value)} placeholder="e.g. 30°" className="h-8 text-sm font-mono" />
+              <Input type="text" inputMode="decimal" value={measurement.dip} onChange={(e) => upd("dip", e.target.value)} onBlur={() => upd("dip", normalizeAngle(measurement.dip, 90))} placeholder="0–90°" className="h-10 text-base font-mono" aria-label="Dip in degrees" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Dip Direction</Label>
@@ -310,6 +328,9 @@ function MeasurementRow({
               <Input value={measurement.notes} onChange={(e) => upd("notes", e.target.value)} placeholder="Fold vergence, shear sense, quality of measurement…" className="h-8 text-sm" />
             </div>
           </div>
+          <div className="flex justify-end border-t border-border/70 pt-3">
+            <Button type="button" size="sm" onClick={() => setOpen(false)}>Done Editing</Button>
+          </div>
         </div>
       )}
     </div>
@@ -395,6 +416,7 @@ export default function StrikeDipPage() {
   const [compassOpen, setCompassOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
+  const [newlyCreatedId, setNewlyCreatedId] = useState<string | null>(null);
   const [selectedDatasetId, setSelectedDatasetId] = useState<"all" | "uncategorized" | string>("all");
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const { data: folders } = useGetFolders();
@@ -416,6 +438,12 @@ export default function StrikeDipPage() {
   useEffect(() => {
     saveMeasurements(measurements);
   }, [measurements]);
+
+  useEffect(() => {
+    if (!newlyCreatedId) return;
+    const timer = window.setTimeout(() => setNewlyCreatedId(null), 0);
+    return () => window.clearTimeout(timer);
+  }, [newlyCreatedId]);
 
   useEffect(() => {
     const refreshDatasets = () => setLocalDatasets(getLocalDatasets());
@@ -452,7 +480,10 @@ export default function StrikeDipPage() {
   };
 
   const addManual = () => {
-    addMeasurementWithGps(blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId));
+    const measurement = blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId);
+    setMeasurements((prev) => [...prev, measurement]);
+    setNewlyCreatedId(measurement.id);
+    toast({ title: "Manual measurement created", description: "Enter strike and dip values below. Changes save automatically." });
   };
 
   const updateMeasurementById = (id: string, m: StrikeDipMeasurement) => {
@@ -585,6 +616,7 @@ export default function StrikeDipPage() {
                 measurement={m}
                 index={idx}
                 allFolders={allFolders}
+                initiallyOpen={m.id === newlyCreatedId}
                 onChange={(updated) => updateMeasurementById(m.id, updated)}
                 onDelete={() => deleteMeasurementById(m.id)}
               />

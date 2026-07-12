@@ -31,16 +31,20 @@ proxyRouter.get("/proxy/soil", async (req, res) => {
   `;
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     const response = await fetch(
       "https://SDMDataAccess.sc.egov.usda.gov/tabular/post.rest",
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `query=${encodeURIComponent(query)}&format=JSON`,
+        signal: controller.signal,
       }
     );
+    clearTimeout(timeout);
     if (!response.ok) {
-      return res.status(response.status).json({ error: "Upstream soil API error" });
+      return res.status(502).json({ error: "USDA Soil Data Access did not return soil data." });
     }
     const data = await response.json() as { Table?: any[][] };
 
@@ -61,7 +65,7 @@ proxyRouter.get("/proxy/soil", async (req, res) => {
       tfact:        row[8] ?? null,
     });
   } catch (err) {
-    return res.status(500).json({ error: "Failed to fetch soil data" });
+    return res.status(502).json({ error: "USDA soil lookup timed out or is temporarily unavailable." });
   }
 });
 

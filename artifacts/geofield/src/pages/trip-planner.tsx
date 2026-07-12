@@ -25,7 +25,7 @@ const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/US
 const GEO_TILES    = "https://tiles.macrostrat.org/carto/{z}/{x}/{y}.png";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
 const SOIL_WMS     =
-  "https://maps.isric.org/mapserv?map=/map/wrb.map&SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=TRUE&LAYERS=MostProbable&WIDTH=256&HEIGHT=256&CRS=EPSG%3A3857&BBOX={bbox-epsg-3857}";
+  "https://SDMDataAccess.sc.egov.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=TRUE&LAYERS=mapunitpoly&STYLES=default&WIDTH=256&HEIGHT=256&SRS=EPSG%3A3857&BBOX={bbox-epsg-3857}";
 
 function safeRemoveOverlays(map: any) {
   for (const id of ["geology-overlay", "soil-overlay", "trails-overlay"]) {
@@ -42,7 +42,7 @@ function safeAddOverlay(map: any, overlay: OverlayLayer) {
       map.addSource("geology", { type: "raster", tiles: [GEO_TILES], tileSize: 256, attribution: "© Macrostrat" });
       map.addLayer({ id: "geology-overlay", type: "raster", source: "geology", paint: { "raster-opacity": 0.65 } }, "labels");
     } else if (overlay === "soil") {
-      map.addSource("soil", { type: "raster", tiles: [SOIL_WMS], tileSize: 256, attribution: "© ISRIC" });
+      map.addSource("soil", { type: "raster", tiles: [SOIL_WMS], tileSize: 256, minzoom: 4, maxzoom: 18, attribution: "USDA NRCS SSURGO via Soil Data Access" });
       map.addLayer({ id: "soil-overlay", type: "raster", source: "soil", paint: { "raster-opacity": 0.65 } }, "labels");
     } else if (overlay === "trails") {
       map.addSource("trails-src", {
@@ -602,8 +602,10 @@ export default function TripPlannerPage() {
                 const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
                 const r = await fetch(`${base}/api/proxy/soil?lat=${lat}&lng=${lng}`);
                 const d = await r.json();
-                if (d?.noData || d?.error) {
-                  setGeoInfo({ loading: false, lngLat: [lng, lat], data: { Note: "No USDA soil data here. Coverage is US-only." } });
+                if (!r.ok || d?.error) {
+                  setGeoInfo({ loading: false, lngLat: [lng, lat], error: d?.error || "USDA soil service is temporarily unavailable." });
+                } else if (d?.noData) {
+                  setGeoInfo({ loading: false, lngLat: [lng, lat], data: { Note: "No detailed SSURGO map unit covers this point. USDA coverage is primarily the United States and territories." } });
                 } else {
                   const info: Record<string, string> = {};
                   if (d.mapUnit) info["Map Unit"] = d.mapUnit;
@@ -963,7 +965,14 @@ export default function TripPlannerPage() {
                     {activeTrip?.sites.length} site{(activeTrip?.sites.length ?? 0) !== 1 ? "s" : ""} planned
                   </span>
                 )}
-                <Button onClick={() => setMapOpen(false)}>Done</Button>
+                <button
+                  type="button"
+                  onClick={() => setMapOpen(false)}
+                  className="flex h-10 w-10 touch-manipulation items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Close trip planning map"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
             </div>
 

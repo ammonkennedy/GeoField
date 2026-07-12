@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useSamplesMutations, useFoldersMutations } from "@/hooks/use-geofield";
 import { ExportDialog } from "@/components/ExportDialog";
 import { DatasetFigures } from "@/components/DatasetFigures";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { loadMeasurements, reassignMeasurementsDataset, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
@@ -370,7 +370,6 @@ export default function Dashboard() {
       <Dialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
         <DialogHeader>
           <DialogTitle>Delete Sample</DialogTitle>
-          <DialogClose onClick={() => setDeleteId(null)} />
         </DialogHeader>
         <DialogContent>
           <p className="py-4">Are you sure you want to permanently delete this sample? This action cannot be undone.</p>

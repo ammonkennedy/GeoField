@@ -315,8 +315,10 @@ export function CompassModal({ open, onClose, onCapture }: CompassModalProps) {
             Strike &amp; Dip
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center bg-white/5 hover:bg-white/10 transition-colors"
+            className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full bg-white/5 transition-colors hover:bg-white/10"
+            aria-label="Close compass"
           >
             <X className="w-4 h-4 text-slate-400" />
           </button>

@@ -17,7 +17,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { BarChart2, X, ChevronDown, Download } from "lucide-react";
+import { BarChart2, ChevronDown, Download } from "lucide-react";
 import type { Sample } from "@workspace/api-client-react";
 
 const NUMERIC_PARAMS: Record<string, { label: string; unit: string; type: string }> = {
