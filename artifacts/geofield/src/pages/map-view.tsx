@@ -18,6 +18,7 @@ import {
 import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { geocodeAddress } from "@/lib/geocoding";
+import { lookupSoil } from "@/lib/soil-data";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -330,12 +331,8 @@ export default function MapViewPage() {
 
         if (over === "soil") {
           try {
-            const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-            const r = await fetch(`${base}/api/proxy/soil?lat=${lat}&lng=${lng}`);
-            const d = await r.json();
-            if (!r.ok || d?.error) {
-              setGeoInfo({ loading: false, lngLat: [lng, lat], error: d?.error || "USDA soil service is temporarily unavailable." });
-            } else if (d?.noData) {
+            const d = await lookupSoil(lat, lng);
+            if (d?.noData) {
               setGeoInfo({ loading: false, lngLat: [lng, lat], data: { Note: "No detailed SSURGO map unit covers this point. USDA coverage is primarily the United States and territories." } });
             } else {
               const info: Record<string, string> = {};

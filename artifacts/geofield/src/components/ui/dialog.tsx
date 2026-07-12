@@ -7,9 +7,10 @@ interface DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
+  panelClassName?: string;
 }
 
-export function Dialog({ open, onOpenChange, children }: DialogProps) {
+export function Dialog({ open, onOpenChange, children, panelClassName }: DialogProps) {
   React.useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -37,7 +38,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               role="dialog"
               aria-modal="true"
-              className="relative bg-card w-full max-w-lg rounded-2xl shadow-2xl border border-border pointer-events-auto overflow-hidden flex flex-col max-h-[90vh]"
+              className={cn("relative bg-card w-full max-w-lg rounded-2xl shadow-2xl border border-border pointer-events-auto overflow-hidden flex flex-col max-h-[90vh]", panelClassName)}
             >
               <button
                 type="button"

@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, Cloud, ShieldCheck, Settings, X } from "lucide-react";
+import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, Cloud, ShieldCheck, Settings, X, BarChart2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
@@ -208,6 +208,18 @@ export function Layout({ children }: { children: ReactNode }) {
               <Compass className="w-4 h-4 opacity-80 shrink-0" />
               <span className="flex-1">Strike &amp; Dip</span>
               {location === "/strike-dip" && <ChevronRight className="w-4 h-4 shrink-0" />}
+            </Link>
+            <Link
+              href="/figures"
+              className={cn(
+                "mt-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+                location === "/figures" ? "bg-primary text-primary-foreground shadow-md" : "text-foreground hover:bg-muted"
+              )}
+              onClick={() => setSidebarOpen(false)}
+            >
+              <BarChart2 className="h-4 w-4 shrink-0 opacity-80" />
+              <span className="flex-1">Generate Figures</span>
+              {location === "/figures" && <ChevronRight className="h-4 w-4 shrink-0" />}
             </Link>
           </div>
 

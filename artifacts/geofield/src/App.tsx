@@ -11,6 +11,7 @@ import MapViewPage from "@/pages/map-view";
 import TripPlannerPage from "@/pages/trip-planner";
 import StrikeDipPage from "@/pages/strike-dip";
 import AccountSettingsPage from "@/pages/account-settings";
+import FiguresPage from "@/pages/figures";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -47,6 +48,9 @@ function Router() {
       </Route>
       <Route path="/strike-dip">
         <ProtectedRoute component={StrikeDipPage} />
+      </Route>
+      <Route path="/figures">
+        <ProtectedRoute component={FiguresPage} />
       </Route>
       <Route path="/sample/:id">
         <ProtectedRoute component={SampleEntry} />

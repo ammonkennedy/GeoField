@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { CompassModal } from "@/components/CompassModal";
 import { ExportCustomizerDialog } from "@/components/ExportCustomizerDialog";
 import { FolderDialog } from "@/components/FolderDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, MapPin, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
@@ -417,6 +418,8 @@ export default function StrikeDipPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [newlyCreatedId, setNewlyCreatedId] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualDraft, setManualDraft] = useState<StrikeDipMeasurement>(() => blankMeasurement(null));
   const [selectedDatasetId, setSelectedDatasetId] = useState<"all" | "uncategorized" | string>("all");
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const { data: folders } = useGetFolders();
@@ -480,10 +483,22 @@ export default function StrikeDipPage() {
   };
 
   const addManual = () => {
-    const measurement = blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId);
+    setManualDraft(blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId));
+    setManualOpen(true);
+  };
+
+  const saveManualMeasurement = () => {
+    const strike = normalizeAngle(manualDraft.strike, 359);
+    const dip = normalizeAngle(manualDraft.dip, 90);
+    if (!strike || !dip) {
+      toast({ title: "Strike and dip required", description: "Enter a strike from 0–359° and a dip from 0–90°.", variant: "destructive" });
+      return;
+    }
+    const measurement = { ...manualDraft, strike, dip, dipDir: manualDraft.dipDir || deriveDipDir(strike) };
     setMeasurements((prev) => [...prev, measurement]);
     setNewlyCreatedId(measurement.id);
-    toast({ title: "Manual measurement created", description: "Enter strike and dip values below. Changes save automatically." });
+    setManualOpen(false);
+    toast({ title: "Measurement saved", description: `Strike ${strike}° / Dip ${dip}°` });
   };
 
   const updateMeasurementById = (id: string, m: StrikeDipMeasurement) => {
@@ -638,6 +653,44 @@ export default function StrikeDipPage() {
           addMeasurementWithGps(m, "Measurement captured", `Strike ${strike} / Dip ${dip}`);
         }}
       />
+
+      <Dialog open={manualOpen} onOpenChange={setManualOpen} panelClassName="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Enter Strike &amp; Dip Manually</DialogTitle>
+        </DialogHeader>
+        <DialogContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="manual-strike">Strike (0–359°)</Label>
+              <Input id="manual-strike" autoFocus inputMode="decimal" value={manualDraft.strike} onChange={(e) => setManualDraft((draft) => ({ ...draft, strike: e.target.value.replace(/[^0-9.]/g, ""), dipDir: deriveDipDir(e.target.value) }))} placeholder="045" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="manual-dip">Dip (0–90°)</Label>
+              <Input id="manual-dip" inputMode="decimal" value={manualDraft.dip} onChange={(e) => setManualDraft((draft) => ({ ...draft, dip: e.target.value.replace(/[^0-9.]/g, "") }))} placeholder="30" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-label">Label / Name</Label>
+            <Input id="manual-label" value={manualDraft.label} onChange={(e) => setManualDraft((draft) => ({ ...draft, label: e.target.value }))} placeholder="Outcrop A — bedding plane" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="manual-direction">Dip Direction</Label>
+              <Input id="manual-direction" value={manualDraft.dipDir} onChange={(e) => setManualDraft((draft) => ({ ...draft, dipDir: e.target.value }))} placeholder="SE" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="manual-feature">Feature Type</Label>
+              <select id="manual-feature" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm" value={manualDraft.featureType} onChange={(e) => setManualDraft((draft) => ({ ...draft, featureType: e.target.value }))}>
+                <option value="">Select…</option><option>Bedding plane</option><option>Fault plane</option><option>Foliation</option><option>Cleavage</option><option>Joint / fracture</option><option>Other</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 border-t pt-4">
+            <Button type="button" variant="outline" onClick={() => setManualOpen(false)}>Cancel</Button>
+            <Button type="button" onClick={saveManualMeasurement}>Save Measurement</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <FolderDialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen} />
 

@@ -9,7 +9,6 @@ import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar, Ra
 import { Input } from "@/components/ui/input";
 import { useSamplesMutations, useFoldersMutations } from "@/hooks/use-geofield";
 import { ExportDialog } from "@/components/ExportDialog";
-import { DatasetFigures } from "@/components/DatasetFigures";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
@@ -187,9 +186,6 @@ export default function Dashboard() {
                 <Button variant="outline" className="border-destructive/20 text-destructive hover:bg-destructive/10" onClick={handleDeleteFolder}>
                   Delete Dataset
                 </Button>
-              )}
-              {activeFolder && filteredSamples.length > 0 && (
-                <DatasetFigures samples={filteredSamples as any} datasetName={activeFolder.name} />
               )}
               <Button variant="secondary" className="rounded-full bg-white shadow-sm" onClick={() => setExportOpen(true)}>
                 <Download className="w-4 h-4 mr-2" />

@@ -11,7 +11,6 @@ import {
   ResponsiveContainer,
   Cell,
   LabelList,
-  Legend,
   ReferenceLine,
 } from "recharts";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -55,9 +54,17 @@ type ChartType = "bar" | "scatter" | "compare";
 
 const CHART_OPTIONS: { id: ChartType; label: string }[] = [
   { id: "bar",     label: "Bar Chart"          },
-  { id: "scatter", label: "Scatter (vs Index)" },
-  { id: "compare", label: "Side-by-Side Types" },
+  { id: "scatter", label: "Sample Plot" },
+  { id: "compare", label: "Side-by-Side Samples" },
 ];
+
+function FigureViewport({ data, children }: { data: any[]; children: React.ReactNode }) {
+  return (
+    <div className="w-full overflow-x-auto pb-2">
+      <div style={{ width: Math.max(640, data.length * 72), height: 360 }}>{children}</div>
+    </div>
+  );
+}
 
 function CustomTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
@@ -88,26 +95,24 @@ function BarFigure({
   paramUnit: string;
 }) {
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={data} margin={{ top: 20, right: 20, left: 10, bottom: 40 }}>
+    <FigureViewport data={data}>
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 28, right: 24, left: 20, bottom: 76 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
         <XAxis
           dataKey="name"
           tick={{ fontSize: 11 }}
-          angle={-35}
+          angle={-40}
           textAnchor="end"
           interval={0}
+          height={76}
         />
-        <YAxis
-          label={{ value: `${paramLabel}${paramUnit ? ` (${paramUnit})` : ""}`, angle: -90, position: "insideLeft", offset: 10, fontSize: 11 }}
-          tick={{ fontSize: 11 }}
-        />
+        <YAxis tick={{ fontSize: 11 }} width={58} />
         <Tooltip content={<CustomTooltip />} />
         <ReferenceLine
           y={data.reduce((s, d) => s + d.value, 0) / (data.length || 1)}
           stroke="#888"
           strokeDasharray="4 4"
-          label={{ value: "avg", position: "right", fontSize: 10, fill: "#888" }}
         />
         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
           {data.map((d, i) => (
@@ -117,73 +122,53 @@ function BarFigure({
         </Bar>
       </BarChart>
     </ResponsiveContainer>
+    </FigureViewport>
   );
 }
 
 function ScatterFigure({ data, paramLabel, paramUnit }: { data: any[]; paramLabel: string; paramUnit: string }) {
-  const withIndex = data.map((d, i) => ({ ...d, index: i + 1 }));
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <ScatterChart margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
+    <FigureViewport data={data}>
+    <ResponsiveContainer width="100%" height="100%">
+      <ScatterChart margin={{ top: 28, right: 24, left: 20, bottom: 76 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-        <XAxis dataKey="index" name="Sample #" tick={{ fontSize: 11 }} label={{ value: "Sample #", position: "insideBottom", offset: -10, fontSize: 11 }} />
+        <XAxis dataKey="name" name="Sample ID" type="category" tick={{ fontSize: 11 }} angle={-40} textAnchor="end" interval={0} height={76} />
         <YAxis
           dataKey="value"
           name={paramLabel}
-          label={{ value: `${paramLabel}${paramUnit ? ` (${paramUnit})` : ""}`, angle: -90, position: "insideLeft", offset: 10, fontSize: 11 }}
           tick={{ fontSize: 11 }}
+          width={58}
         />
         <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: "3 3" }} />
-        <Scatter data={withIndex}>
-          {withIndex.map((d, i) => (
+        <Scatter data={data}>
+          {data.map((d, i) => (
             <Cell key={i} fill={TYPE_COLORS[d.type] || "#8884d8"} />
           ))}
         </Scatter>
       </ScatterChart>
     </ResponsiveContainer>
+    </FigureViewport>
   );
 }
 
-function CompareFigure({ data, paramLabel, paramUnit }: { data: any[]; paramLabel: string; paramUnit: string }) {
-  const types = [...new Set(data.map((d) => d.type))];
-  const grouped = types.map((t) => {
-    const items = data.filter((d) => d.type === t);
-    const avg = items.reduce((s, d) => s + d.value, 0) / items.length;
-    const min = Math.min(...items.map((d) => d.value));
-    const max = Math.max(...items.map((d) => d.value));
-    return {
-      type: t,
-      avg: parseFloat(avg.toFixed(3)),
-      min: parseFloat(min.toFixed(3)),
-      max: parseFloat(max.toFixed(3)),
-      count: items.length,
-    };
-  });
-
+function CompareFigure({ data, paramUnit }: { data: any[]; paramLabel: string; paramUnit: string }) {
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={grouped} margin={{ top: 20, right: 20, left: 10, bottom: 20 }}>
+    <FigureViewport data={data}>
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 28, right: 24, left: 20, bottom: 76 }} barCategoryGap="18%">
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-        <XAxis dataKey="type" tick={{ fontSize: 12 }} tickFormatter={(t) => t.replace("_", "/")} />
-        <YAxis
-          label={{ value: `${paramLabel}${paramUnit ? ` (${paramUnit})` : ""}`, angle: -90, position: "insideLeft", offset: 10, fontSize: 11 }}
-          tick={{ fontSize: 11 }}
-        />
-        <Tooltip
-          formatter={(val: any, name: string) => [`${val} ${paramUnit}`, name]}
-          labelFormatter={(l) => `Type: ${String(l).replace("_", "/")}`}
-        />
-        <Legend />
-        <Bar dataKey="avg" name="Average" radius={[4, 4, 0, 0]}>
-          {grouped.map((d, i) => (
+        <XAxis dataKey="name" name="Sample ID" tick={{ fontSize: 11 }} angle={-40} textAnchor="end" interval={0} height={76} />
+        <YAxis tick={{ fontSize: 11 }} width={58} />
+        <Tooltip content={<CustomTooltip />} />
+        <Bar dataKey="value" name="Measured value" radius={[4, 4, 0, 0]}>
+          {data.map((d, i) => (
             <Cell key={i} fill={TYPE_COLORS[d.type] || "#8884d8"} opacity={0.85} />
           ))}
-          <LabelList dataKey="avg" position="top" style={{ fontSize: 11 }} />
+          <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 600 }} />
         </Bar>
-        <Bar dataKey="min" name="Min" fill="#94a3b8" opacity={0.5} radius={[4, 4, 0, 0]} />
-        <Bar dataKey="max" name="Max" fill="#64748b" opacity={0.5} radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
+    </FigureViewport>
   );
 }
 
@@ -240,7 +225,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
     const W = Math.round(rect.width);
     const H = Math.round(rect.height);
     const PAD = 16;
-    const HEADER = 60;
+    const HEADER = 88;
 
     const canvas = document.createElement("canvas");
     canvas.width  = (W + PAD * 2) * scale;
@@ -256,26 +241,24 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
     const title = `${paramMeta.label}${paramMeta.unit ? ` (${paramMeta.unit})` : ""}`;
     const subtitle = `${chartData.length} sample${chartData.length !== 1 ? "s" : ""}${datasetName ? ` — ${datasetName}` : ""}`;
     ctx.fillStyle = "#111827";
-    ctx.font = "bold 15px -apple-system, sans-serif";
-    ctx.fillText(title, PAD, 22);
+    ctx.font = "bold 16px -apple-system, sans-serif";
+    ctx.fillText(title, PAD, 24, W);
     ctx.fillStyle = "#6b7280";
     ctx.font = "12px -apple-system, sans-serif";
-    ctx.fillText(subtitle, PAD, 40);
+    ctx.fillText(subtitle, PAD, 46, W);
 
     // Stats row (right-aligned)
     if (stats) {
       const statsStr = `Min: ${stats.min}  Avg: ${stats.avg}  Max: ${stats.max}  n=${stats.n}`;
-      ctx.textAlign = "right";
-      ctx.fillText(statsStr, W + PAD, 40);
-      ctx.textAlign = "left";
+      ctx.fillText(statsStr, PAD, 67, W);
     }
 
     // Thin divider line
     ctx.strokeStyle = "#e5e7eb";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(PAD, 50);
-    ctx.lineTo(W + PAD, 50);
+    ctx.moveTo(PAD, 76);
+    ctx.lineTo(W + PAD, 76);
     ctx.stroke();
 
     // Serialize the SVG with proper dimensions so the browser renders it at full size
@@ -339,7 +322,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
         Generate Figures
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={setOpen} panelClassName="max-w-5xl">
         <DialogContent className="max-w-3xl w-full">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display text-xl">
@@ -412,9 +395,9 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
                 {/* Chart */}
                 {selectedParam && chartData.length > 0 ? (
                   <div className="bg-muted/30 rounded-2xl p-4 border border-border" ref={chartContainerRef}>
-                    <div className="flex items-start justify-between mb-2 gap-3">
+                    <div className="mb-4 flex flex-col gap-3 border-b border-border/70 pb-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
-                        <h3 className="font-semibold text-base">
+                        <h3 className="break-words text-lg font-semibold leading-tight">
                           {paramMeta?.label}{paramMeta?.unit ? ` (${paramMeta.unit})` : ""}
                         </h3>
                         <p className="text-xs text-muted-foreground">
@@ -422,7 +405,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
                           {datasetName ? ` in ${datasetName}` : ""}
                         </p>
                       </div>
-                      <div className="flex items-start gap-4">
+                      <div className="flex flex-wrap items-start gap-4">
                         {stats && (
                           <div className="flex gap-4 text-center text-xs">
                             <div><p className="text-muted-foreground">Min</p><p className="font-semibold">{stats.min}</p></div>

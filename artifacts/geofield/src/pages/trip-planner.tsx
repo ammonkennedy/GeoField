@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { createTripDataset, deleteLocalDataset, updateLocalDataset } from "@/lib/local-datasets";
 import { getQueue, setQueue, type QueuedSample } from "@/lib/offline-queue";
 import { geocodeAddress } from "@/lib/geocoding";
+import { lookupSoil } from "@/lib/soil-data";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -599,12 +600,8 @@ export default function TripPlannerPage() {
 
             if (over === "soil") {
               try {
-                const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-                const r = await fetch(`${base}/api/proxy/soil?lat=${lat}&lng=${lng}`);
-                const d = await r.json();
-                if (!r.ok || d?.error) {
-                  setGeoInfo({ loading: false, lngLat: [lng, lat], error: d?.error || "USDA soil service is temporarily unavailable." });
-                } else if (d?.noData) {
+                const d = await lookupSoil(lat, lng);
+                if (d?.noData) {
                   setGeoInfo({ loading: false, lngLat: [lng, lat], data: { Note: "No detailed SSURGO map unit covers this point. USDA coverage is primarily the United States and territories." } });
                 } else {
                   const info: Record<string, string> = {};
@@ -943,19 +940,19 @@ export default function TripPlannerPage() {
 
       {/* ── Map Modal ──────────────────────────────────────────────────────── */}
       {mapOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 backdrop-blur-sm sm:p-4">
           <div
             className="bg-card rounded-3xl shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden"
             style={{ height: MAP_MODAL_HEIGHT }}
           >
             {/* Modal header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6 sm:py-4">
               <div>
                 <h2 className="font-display font-bold text-xl flex items-center gap-2">
                   <Map className="w-5 h-5 text-primary" />
                   Trip Planning Map
                 </h2>
-                <p className="text-sm text-muted-foreground">
+                <p className="hidden text-sm text-muted-foreground sm:block">
                   Explore overlays by clicking · use "Add Sample Spot" to pin a site
                 </p>
               </div>
@@ -977,14 +974,14 @@ export default function TripPlannerPage() {
             </div>
 
             {/* ── Map controls bar (mirrors map-view controls) ── */}
-            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-border shrink-0 bg-muted/30">
+            <div className="grid shrink-0 grid-cols-2 items-center gap-2 border-b border-border bg-muted/30 px-3 py-2.5 sm:flex sm:flex-wrap sm:px-4">
               {/* Base layer toggle */}
-              <div className="flex items-center gap-0.5 bg-card border border-border rounded-lg p-1 shadow-sm">
+              <div className="col-span-2 flex w-full items-center gap-0.5 rounded-lg border border-border bg-card p-1 shadow-sm sm:w-auto">
                 {(["satellite", "street"] as const).map((bl) => (
                   <button
                     key={bl}
                     onClick={() => setBaseLayer(bl)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${baseLayer === bl ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all sm:flex-none ${baseLayer === bl ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     {bl === "satellite" ? <Satellite className="w-3.5 h-3.5" /> : <Map className="w-3.5 h-3.5" />}
                     {bl.charAt(0).toUpperCase() + bl.slice(1)}
@@ -992,7 +989,7 @@ export default function TripPlannerPage() {
                 ))}
               </div>
 
-              <form className="relative flex-1 min-w-[220px] max-w-sm" onSubmit={handleAddressSearch}>
+              <form className="relative col-span-2 min-w-0 w-full sm:min-w-[220px] sm:max-w-sm sm:flex-1" onSubmit={handleAddressSearch}>
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
                 <Input
                   value={addressSearch}
@@ -1018,16 +1015,16 @@ export default function TripPlannerPage() {
               {/* 3D Terrain toggle */}
               <button
                 onClick={() => setTerrain((t) => !t)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all shadow-sm ${terrain ? "bg-accent text-accent-foreground border-accent" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}
+                className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-sm font-medium shadow-sm transition-all sm:w-auto sm:px-3 ${terrain ? "bg-accent text-accent-foreground border-accent" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}
               >
                 <Mountain className="w-3.5 h-3.5" />
                 3D Terrain
               </button>
 
               {/* Overlay dropdown */}
-              <div className="relative">
+              <div className="relative min-w-0 w-full sm:w-auto">
                 <select
-                  className="flex items-center pl-8 pr-4 h-9 rounded-lg border border-border bg-card text-sm font-medium shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
+                  className="flex h-9 w-full cursor-pointer appearance-none items-center rounded-lg border border-border bg-card pl-8 pr-4 text-sm font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 sm:w-auto"
                   value={overlayLayer}
                   onChange={(e) => setOverlayLayer(e.target.value as OverlayLayer)}
                 >
@@ -1067,14 +1064,14 @@ export default function TripPlannerPage() {
               {/* Add Sample Spot button — arms pin mode */}
               <button
                 onClick={() => { setPinMode((p) => !p); setGeoInfo(null); setPendingCoords(null); }}
-                className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all shadow-sm ${
+                className={`col-span-2 flex min-h-11 w-full touch-manipulation items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium shadow-sm transition-all sm:ml-auto sm:min-h-0 sm:w-auto sm:py-1.5 ${
                   pinMode
                     ? "bg-primary text-primary-foreground border-primary animate-pulse"
                     : "bg-card border-border text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <MapPin className="w-3.5 h-3.5" />
-                {pinMode ? "Click map to place…" : "Add Sample Spot"}
+                {pinMode ? "Tap map to place…" : "Add Sample Site"}
               </button>
             </div>
 
