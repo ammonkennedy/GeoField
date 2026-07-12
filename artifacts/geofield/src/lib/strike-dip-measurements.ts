@@ -18,18 +18,34 @@ export interface StrikeDipMeasurement {
   utmNorthing?: number;
   utmZone?: string;
 }
+import { readDurableArray, writeDurableArray } from "@/lib/durable-storage";
+import { archiveLocalItem, removeLocalDeletedItem, type LocalDeletedItem } from "@/lib/recently-deleted";
 
 const KEY = "geofield_strike_dip";
 export const STRIKE_DIP_UPDATED_EVENT = "strike-dip-updated";
 
 export function loadMeasurements(): StrikeDipMeasurement[] {
-  try { return JSON.parse(localStorage.getItem(KEY) || "[]"); }
-  catch { return []; }
+  return readDurableArray<StrikeDipMeasurement>(KEY);
 }
 
 export function saveMeasurements(items: StrikeDipMeasurement[]) {
-  localStorage.setItem(KEY, JSON.stringify(items));
+  writeDurableArray(KEY, items);
   window.dispatchEvent(new Event(STRIKE_DIP_UPDATED_EVENT));
+}
+
+export function deleteMeasurement(id: string) {
+  const items = loadMeasurements();
+  const measurement = items.find((item) => item.id === id);
+  if (!measurement) return;
+  archiveLocalItem("measurement", measurement.label || `Measurement ${measurement.strike}/${measurement.dip}`, measurement);
+  saveMeasurements(items.filter((item) => item.id !== id));
+}
+
+export function restoreMeasurement(item: LocalDeletedItem) {
+  if (item.kind !== "measurement") return;
+  const items = loadMeasurements();
+  if (!items.some((measurement) => measurement.id === item.data.id)) saveMeasurements([...items, item.data]);
+  removeLocalDeletedItem(item.trashId);
 }
 
 export function reassignMeasurementsDataset(fromDatasetId: number | string, toDatasetId: number | string | null) {

@@ -9,18 +9,17 @@ export interface QueuedSample {
     fields: Record<string, any>;
   };
 }
+import { readDurableArray, writeDurableArray } from "@/lib/durable-storage";
 
 const QUEUE_KEY = "geofield_offline_queue";
 export const QUEUE_UPDATED_EVENT = "offline-queue-updated";
 
 export function getQueue(): QueuedSample[] {
-  try {
-    return JSON.parse(localStorage.getItem(QUEUE_KEY) ?? "[]");
-  } catch { return []; }
+  return readDurableArray<QueuedSample>(QUEUE_KEY);
 }
 
 export function setQueue(queue: QueuedSample[]) {
-  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  writeDurableArray(QUEUE_KEY, queue);
   window.dispatchEvent(new CustomEvent(QUEUE_UPDATED_EVENT));
 }
 

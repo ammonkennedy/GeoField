@@ -1,6 +1,7 @@
 import { getQueue, setQueue } from "@/lib/offline-queue";
 import { reassignMeasurementsDataset } from "@/lib/strike-dip-measurements";
 import { archiveLocalItem, removeLocalDeletedItem, type LocalDeletedItem } from "@/lib/recently-deleted";
+import { readDurableArray, writeDurableArray } from "@/lib/durable-storage";
 
 export interface LocalDataset {
   id: number;
@@ -18,15 +19,11 @@ const LOCAL_DATASETS_KEY = "geofield_local_datasets";
 export const LOCAL_DATASETS_UPDATED_EVENT = "local-datasets-updated";
 
 export function getLocalDatasets(): LocalDataset[] {
-  try {
-    return JSON.parse(localStorage.getItem(LOCAL_DATASETS_KEY) || "[]");
-  } catch {
-    return [];
-  }
+  return readDurableArray<LocalDataset>(LOCAL_DATASETS_KEY);
 }
 
 function saveLocalDatasets(datasets: LocalDataset[]) {
-  localStorage.setItem(LOCAL_DATASETS_KEY, JSON.stringify(datasets));
+  writeDurableArray(LOCAL_DATASETS_KEY, datasets);
   window.dispatchEvent(new CustomEvent(LOCAL_DATASETS_UPDATED_EVENT));
 }
 

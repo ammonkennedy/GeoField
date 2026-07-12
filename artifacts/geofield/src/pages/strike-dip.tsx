@@ -18,7 +18,7 @@ import {
 } from "@/lib/export-config";
 import { format as fmtDate } from "date-fns";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-import { loadMeasurements, saveMeasurements, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
+import { deleteMeasurement, loadMeasurements, saveMeasurements, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
 function deriveDipDir(strikeStr: string): string {
   const n = parseFloat(strikeStr);
@@ -460,7 +460,10 @@ export default function StrikeDipPage() {
   };
 
   const deleteMeasurementById = (id: string) => {
-    setMeasurements((prev) => prev.filter((item) => item.id !== id));
+    const measurement = measurements.find((item) => item.id === id);
+    if (!measurement || !confirm(`Delete "${measurement.label || "this measurement"}"? You can restore it from Settings for 20 days.`)) return;
+    deleteMeasurement(id);
+    setMeasurements(loadMeasurements());
   };
 
   const openExport = () => {
@@ -487,8 +490,9 @@ export default function StrikeDipPage() {
   };
 
   const clearAll = () => {
-    if (!confirm(`Delete all ${measurements.length} measurements? This cannot be undone.`)) return;
-    setMeasurements([]);
+    if (!confirm(`Delete all ${measurements.length} measurements? You can restore them from Settings for 20 days.`)) return;
+    measurements.forEach((measurement) => deleteMeasurement(measurement.id));
+    setMeasurements(loadMeasurements());
   };
 
   return (

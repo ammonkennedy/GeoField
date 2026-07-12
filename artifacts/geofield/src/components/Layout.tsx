@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, Cloud, ShieldCheck, Settings } from "lucide-react";
+import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, Cloud, ShieldCheck, Settings, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
@@ -18,6 +18,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: authData } = useGetCurrentAuthUser();
   const [datasetDialogOpen, setDatasetDialogOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [logoOpen, setLogoOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>(loadTrips);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
 
@@ -48,6 +49,15 @@ export function Layout({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!logoOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLogoOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [logoOpen]);
+
   // Keep locally-created datasets in sync
   useEffect(() => {
     const refresh = () => setLocalDatasets(getLocalDatasets());
@@ -64,7 +74,9 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Mobile Header */}
       <header className="sticky top-0 isolate z-50 flex shrink-0 items-center justify-between border-b bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden">
         <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
-          <GeoFieldLogo className="h-9 w-9 shadow-sm" />
+          <button type="button" className="touch-manipulation rounded-[22%] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="View GeoField logo full screen" onClick={() => setLogoOpen(true)}>
+            <GeoFieldLogo className="h-9 w-9 shadow-sm" />
+          </button>
           <span>GeoField</span>
         </div>
         <Button
@@ -93,7 +105,9 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
       >
         <div className="p-6 hidden md:flex items-center gap-3 border-b border-border/70">
-          <GeoFieldLogo className="h-12 w-12 shadow-sm" />
+          <button type="button" className="rounded-[22%] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="View GeoField logo full screen" onClick={() => setLogoOpen(true)}>
+            <GeoFieldLogo className="h-12 w-12 shadow-sm" />
+          </button>
           <div>
             <div className="text-primary font-display font-bold text-2xl leading-none">GeoField</div>
             <div className="mt-1 text-xs font-medium text-muted-foreground">Collect. Analyze. Understand.</div>
@@ -111,7 +125,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto py-5 flex flex-col gap-6">
+        <div className="flex flex-1 flex-col gap-6 overflow-y-auto pb-5 pt-8 md:py-5">
           {/* Main Nav */}
           <div className="px-4">
             <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.18em] mb-3 px-2">Views</h3>
@@ -339,6 +353,28 @@ export function Layout({ children }: { children: ReactNode }) {
           aria-hidden="true"
           onClick={() => setSidebarOpen(false)}
         />
+      )}
+
+      {logoOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-6 backdrop-blur-md"
+          role="dialog"
+          aria-modal="true"
+          aria-label="GeoField logo"
+          onClick={() => setLogoOpen(false)}
+        >
+          <button
+            type="button"
+            className="fixed right-[max(1rem,env(safe-area-inset-right))] top-[max(1rem,env(safe-area-inset-top))] flex h-12 w-12 touch-manipulation items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label="Close full-screen logo"
+            onClick={() => setLogoOpen(false)}
+          >
+            <X className="h-7 w-7" />
+          </button>
+          <div onClick={(event) => event.stopPropagation()}>
+            <GeoFieldLogo className="h-auto w-[min(88vw,80dvh)] rounded-[22%] shadow-2xl" />
+          </div>
+        </div>
       )}
     </div>
   );

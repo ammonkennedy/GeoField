@@ -15,6 +15,7 @@ import { AlertCircle, CheckCircle2, KeyRound, Loader2, Settings, UserRound, Tras
 import { getLocalDeletedItems, removeLocalDeletedItem, type LocalDeletedItem } from "@/lib/recently-deleted";
 import { restoreLocalDataset } from "@/lib/local-datasets";
 import { getQueue, setQueue } from "@/lib/offline-queue";
+import { restoreMeasurement } from "@/lib/strike-dip-measurements";
 
 type CloudDeletedItem = { id: number; name?: string; sampleId?: string; deletedAt: string; kind: "dataset" | "sample" };
 
@@ -65,6 +66,7 @@ export default function AccountSettingsPage() {
   const restoreItem = async (item: CloudDeletedItem | LocalDeletedItem) => {
     if ("trashId" in item) {
       if (item.kind === "dataset") restoreLocalDataset(item);
+      else if (item.kind === "measurement") restoreMeasurement(item);
       else {
         if (!getQueue().some((queued) => queued.queuedId === item.data.queuedId)) setQueue([...getQueue(), item.data]);
         removeLocalDeletedItem(item.trashId);
