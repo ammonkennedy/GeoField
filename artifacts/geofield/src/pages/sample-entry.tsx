@@ -141,7 +141,7 @@ async function getDevicePosition(): Promise<DevicePosition> {
     if (permission?.location !== "granted" && permission?.coarseLocation !== "granted") {
       throw Object.assign(new Error("Location permission denied"), { code: 1 });
     }
-    const result = await timeoutPromise(nativeGeolocation.getCurrentPosition({
+    const result = await timeoutPromise<any>(nativeGeolocation.getCurrentPosition({
       enableHighAccuracy: true,
       timeout: 12000,
       maximumAge: 60000,
@@ -574,6 +574,24 @@ export default function SampleEntry() {
                 <div className="space-y-4">
                   <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>Parameters</h3>
                   <AnimatePresence mode="wait"><motion.div key={currentType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>{currentType === "water" && <WaterFields register={register} />}{currentType === "rock" && <RockFields register={register} />}{currentType === "soil_sand" && <SoilFields register={register} />}{currentType === "air" && <AirFields register={register} />}</motion.div></AnimatePresence>
+                </div>
+              </>
+            )}
+
+            {currentType === "other" && (
+              <>
+                <div className="h-px bg-border/60 w-full" />
+                <div className="space-y-4">
+                  <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>Other Sample Details</h3>
+                  <div className="space-y-2">
+                    <Label htmlFor="other-sample-title">Sample Type</Label>
+                    <Input
+                      id="other-sample-title"
+                      {...register("fields.otherSampleTitle")}
+                      placeholder="e.g. Vegetation, Ice, Biological material"
+                    />
+                    <p className="text-xs text-muted-foreground">This name appears at the top of the saved sample instead of “Other.”</p>
+                  </div>
                 </div>
               </>
             )}

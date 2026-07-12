@@ -27,7 +27,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: folders } = useGetFolders({
     query: { enabled: Boolean(user) }
   });
-  const { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, syncProgress, lastError, sync, rebuildCloudCache } = useOfflineSync();
+  const { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, syncProgress, lastError, sync } = useOfflineSync();
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
@@ -294,15 +294,6 @@ export function Layout({ children }: { children: ReactNode }) {
           >
             <RefreshCw className={cn("h-4 w-4 shrink-0", isSyncing && "animate-spin")} />
             <span className="flex-1 text-left">{isSyncing ? (syncProgress || "Syncing…") : "Sync with Cloud"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={rebuildCloudCache}
-            disabled={!isOnline || isSyncing}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-          >
-            <Cloud className="h-4 w-4 shrink-0" />
-            <span className="flex-1 text-left">Sync All Cloud Data</span>
           </button>
           <Link
             href="/account"

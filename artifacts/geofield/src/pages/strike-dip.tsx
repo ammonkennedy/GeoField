@@ -8,7 +8,7 @@ import { CompassModal } from "@/components/CompassModal";
 import { ExportCustomizerDialog } from "@/components/ExportCustomizerDialog";
 import { FolderDialog } from "@/components/FolderDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, MapPin, FolderOpen } from "lucide-react";
+import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, Image as ImageIcon, MapPin, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import {
@@ -109,7 +109,8 @@ function MeasurementRow({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
   const upd = (k: keyof StrikeDipMeasurement, v: string) => {
     if (k === "strike") {
       const cleanStrike = v.replace(/[^0-9.]/g, "");
@@ -203,20 +204,37 @@ function MeasurementRow({
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => photoInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed border-border hover:border-primary transition-colors text-muted-foreground hover:text-primary text-sm w-full"
-              >
-                <Camera className="w-4 h-4 shrink-0" />
-                Attach photo (camera or file)
-              </button>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="flex min-h-11 touch-manipulation items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                >
+                  <Camera className="w-4 h-4 shrink-0" />
+                  Take Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => libraryInputRef.current?.click()}
+                  className="flex min-h-11 touch-manipulation items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                >
+                  <ImageIcon className="w-4 h-4 shrink-0" />
+                  Choose from Library
+                </button>
+              </div>
             )}
             <input
-              ref={photoInputRef}
+              ref={cameraInputRef}
               type="file"
               accept="image/*"
               capture="environment"
+              className="hidden"
+              onChange={handlePhotoChange}
+            />
+            <input
+              ref={libraryInputRef}
+              type="file"
+              accept="image/*"
               className="hidden"
               onChange={handlePhotoChange}
             />
