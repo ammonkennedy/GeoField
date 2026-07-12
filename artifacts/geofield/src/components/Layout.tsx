@@ -60,23 +60,38 @@ export function Layout({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col md:flex-row">
+    <div className="min-h-screen min-h-[100dvh] bg-background flex flex-col md:flex-row">
       {/* Mobile Header */}
-      <div className="md:hidden flex items-center justify-between p-4 border-b bg-card/95 backdrop-blur">
+      <header className="sticky top-0 isolate z-50 flex shrink-0 items-center justify-between border-b bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden">
         <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
           <GeoFieldLogo className="h-9 w-9 shadow-sm" />
           <span>GeoField</span>
         </div>
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setSidebarOpen(!sidebarOpen)}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="relative z-10 min-h-11 min-w-11 touch-manipulation rounded-full"
+          aria-label={sidebarOpen ? "Close navigation menu" : "Open navigation menu"}
+          aria-expanded={sidebarOpen}
+          aria-controls="mobile-navigation"
+          data-testid="mobile-menu-button"
+          onClick={() => setSidebarOpen((open) => !open)}
+        >
           <Menu className="w-6 h-6" />
         </Button>
-      </div>
+      </header>
 
       {/* Sidebar */}
-      <aside className={cn(
-        "fixed md:sticky top-0 left-0 z-40 h-screen w-[280px] bg-sidebar border-r flex flex-col transition-transform duration-300 ease-in-out shadow-[12px_0_40px_rgba(15,23,42,0.04)]",
-        sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-      )}>
+      <aside
+        id="mobile-navigation"
+        className={cn(
+          "fixed left-0 top-0 z-40 flex h-screen h-[100dvh] w-[280px] flex-col border-r bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-[12px_0_40px_rgba(15,23,42,0.04)] transition-transform duration-300 ease-in-out md:sticky md:pointer-events-auto md:pt-0",
+          sidebarOpen
+            ? "translate-x-0 pointer-events-auto"
+            : "-translate-x-full pointer-events-none md:translate-x-0"
+        )}
+      >
         <div className="p-6 hidden md:flex items-center gap-3 border-b border-border/70">
           <GeoFieldLogo className="h-12 w-12 shadow-sm" />
           <div>
@@ -283,7 +298,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-h-screen relative max-w-full overflow-hidden">
+      <main className="relative flex min-h-0 flex-1 flex-col max-w-full overflow-hidden md:min-h-screen">
         {/* Offline / sync banners */}
         {!isOnline && (
           <div className="flex items-center gap-2.5 px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm sticky top-0 z-20">
@@ -320,7 +335,8 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm"
+          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm md:hidden"
+          aria-hidden="true"
           onClick={() => setSidebarOpen(false)}
         />
       )}
