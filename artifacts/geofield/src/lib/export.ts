@@ -89,6 +89,7 @@ export async function exportDatasetWorkbookWithConfig({
   folderName,
   filename,
   sampleColumnsByType,
+  sampleCustomRowsByType,
   sampleConfig,
 }: {
   samples: Sample[];
@@ -97,6 +98,7 @@ export async function exportDatasetWorkbookWithConfig({
   folderName: string;
   filename: string;
   sampleColumnsByType: Partial<Record<SampleTypeSheetKey, ExportColumn[]>>;
+  sampleCustomRowsByType?: Partial<Record<SampleTypeSheetKey, ExportFormatConfig["customRows"]>>;
   sampleConfig: ExportFormatConfig;
 }) {
   if ((!samples || samples.length === 0) && (!measurements || measurements.length === 0)) return;
@@ -111,7 +113,11 @@ export async function exportDatasetWorkbookWithConfig({
     );
     appendSheet(
       workbook,
-      buildStyledWorksheet(sampleColumnsByType[sheet.key] || getSampleColumns(typeSamples), sampleRows, sampleConfig),
+      buildStyledWorksheet(
+        sampleColumnsByType[sheet.key] || getSampleColumns(typeSamples),
+        sampleRows,
+        { ...sampleConfig, customRows: sampleCustomRowsByType?.[sheet.key] || [] },
+      ),
       sheet.label,
     );
   }

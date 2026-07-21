@@ -193,17 +193,22 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
         initialConfig={savedConfig}
         configKey="samples"
         exportLabel={`Export ${count} record${count !== 1 ? "s" : ""}`}
-        onExportGroups={async (groups, config) => {
+        initialFileName={filename}
+        onExportGroups={async (groups, config, chosenFileName) => {
           const sampleColumnsByType = Object.fromEntries(
             groups.map((group) => [group.key, group.columns])
           ) as Partial<Record<SampleTypeSheetKey, typeof groups[number]["columns"]>>;
+          const sampleCustomRowsByType = Object.fromEntries(
+            groups.map((group) => [group.key, group.customRows || []])
+          );
           await exportDatasetWorkbookWithConfig({
             samples: samplesToExport,
             measurements: measurementsToExport,
             datasets: allFolders,
             folderName,
-            filename,
+            filename: chosenFileName,
             sampleColumnsByType,
+            sampleCustomRowsByType,
             sampleConfig: config,
           });
         }}

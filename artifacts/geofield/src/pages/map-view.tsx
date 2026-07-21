@@ -110,7 +110,6 @@ const INITIAL_STYLE: any = {
     { id: "satellite-layer", type: "raster", source: "satellite", layout: { visibility: "visible" } },
     { id: "street-layer", type: "raster", source: "street", layout: { visibility: "none" } },
   ],
-  terrain: { source: "terrain", exaggeration: 1.5 },
   sky: {
     "sky-color": "#87CEEB",
     "sky-horizon-blend": 0.5,
@@ -162,7 +161,7 @@ export default function MapViewPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<number | string | "all">("all");
   const [baseLayer, setBaseLayer] = useState<BaseLayer>("satellite");
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
-  const [terrain, setTerrain] = useState(true);
+  const [terrain, setTerrain] = useState(false);
   const [geoInfo, setGeoInfo] = useState<GeoInfo | null>(null);
   const [customLayers, setCustomLayers] = useState<CustomMapLayer[]>(loadCustomLayers);
   const [queuedSamples, setQueuedSamples] = useState(getQueue);
@@ -199,6 +198,7 @@ export default function MapViewPage() {
   const customLayersRef = useRef<CustomMapLayer[]>(loadCustomLayers());
   // Use refs for values accessed inside async / event-handler closures to avoid stale captures
   const overlayLayerRef = useRef<OverlayLayer>("none");
+  const terrainRef = useRef(false);
   const mapLoadedRef = useRef(false);
 
   const filteredSamples = (allSamples || []).filter((s) =>
@@ -223,6 +223,10 @@ export default function MapViewPage() {
   useEffect(() => {
     overlayLayerRef.current = overlayLayer;
   }, [overlayLayer]);
+
+  useEffect(() => {
+    terrainRef.current = terrain;
+  }, [terrain]);
 
   useEffect(() => {
     const refreshQueue = () => setQueuedSamples(getQueue());
@@ -288,17 +292,50 @@ export default function MapViewPage() {
         style: INITIAL_STYLE,
         center: [-98.35, 39.5],
         zoom: 4,
-        pitch: 40,
+        pitch: 0,
         maxPitch: 85,
+        dragRotate: true,
+        pitchWithRotate: true,
+        touchPitch: true,
         attributionControl: {},
       });
       mapRef.current = map;
 
       map.addControl(new L.NavigationControl({ visualizePitch: true }), "top-right");
+      map.addControl({
+        onAdd(controlMap: any) {
+          const container = document.createElement("div");
+          container.className = "maplibregl-ctrl maplibregl-ctrl-group";
+
+          const makeTiltButton = (direction: "up" | "down") => {
+            const button = document.createElement("button");
+            button.type = "button";
+            const towardHorizon = direction === "up";
+            button.title = towardHorizon ? "Tilt view toward the horizon" : "Tilt view toward the ground";
+            button.setAttribute("aria-label", button.title);
+            button.innerHTML = `<span aria-hidden="true" style="display:block;font-size:20px;line-height:20px;font-weight:700;transform:${towardHorizon ? "translateY(2px)" : "translateY(-2px)"}">${towardHorizon ? "⌃" : "⌄"}</span>`;
+            button.addEventListener("click", () => {
+              if (towardHorizon && !terrainRef.current) {
+                setTerrain(true);
+                return;
+              }
+              if (!terrainRef.current) return;
+              const nextPitch = Math.max(0, Math.min(80, controlMap.getPitch() + (towardHorizon ? 10 : -10)));
+              controlMap.easeTo({ pitch: nextPitch, duration: 250, essential: true });
+            });
+            return button;
+          };
+
+          container.append(makeTiltButton("up"), makeTiltButton("down"));
+          return container;
+        },
+        onRemove() {},
+      }, "top-right");
       map.addControl(new L.ScaleControl(), "bottom-left");
 
       map.on("load", () => {
         mapLoadedRef.current = true;
+        if (terrainRef.current) map.setTerrain({ source: "terrain", exaggeration: 1.5 });
         if (overlayLayerRef.current !== "none") {
           safeAddOverlay(map, overlayLayerRef.current);
         }
@@ -393,10 +430,16 @@ export default function MapViewPage() {
       if (terrain) {
         mapRef.current.setTerrain({ source: "terrain", exaggeration: 1.5 });
         mapRef.current.setMaxPitch(85);
+        mapRef.current.easeTo({
+          pitch: Math.max(mapRef.current.getPitch(), 62),
+          bearing: mapRef.current.getBearing() === 0 ? -25 : mapRef.current.getBearing(),
+          duration: 900,
+          essential: true,
+        });
       } else {
         mapRef.current.setTerrain(null);
         mapRef.current.setMaxPitch(60);
-        mapRef.current.setPitch(0);
+        mapRef.current.easeTo({ pitch: 0, bearing: 0, duration: 600, essential: true });
       }
     } catch {}
   }, [terrain]);
@@ -508,8 +551,9 @@ export default function MapViewPage() {
     if (!mapRef.current) return;
     mapRef.current.flyTo({
       center: [coords[1], coords[0]],
-      zoom: Math.max(mapRef.current.getZoom?.() ?? 0, 16),
-      pitch: terrain ? 45 : 0,
+      zoom: terrain ? 14 : Math.max(mapRef.current.getZoom?.() ?? 0, 16),
+      pitch: terrain ? 64 : 0,
+      bearing: terrain ? -25 : 0,
       essential: true,
     });
   }
@@ -539,8 +583,9 @@ export default function MapViewPage() {
       setSampleSearch("");
       mapRef.current.flyTo({
         center: [result.lng, result.lat],
-        zoom: 16,
-        pitch: terrain ? 45 : 0,
+        zoom: terrain ? 13.5 : 16,
+        pitch: terrain ? 64 : 0,
+        bearing: terrain ? -25 : 0,
         essential: true,
       });
     } catch {
@@ -557,7 +602,7 @@ export default function MapViewPage() {
           <div>
             <h1 className="text-3xl font-bold font-display flex items-center gap-3">
               <MapPin className="text-primary w-8 h-8" />
-              3D Geological Map
+              Geological Map
             </h1>
             <p className="text-muted-foreground mt-1">
               {samplesWithCoords.length} sample{samplesWithCoords.length !== 1 ? "s" : ""} plotted
@@ -639,11 +684,11 @@ export default function MapViewPage() {
 
           {/* Terrain */}
           <button
-            onClick={() => setTerrain(!terrain)}
+            onClick={() => setTerrain((enabled) => !enabled)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium transition-all shadow-sm ${terrain ? "bg-accent text-accent-foreground border-accent" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}
           >
             <Mountain className="w-3.5 h-3.5" />
-            3D Terrain
+            {terrain ? "3D Terrain" : "2D Map"}
           </button>
 
           {/* Overlay */}
@@ -767,6 +812,11 @@ export default function MapViewPage() {
         )}
         <div className="flex-1 relative">
           <div ref={mapContainerRef} className="w-full h-full rounded-2xl overflow-hidden border border-border shadow-lg" />
+          {terrain && (
+            <div className="pointer-events-none absolute bottom-7 left-3 right-3 mx-auto w-fit max-w-[calc(100%-1.5rem)] rounded-lg bg-black/65 px-3 py-1.5 text-center text-xs text-white shadow backdrop-blur-sm">
+              Two-finger drag tilts · twist rotates · use the right-side arrows for precise tilt
+            </div>
+          )}
         </div>
       </div>
 

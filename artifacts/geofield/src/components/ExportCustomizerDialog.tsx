@@ -16,6 +16,7 @@ export interface ExportSheetGroup {
   label: string;
   count: number;
   columns: ExportColumn[];
+  customRows?: ExportCustomRow[];
 }
 
 interface ExportCustomizerDialogProps {
@@ -29,8 +30,9 @@ interface ExportCustomizerDialogProps {
   initialConfig: ExportFormatConfig;
   configKey: string;
   exportLabel?: string;
-  onExport?: (columns: ExportColumn[], config: ExportFormatConfig) => void | Promise<void>;
-  onExportGroups?: (groups: ExportSheetGroup[], config: ExportFormatConfig) => void | Promise<void>;
+  initialFileName?: string;
+  onExport?: (columns: ExportColumn[], config: ExportFormatConfig, fileName: string) => void | Promise<void>;
+  onExportGroups?: (groups: ExportSheetGroup[], config: ExportFormatConfig, fileName: string) => void | Promise<void>;
 }
 
 function newCustomRow(): ExportCustomRow {
@@ -39,7 +41,7 @@ function newCustomRow(): ExportCustomRow {
 
 export function ExportCustomizerDialog({
   open, onOpenChange, title, subtitle,
-  initialColumns, initialGroups = [], trailingSheets = [], initialConfig, configKey, exportLabel, onExport, onExportGroups,
+  initialColumns, initialGroups = [], trailingSheets = [], initialConfig, configKey, exportLabel, initialFileName = "geofield-export", onExport, onExportGroups,
 }: ExportCustomizerDialogProps) {
   const [columns, setColumns] = useState<ExportColumn[]>(initialColumns);
   const [groups, setGroups] = useState<ExportSheetGroup[]>(initialGroups);
@@ -48,9 +50,12 @@ export function ExportCustomizerDialog({
   const [sheetName, setSheetName] = useState(initialConfig.sheetName);
   const [orientation, setOrientation] = useState<ExportFormatConfig["orientation"]>(initialConfig.orientation || "normal");
   const [customRows, setCustomRows] = useState<ExportCustomRow[]>(initialConfig.customRows || []);
+  const [fileName, setFileName] = useState(initialFileName);
+  const [choosingRowTarget, setChoosingRowTarget] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const dragIndexRef = useRef<number | null>(null);
+  const groupDragRef = useRef<{ groupKey: string; index: number } | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const handleOpenChange = (v: boolean) => {
@@ -61,6 +66,8 @@ export function ExportCustomizerDialog({
       setSheetName(initialConfig.sheetName);
       setOrientation(initialConfig.orientation || "normal");
       setCustomRows(initialConfig.customRows || []);
+      setFileName(initialFileName);
+      setChoosingRowTarget(false);
     }
     onOpenChange(v);
   };
@@ -115,6 +122,35 @@ export function ExportCustomizerDialog({
   const updateGroupColumns = (groupKey: string, update: (columns: ExportColumn[]) => ExportColumn[]) =>
     setGroups((current) => current.map((group) => group.key === groupKey ? { ...group, columns: update(group.columns) } : group));
 
+  const moveGroupColumn = (groupKey: string, from: number, to: number) => {
+    if (from === to) return;
+    updateGroupColumns(groupKey, (items) => {
+      const next = [...items];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
+  const addRowToGroups = (groupKey: string | "all") => {
+    setGroups((current) => current.map((group) =>
+      groupKey === "all" || group.key === groupKey
+        ? { ...group, customRows: [...(group.customRows || []), newCustomRow()] }
+        : group
+    ));
+    setChoosingRowTarget(false);
+  };
+
+  const updateGroupRow = (groupKey: string, rowId: string, text: string) =>
+    setGroups((current) => current.map((group) => group.key === groupKey
+      ? { ...group, customRows: (group.customRows || []).map((row) => row.id === rowId ? { ...row, text } : row) }
+      : group));
+
+  const removeGroupRow = (groupKey: string, rowId: string) =>
+    setGroups((current) => current.map((group) => group.key === groupKey
+      ? { ...group, customRows: (group.customRows || []).filter((row) => row.id !== rowId) }
+      : group));
+
   const handleExport = async () => {
     const config: ExportFormatConfig = {
       ...DEFAULT_FORMAT_CONFIG,
@@ -129,8 +165,9 @@ export function ExportCustomizerDialog({
     setIsExporting(true);
     setExportError("");
     try {
-      if (grouped && onExportGroups) await onExportGroups(groups, config);
-      else if (onExport) await onExport(columns, config);
+      const cleanFileName = fileName.trim().replace(/[\\/:*?"<>|]+/g, "-") || initialFileName;
+      if (grouped && onExportGroups) await onExportGroups(groups, config, cleanFileName);
+      else if (onExport) await onExport(columns, config, cleanFileName);
       onOpenChange(false);
     } catch (error: any) {
       // Canceling the iOS share sheet is not an export failure.
@@ -158,6 +195,15 @@ export function ExportCustomizerDialog({
 
         {/* Body — scrollable */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          <div className="space-y-1.5">
+            <Label htmlFor="export-file-name" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File name</Label>
+            <div className="flex items-center gap-2">
+              <Input id="export-file-name" value={fileName} onChange={(event) => setFileName(event.target.value)} placeholder="geofield-export" className="h-9" />
+              <span className="text-sm text-muted-foreground">.xlsx</span>
+            </div>
+            <p className="text-xs text-muted-foreground">A date and time are added automatically so the file is easy to identify.</p>
+          </div>
 
           {/* Sheet name */}
           {!grouped && <div className="space-y-1.5">
@@ -207,7 +253,7 @@ export function ExportCustomizerDialog({
           </div>
 
           {/* Custom rows */}
-          <div className="space-y-3">
+          {!grouped && <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -246,7 +292,24 @@ export function ExportCustomizerDialog({
                 ))}
               </div>
             )}
-          </div>
+          </div>}
+
+          {grouped && (
+            <div className="space-y-2">
+              <Button type="button" variant="outline" className="w-full gap-2" onClick={() => setChoosingRowTarget((value) => !value)}>
+                <Plus className="h-4 w-4" />Add Row Above Header
+              </Button>
+              {choosingRowTarget && (
+                <div className="rounded-xl border bg-card p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Add the row to</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button type="button" size="sm" onClick={() => addRowToGroups("all")}>All sample types</Button>
+                    {groups.map((group) => <Button key={group.key} type="button" size="sm" variant="outline" onClick={() => addRowToGroups(group.key)}>{group.label}</Button>)}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Workbook sheet preview / columns */}
           {grouped ? (
@@ -279,12 +342,53 @@ export function ExportCustomizerDialog({
                           <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => updateGroupColumns(group.key, (items) => items.map((item) => ({ ...item, enabled: true })))}>All</button>
                           <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => updateGroupColumns(group.key, (items) => items.map((item) => ({ ...item, enabled: false })))}>None</button>
                         </div>
+                        {(group.customRows || []).map((row, rowIndex) => (
+                          <div key={row.id} className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                            <span className="shrink-0 text-xs text-muted-foreground">Top row {rowIndex + 1}</span>
+                            <Input value={row.text} onChange={(event) => updateGroupRow(group.key, row.id, event.target.value)} placeholder="Blank spacing or title text…" className="h-8" />
+                            <button type="button" aria-label="Remove custom row" onClick={() => removeGroupRow(group.key, row.id)} className="rounded p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                        ))}
                         {group.columns.map((column, columnIndex) => (
-                          <div key={column.key} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2", column.enabled ? "bg-card" : "border-dashed opacity-60")}>
-                            <button type="button" onClick={() => updateGroupColumns(group.key, (items) => items.map((item, index) => index === columnIndex ? { ...item, enabled: !item.enabled } : item))} className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border-2", column.enabled ? "border-primary bg-primary text-primary-foreground" : "border-border")}>
-                              {column.enabled && <span className="text-xs">✓</span>}
+                          <div
+                            key={column.key}
+                            data-group-key={group.key}
+                            data-column-index={columnIndex}
+                            onDragOver={(event) => event.preventDefault()}
+                            onDragEnter={() => {
+                              const active = groupDragRef.current;
+                              if (!active || active.groupKey !== group.key || active.index === columnIndex) return;
+                              moveGroupColumn(group.key, active.index, columnIndex);
+                              groupDragRef.current = { groupKey: group.key, index: columnIndex };
+                            }}
+                            className={cn("flex items-center gap-2 rounded-lg border px-2 py-2", column.enabled ? "bg-card" : "border-dashed opacity-60")}
+                          >
+                            <button
+                              type="button"
+                              draggable
+                              aria-label={`Drag ${column.label} to reorder`}
+                              className="touch-none cursor-grab rounded p-1.5 text-muted-foreground/60 active:cursor-grabbing active:bg-muted"
+                              onDragStart={(event) => { groupDragRef.current = { groupKey: group.key, index: columnIndex }; event.dataTransfer.effectAllowed = "move"; }}
+                              onDragEnd={() => { groupDragRef.current = null; }}
+                              onPointerDown={(event) => { groupDragRef.current = { groupKey: group.key, index: columnIndex }; event.currentTarget.setPointerCapture(event.pointerId); }}
+                              onPointerMove={(event) => {
+                                if (!groupDragRef.current || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                                const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-group-key][data-column-index]");
+                                if (!target || target.dataset.groupKey !== group.key) return;
+                                const to = Number(target.dataset.columnIndex);
+                                const active = groupDragRef.current;
+                                if (!Number.isInteger(to) || active.index === to) return;
+                                moveGroupColumn(group.key, active.index, to);
+                                groupDragRef.current = { groupKey: group.key, index: to };
+                              }}
+                              onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); groupDragRef.current = null; }}
+                            >
+                              <GripVertical className="h-4 w-4" />
                             </button>
                             <input value={column.label} onChange={(event) => updateGroupColumns(group.key, (items) => items.map((item, index) => index === columnIndex ? { ...item, label: event.target.value } : item))} className="min-w-0 flex-1 rounded bg-transparent px-1 text-sm outline-none focus:bg-muted" />
+                            <button type="button" aria-label={column.enabled ? `Discard ${column.label}` : `Keep ${column.label}`} onClick={() => updateGroupColumns(group.key, (items) => items.map((item, index) => index === columnIndex ? { ...item, enabled: !item.enabled } : item))} className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border-2", column.enabled ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background")}>
+                              {column.enabled && <span className="text-xs">✓</span>}
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -363,7 +467,17 @@ export function ExportCustomizerDialog({
                     <GripVertical className="w-4 h-4" />
                   </button>
 
-                  {/* Checkbox */}
+                  {/* Editable label */}
+                  <input
+                    value={col.label}
+                    onChange={(e) => setLabel(i, e.target.value)}
+                    className="flex-1 text-sm bg-transparent border-0 outline-none focus:bg-muted/50 rounded px-1.5 py-0.5 transition-colors min-w-0"
+                    placeholder="Column header…"
+                  />
+
+                  <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums w-5 text-right">
+                    {i + 1}
+                  </span>
                   <button
                     type="button"
                     onClick={() => toggleCol(i)}
@@ -381,18 +495,6 @@ export function ExportCustomizerDialog({
                       </svg>
                     )}
                   </button>
-
-                  {/* Editable label */}
-                  <input
-                    value={col.label}
-                    onChange={(e) => setLabel(i, e.target.value)}
-                    className="flex-1 text-sm bg-transparent border-0 outline-none focus:bg-muted/50 rounded px-1.5 py-0.5 transition-colors min-w-0"
-                    placeholder="Column header…"
-                  />
-
-                  <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums w-5 text-right">
-                    {i + 1}
-                  </span>
                 </div>
               ))}
             </div>

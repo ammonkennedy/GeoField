@@ -539,7 +539,7 @@ export default function StrikeDipPage() {
     setExportOpen(true);
   };
 
-  const handleDoExport = async (columns: ExportColumn[], config: ExportFormatConfig) => {
+  const handleDoExport = async (columns: ExportColumn[], config: ExportFormatConfig, fileName: string) => {
     const dataRows = visibleMeasurements.map((m, i) => strikeDipToDataRow(
       m,
       i,
@@ -553,7 +553,7 @@ export default function StrikeDipPage() {
     const output = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const result = await saveFile(
       new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-      `strike_dip_${fmtDate(new Date(), "yyyyMMdd-HHmm")}.xlsx`,
+      `${fileName}_${fmtDate(new Date(), "yyyyMMdd-HHmm")}.xlsx`,
     );
     toast({ title: result === "shared" ? "Export ready" : "Exported", description: `${visibleMeasurements.length} measurements prepared for Excel (photos not included).` });
   };
@@ -726,6 +726,7 @@ export default function StrikeDipPage() {
         initialConfig={loadExportConfig("strikedip")}
         configKey="strikedip"
         exportLabel={`Export ${visibleMeasurements.length} measurement${visibleMeasurements.length !== 1 ? "s" : ""}`}
+        initialFileName="strike_dip"
         onExport={handleDoExport}
       />
     </Layout>
