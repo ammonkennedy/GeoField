@@ -608,6 +608,9 @@ export default function SampleEntry() {
             <div className="space-y-4">
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">4</span>Photos &amp; Video</h3>
               <p className="text-xs text-muted-foreground -mt-1">Up to 3 slots — each can be a photo or a short video clip (max 10 seconds).</p>
+              {(globalThis as any).Capacitor?.getPlatform?.() === "ios" && (
+                <p className="text-xs text-muted-foreground">The iOS Simulator has no camera. Use Choose Media with an image/video added to the Simulator, or test Take Photo and Record Video on a physical iPhone.</p>
+              )}
               <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
               <input ref={photoCaptureInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleMediaChange} />
               <input ref={videoCaptureInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={handleMediaChange} />

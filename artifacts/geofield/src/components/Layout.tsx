@@ -1,7 +1,7 @@
 import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
+import { isAuthConfigured, signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
 import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, Cloud, ShieldCheck, Settings, X, BarChart2, AlertCircle } from "lucide-react";
@@ -24,6 +24,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
 
   const user = authData?.user;
+  const cloudAuthConfigured = isAuthConfigured();
   const { data: folders } = useGetFolders({
     query: { enabled: Boolean(user) }
   });
@@ -326,10 +327,14 @@ export function Layout({ children }: { children: ReactNode }) {
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
-          ) : (
+          ) : cloudAuthConfigured ? (
             <Button asChild className="w-full">
               <Link href="/login">Log In</Link>
             </Button>
+          ) : (
+            <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground">
+              On-device mode
+            </div>
           )}
         </div>
       </aside>
@@ -374,7 +379,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        <div className="flex-1 p-4 md:p-8 md:max-w-6xl mx-auto w-full">
+        <div className="flex-1 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-8 md:max-w-6xl mx-auto w-full">
           {children}
         </div>
       </main>

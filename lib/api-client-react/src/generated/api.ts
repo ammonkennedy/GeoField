@@ -31,6 +31,16 @@ Amplify.configure(outputs);
 
 const client: any = generateClient();
 
+/**
+ * Local/native builds do not receive Amplify deployment outputs automatically.
+ * Keep this check in the shared client so UI surfaces can avoid invoking Auth
+ * when no Cognito user pool was included in the build.
+ */
+export function isAuthConfigured(): boolean {
+  const auth = (outputs as any)?.auth;
+  return Boolean(auth?.user_pool_id && auth?.user_pool_client_id);
+}
+
 type ErrorType<T = unknown> = Error & { data?: T };
 
 type MutationOptions<TData, TVariables> = {
@@ -170,6 +180,9 @@ export function useGetCurrentAuthUser<TData = AuthUserEnvelope>(options?: QueryO
 }
 
 export async function signInUser(input: { email: string; password: string }) {
+  if (!isAuthConfigured()) {
+    throw new Error("Cloud sign-in is not configured in this build. Continue on this device, or generate amplify_outputs.json before rebuilding.");
+  }
   try {
     return await signIn({ username: input.email.trim(), password: input.password });
   } catch (error: any) {
@@ -181,6 +194,9 @@ export async function signInUser(input: { email: string; password: string }) {
   }
 }
 export async function signUpUser(input: { email: string; password: string }) {
+  if (!isAuthConfigured()) {
+    throw new Error("Cloud sign-in is not configured in this build. Continue on this device, or generate amplify_outputs.json before rebuilding.");
+  }
   return signUp({ username: input.email.trim(), password: input.password, options: { userAttributes: { email: input.email.trim() } } });
 }
 export async function confirmSignUpUser(input: { email: string; code: string }) {

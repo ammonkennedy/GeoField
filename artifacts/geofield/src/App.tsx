@@ -1,8 +1,9 @@
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Capacitor } from "@capacitor/core";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useGetCurrentAuthUser } from "@workspace/api-client-react";
+import { isAuthConfigured, useGetCurrentAuthUser } from "@workspace/api-client-react";
 
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -15,6 +16,13 @@ import FiguresPage from "@/pages/figures";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
+
+// Xcode builds made without Amplify deployment outputs are intentionally
+// local-first. Persist that choice before protected routes render so a native
+// simulator/device build opens directly into the field workspace.
+if (Capacitor.isNativePlatform() && !isAuthConfigured()) {
+  localStorage.setItem("geofield-demo-mode", "true");
+}
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { data, isLoading } = useGetCurrentAuthUser();

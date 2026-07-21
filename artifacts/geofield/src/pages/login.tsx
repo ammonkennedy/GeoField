@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useGetCurrentAuthUser, signInUser, signUpUser, confirmSignUpUser } from "@workspace/api-client-react";
+import { useGetCurrentAuthUser, signInUser, signUpUser, confirmSignUpUser, isAuthConfigured } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Compass, Map } from "lucide-react";
 import { GeoFieldLogo } from "@/components/GeoFieldLogo";
 
 export default function Login() {
+  const cloudAuthConfigured = isAuthConfigured();
   const { data, isLoading, refetch } = useGetCurrentAuthUser();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -77,7 +78,14 @@ export default function Login() {
             <p className="text-muted-foreground text-lg">Professional geological data collection</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="w-full space-y-4 pt-2 text-left">
+          {!cloudAuthConfigured && (
+            <div role="status" className="w-full rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-left text-sm">
+              <p className="font-medium text-foreground">Cloud sign-in is not available in this build.</p>
+              <p className="mt-1 text-muted-foreground">You can still collect samples and media on this device. Cloud account sync will become available after the Amplify deployment outputs are added and the app is rebuilt.</p>
+            </div>
+          )}
+
+          {cloudAuthConfigured && <form onSubmit={handleSubmit} className="w-full space-y-4 pt-2 text-left">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
@@ -102,24 +110,24 @@ export default function Login() {
             <Button type="submit" className="w-full h-12 text-lg font-medium shadow-lg" disabled={isSubmitting}>
               {isSubmitting ? "Working..." : mode === "signup" ? "Create Account" : mode === "confirm" ? "Confirm Email" : "Sign In"}
             </Button>
-          </form>
+          </form>}
 
           <div className="w-full space-y-3">
-            {mode === "signin" ? (
+            {cloudAuthConfigured && (mode === "signin" ? (
               <Button variant="outline" className="w-full" onClick={() => setMode("signup")}>Create a new account</Button>
             ) : (
               <Button variant="outline" className="w-full" onClick={() => setMode("signin")}>Back to sign in</Button>
-            )}
+            ))}
 
             <Button
-              variant="ghost"
+              variant={cloudAuthConfigured ? "ghost" : "default"}
               className="w-full"
               onClick={() => {
                 localStorage.setItem("geofield-demo-mode", "true");
                 window.location.href = "/";
               }}
             >
-              Continue without Login
+              {cloudAuthConfigured ? "Continue without Login" : "Use GeoField on This Device"}
             </Button>
 
             <p className="text-xs text-muted-foreground text-center">
