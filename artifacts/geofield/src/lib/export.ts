@@ -19,6 +19,16 @@ export { getSampleColumns } from "./export-config";
 
 export type DatasetLookupItem = { id: number | string; name: string };
 
+export const SAMPLE_TYPE_SHEETS = [
+  { key: "rock", label: "Rock" },
+  { key: "water", label: "Water" },
+  { key: "soil_sand", label: "Soil" },
+  { key: "air", label: "Air" },
+  { key: "other", label: "Other" },
+] as const;
+
+export type SampleTypeSheetKey = typeof SAMPLE_TYPE_SHEETS[number]["key"];
+
 function cleanSheetName(name: string) {
   return (name || "Data").replace(/[\\/?*[\]:]/g, " ").trim().slice(0, 31) || "Data";
 }
@@ -78,7 +88,7 @@ export async function exportDatasetWorkbookWithConfig({
   datasets,
   folderName,
   filename,
-  sampleColumns,
+  sampleColumnsByType,
   sampleConfig,
 }: {
   samples: Sample[];
@@ -86,21 +96,23 @@ export async function exportDatasetWorkbookWithConfig({
   datasets: DatasetLookupItem[];
   folderName: string;
   filename: string;
-  sampleColumns: ExportColumn[];
+  sampleColumnsByType: Partial<Record<SampleTypeSheetKey, ExportColumn[]>>;
   sampleConfig: ExportFormatConfig;
 }) {
   if ((!samples || samples.length === 0) && (!measurements || measurements.length === 0)) return;
 
   const workbook = XLSX.utils.book_new();
 
-  if (samples.length > 0) {
-    const sampleRows = samples.map((sample) =>
+  for (const sheet of SAMPLE_TYPE_SHEETS) {
+    const typeSamples = samples.filter((sample) => sample.sampleType === sheet.key);
+    if (typeSamples.length === 0) continue;
+    const sampleRows = typeSamples.map((sample) =>
       sampleToDataRow(sample, datasetNameForId(sample.folderId, datasets))
     );
     appendSheet(
       workbook,
-      buildStyledWorksheet(sampleColumns, sampleRows, sampleConfig),
-      sampleConfig.sheetName || "Samples",
+      buildStyledWorksheet(sampleColumnsByType[sheet.key] || getSampleColumns(typeSamples), sampleRows, sampleConfig),
+      sheet.label,
     );
   }
 

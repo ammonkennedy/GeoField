@@ -5,7 +5,7 @@ import { Button } from "./ui/button";
 import { Download, FolderOpen, Layers, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportCustomizerDialog } from "./ExportCustomizerDialog";
-import { exportDatasetWorkbookWithConfig, getSampleColumns } from "@/lib/export";
+import { exportDatasetWorkbookWithConfig, getSampleColumns, SAMPLE_TYPE_SHEETS, type SampleTypeSheetKey } from "@/lib/export";
 import { loadExportConfig, loadColumnPrefs } from "@/lib/export-config";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
@@ -82,9 +82,18 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
     ? "geofield-uncategorized"
     : "geofield-all";
 
-  // Derive columns + load saved prefs when customizer opens
-  const derivedColumns = useMemo(
-    () => loadColumnPrefs("samples", getSampleColumns(samplesToExport)),
+  // Match the workbook's visible sheet order so the user can predict the file.
+  const sheetGroups = useMemo(
+    () => SAMPLE_TYPE_SHEETS.flatMap((sheet) => {
+      const typeSamples = samplesToExport.filter((sample) => sample.sampleType === sheet.key);
+      if (typeSamples.length === 0) return [];
+      return [{
+        key: sheet.key,
+        label: `${sheet.label} sheet`,
+        count: typeSamples.length,
+        columns: loadColumnPrefs(`samples-${sheet.key}`, getSampleColumns(typeSamples)),
+      }];
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [customizerOpen]
   );
@@ -178,18 +187,23 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
         onOpenChange={setCustomizerOpen}
         title="Customize Export"
         subtitle={`${sampleCount} sample${sampleCount !== 1 ? "s" : ""} and ${measurementCount} strike/dip measurement${measurementCount !== 1 ? "s" : ""} from "${folderName}"`}
-        initialColumns={derivedColumns}
+        initialColumns={[]}
+        initialGroups={sheetGroups}
+        trailingSheets={measurementCount > 0 ? [{ label: "Strike & Dip sheet", count: measurementCount }] : []}
         initialConfig={savedConfig}
         configKey="samples"
         exportLabel={`Export ${count} record${count !== 1 ? "s" : ""}`}
-        onExport={async (columns, config) => {
+        onExportGroups={async (groups, config) => {
+          const sampleColumnsByType = Object.fromEntries(
+            groups.map((group) => [group.key, group.columns])
+          ) as Partial<Record<SampleTypeSheetKey, typeof groups[number]["columns"]>>;
           await exportDatasetWorkbookWithConfig({
             samples: samplesToExport,
             measurements: measurementsToExport,
             datasets: allFolders,
             folderName,
             filename,
-            sampleColumns: columns,
+            sampleColumnsByType,
             sampleConfig: config,
           });
         }}

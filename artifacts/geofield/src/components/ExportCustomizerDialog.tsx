@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Download, GripVertical, RotateCcw, Plus, Trash2, ArrowLeftRight } from "lucide-react";
+import { Download, GripVertical, RotateCcw, Plus, Trash2, ArrowLeftRight, ChevronDown, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type ExportColumn, type ExportFormatConfig, type ExportCustomRow,
@@ -11,16 +11,26 @@ import {
   saveExportConfig, saveColumnPrefs,
 } from "@/lib/export-config";
 
+export interface ExportSheetGroup {
+  key: string;
+  label: string;
+  count: number;
+  columns: ExportColumn[];
+}
+
 interface ExportCustomizerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   subtitle?: string;
   initialColumns: ExportColumn[];
+  initialGroups?: ExportSheetGroup[];
+  trailingSheets?: { label: string; count: number }[];
   initialConfig: ExportFormatConfig;
   configKey: string;
   exportLabel?: string;
-  onExport: (columns: ExportColumn[], config: ExportFormatConfig) => void | Promise<void>;
+  onExport?: (columns: ExportColumn[], config: ExportFormatConfig) => void | Promise<void>;
+  onExportGroups?: (groups: ExportSheetGroup[], config: ExportFormatConfig) => void | Promise<void>;
 }
 
 function newCustomRow(): ExportCustomRow {
@@ -29,9 +39,12 @@ function newCustomRow(): ExportCustomRow {
 
 export function ExportCustomizerDialog({
   open, onOpenChange, title, subtitle,
-  initialColumns, initialConfig, configKey, exportLabel, onExport,
+  initialColumns, initialGroups = [], trailingSheets = [], initialConfig, configKey, exportLabel, onExport, onExportGroups,
 }: ExportCustomizerDialogProps) {
   const [columns, setColumns] = useState<ExportColumn[]>(initialColumns);
+  const [groups, setGroups] = useState<ExportSheetGroup[]>(initialGroups);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(initialGroups.slice(0, 1).map((group) => group.key)));
+  const grouped = initialGroups.length > 0;
   const [sheetName, setSheetName] = useState(initialConfig.sheetName);
   const [orientation, setOrientation] = useState<ExportFormatConfig["orientation"]>(initialConfig.orientation || "normal");
   const [customRows, setCustomRows] = useState<ExportCustomRow[]>(initialConfig.customRows || []);
@@ -43,6 +56,8 @@ export function ExportCustomizerDialog({
   const handleOpenChange = (v: boolean) => {
     if (v) {
       setColumns(initialColumns);
+      setGroups(initialGroups);
+      setOpenGroups(new Set(initialGroups.slice(0, 1).map((group) => group.key)));
       setSheetName(initialConfig.sheetName);
       setOrientation(initialConfig.orientation || "normal");
       setCustomRows(initialConfig.customRows || []);
@@ -97,6 +112,9 @@ export function ExportCustomizerDialog({
   const disableAll = () => setColumns((prev) => prev.map((c) => ({ ...c, enabled: false })));
   const resetOrder = useCallback(() => setColumns(initialColumns), [initialColumns]);
 
+  const updateGroupColumns = (groupKey: string, update: (columns: ExportColumn[]) => ExportColumn[]) =>
+    setGroups((current) => current.map((group) => group.key === groupKey ? { ...group, columns: update(group.columns) } : group));
+
   const handleExport = async () => {
     const config: ExportFormatConfig = {
       ...DEFAULT_FORMAT_CONFIG,
@@ -105,12 +123,14 @@ export function ExportCustomizerDialog({
       orientation,
       customRows,
     };
-    saveColumnPrefs(configKey, columns);
+    if (grouped) groups.forEach((group) => saveColumnPrefs(`${configKey}-${group.key}`, group.columns));
+    else saveColumnPrefs(configKey, columns);
     saveExportConfig(configKey, config);
     setIsExporting(true);
     setExportError("");
     try {
-      await onExport(columns, config);
+      if (grouped && onExportGroups) await onExportGroups(groups, config);
+      else if (onExport) await onExport(columns, config);
       onOpenChange(false);
     } catch (error: any) {
       // Canceling the iOS share sheet is not an export failure.
@@ -120,7 +140,9 @@ export function ExportCustomizerDialog({
     }
   };
 
-  const enabledCount = columns.filter((c) => c.enabled).length;
+  const enabledCount = grouped
+    ? groups.reduce((count, group) => count + group.columns.filter((column) => column.enabled).length, 0)
+    : columns.filter((c) => c.enabled).length;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -138,7 +160,7 @@ export function ExportCustomizerDialog({
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
           {/* Sheet name */}
-          <div className="space-y-1.5">
+          {!grouped && <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Sheet Name
             </Label>
@@ -148,7 +170,7 @@ export function ExportCustomizerDialog({
               placeholder="Data"
               className="h-9 max-w-xs"
             />
-          </div>
+          </div>}
 
           {/* Orientation */}
           <div className="space-y-2">
@@ -226,8 +248,55 @@ export function ExportCustomizerDialog({
             )}
           </div>
 
-          {/* Columns */}
-          <div className="space-y-3">
+          {/* Workbook sheet preview / columns */}
+          {grouped ? (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Workbook sheets</Label>
+                <p className="mt-1 text-xs text-muted-foreground">Only these non-empty sheets will be created, in the order shown. Open a sheet to customize its parameters.</p>
+              </div>
+              {groups.map((group, groupIndex) => {
+                const isOpen = openGroups.has(group.key);
+                const groupEnabled = group.columns.filter((column) => column.enabled).length;
+                return (
+                  <div key={group.key} className="overflow-hidden rounded-xl border bg-card">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                      onClick={() => setOpenGroups((current) => {
+                        const next = new Set(current);
+                        if (next.has(group.key)) next.delete(group.key); else next.add(group.key);
+                        return next;
+                      })}
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileSpreadsheet className="h-4 w-4" /></span>
+                      <span className="flex-1"><span className="block text-sm font-semibold">{groupIndex + 1}. {group.label}</span><span className="block text-xs text-muted-foreground">{group.count} record{group.count === 1 ? "" : "s"} · {groupEnabled}/{group.columns.length} parameters</span></span>
+                      <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen && "rotate-180")} />
+                    </button>
+                    {isOpen && (
+                      <div className="space-y-2 border-t bg-muted/20 p-3">
+                        <div className="flex justify-end gap-2 text-xs">
+                          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => updateGroupColumns(group.key, (items) => items.map((item) => ({ ...item, enabled: true })))}>All</button>
+                          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => updateGroupColumns(group.key, (items) => items.map((item) => ({ ...item, enabled: false })))}>None</button>
+                        </div>
+                        {group.columns.map((column, columnIndex) => (
+                          <div key={column.key} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2", column.enabled ? "bg-card" : "border-dashed opacity-60")}>
+                            <button type="button" onClick={() => updateGroupColumns(group.key, (items) => items.map((item, index) => index === columnIndex ? { ...item, enabled: !item.enabled } : item))} className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border-2", column.enabled ? "border-primary bg-primary text-primary-foreground" : "border-border")}>
+                              {column.enabled && <span className="text-xs">✓</span>}
+                            </button>
+                            <input value={column.label} onChange={(event) => updateGroupColumns(group.key, (items) => items.map((item, index) => index === columnIndex ? { ...item, label: event.target.value } : item))} className="min-w-0 flex-1 rounded bg-transparent px-1 text-sm outline-none focus:bg-muted" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {trailingSheets.map((sheet, index) => (
+                <div key={sheet.label} className="rounded-xl border border-dashed px-4 py-3 text-sm text-muted-foreground"><span className="font-medium text-foreground">{groups.length + index + 1}. {sheet.label}</span><br />{sheet.count} record{sheet.count === 1 ? "" : "s"}</div>
+              ))}
+            </div>
+          ) : <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Columns
@@ -327,7 +396,7 @@ export function ExportCustomizerDialog({
                 </div>
               ))}
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Footer */}
