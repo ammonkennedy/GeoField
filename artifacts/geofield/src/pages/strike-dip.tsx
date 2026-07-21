@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, Image as ImageIcon, MapPin, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
+import { saveFile } from "@/lib/save-file";
 import {
   STRIKE_DIP_COLUMNS, buildStyledWorksheet,
   loadExportConfig, loadColumnPrefs,
@@ -538,7 +539,7 @@ export default function StrikeDipPage() {
     setExportOpen(true);
   };
 
-  const handleDoExport = (columns: ExportColumn[], config: ExportFormatConfig) => {
+  const handleDoExport = async (columns: ExportColumn[], config: ExportFormatConfig) => {
     const dataRows = visibleMeasurements.map((m, i) => strikeDipToDataRow(
       m,
       i,
@@ -549,8 +550,12 @@ export default function StrikeDipPage() {
     const ws = buildStyledWorksheet(columns, dataRows, config);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, config.sheetName || "Strike & Dip");
-    XLSX.writeFile(wb, `strike_dip_${fmtDate(new Date(), "yyyyMMdd-HHmm")}.xlsx`);
-    toast({ title: "Exported", description: `${visibleMeasurements.length} measurements saved to Excel (photos not included).` });
+    const output = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const result = await saveFile(
+      new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      `strike_dip_${fmtDate(new Date(), "yyyyMMdd-HHmm")}.xlsx`,
+    );
+    toast({ title: result === "shared" ? "Export ready" : "Exported", description: `${visibleMeasurements.length} measurements prepared for Excel (photos not included).` });
   };
 
   const clearAll = () => {

@@ -182,8 +182,8 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
         initialConfig={savedConfig}
         configKey="samples"
         exportLabel={`Export ${count} record${count !== 1 ? "s" : ""}`}
-        onExport={(columns, config) => {
-          exportDatasetWorkbookWithConfig({
+        onExport={async (columns, config) => {
+          await exportDatasetWorkbookWithConfig({
             samples: samplesToExport,
             measurements: measurementsToExport,
             datasets: allFolders,

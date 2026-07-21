@@ -18,6 +18,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { BarChart2, ChevronDown, Download } from "lucide-react";
 import type { Sample } from "@workspace/api-client-react";
+import { saveFile } from "@/lib/save-file";
 
 const NUMERIC_PARAMS: Record<string, { label: string; unit: string; type: string }> = {
   temperature:    { label: "Water Temp",         unit: "°C",     type: "water" },
@@ -281,18 +282,21 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
     const url = URL.createObjectURL(svgBlob);
     const img = new Image();
 
-    img.onload = () => {
+    img.onload = async () => {
       ctx.drawImage(img, PAD, HEADER, W, H);
       URL.revokeObjectURL(url);
 
       const fname = `${(datasetName || "dataset").replace(/[^a-zA-Z0-9]/g, "_")}_${paramMeta.label.replace(/[^a-zA-Z0-9]/g, "_")}_${chartType}.png`;
-      const a = document.createElement("a");
-      a.download = fname;
-      a.href = canvas.toDataURL("image/png");
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setIsDownloading(false);
+      try {
+        const blob = await new Promise<Blob>((resolve, reject) =>
+          canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Could not create the PNG image.")), "image/png")
+        );
+        await saveFile(blob, fname);
+      } catch (error: any) {
+        if (error?.name !== "AbortError") console.error("Chart export failed", error);
+      } finally {
+        setIsDownloading(false);
+      }
     };
 
     img.onerror = (e) => {

@@ -20,7 +20,7 @@ interface ExportCustomizerDialogProps {
   initialConfig: ExportFormatConfig;
   configKey: string;
   exportLabel?: string;
-  onExport: (columns: ExportColumn[], config: ExportFormatConfig) => void;
+  onExport: (columns: ExportColumn[], config: ExportFormatConfig) => void | Promise<void>;
 }
 
 function newCustomRow(): ExportCustomRow {
@@ -35,6 +35,8 @@ export function ExportCustomizerDialog({
   const [sheetName, setSheetName] = useState(initialConfig.sheetName);
   const [orientation, setOrientation] = useState<ExportFormatConfig["orientation"]>(initialConfig.orientation || "normal");
   const [customRows, setCustomRows] = useState<ExportCustomRow[]>(initialConfig.customRows || []);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const dragIndexRef = useRef<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
@@ -95,7 +97,7 @@ export function ExportCustomizerDialog({
   const disableAll = () => setColumns((prev) => prev.map((c) => ({ ...c, enabled: false })));
   const resetOrder = useCallback(() => setColumns(initialColumns), [initialColumns]);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const config: ExportFormatConfig = {
       ...DEFAULT_FORMAT_CONFIG,
       ...initialConfig,
@@ -105,8 +107,17 @@ export function ExportCustomizerDialog({
     };
     saveColumnPrefs(configKey, columns);
     saveExportConfig(configKey, config);
-    onExport(columns, config);
-    onOpenChange(false);
+    setIsExporting(true);
+    setExportError("");
+    try {
+      await onExport(columns, config);
+      onOpenChange(false);
+    } catch (error: any) {
+      // Canceling the iOS share sheet is not an export failure.
+      if (error?.name !== "AbortError") setExportError(error?.message || "The file could not be exported.");
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const enabledCount = columns.filter((c) => c.enabled).length;
@@ -321,12 +332,13 @@ export function ExportCustomizerDialog({
 
         {/* Footer */}
         <div className="px-6 py-4 border-t shrink-0 flex gap-3 justify-end bg-card">
+          {exportError && <p role="alert" className="mr-auto self-center text-sm text-destructive">{exportError}</p>}
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleExport} disabled={enabledCount === 0} className="gap-2">
+          <Button onClick={handleExport} disabled={enabledCount === 0 || isExporting} className="gap-2">
             <Download className="w-4 h-4" />
-            {exportLabel ?? "Export"}
+            {isExporting ? "Preparing…" : exportLabel ?? "Export"}
           </Button>
         </div>
       </DialogContent>

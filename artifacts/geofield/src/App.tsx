@@ -17,11 +17,10 @@ import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
 
-// Xcode builds made without Amplify deployment outputs are intentionally
-// local-first. Persist that choice before protected routes render so a native
-// simulator/device build opens directly into the field workspace.
-if (Capacitor.isNativePlatform() && !isAuthConfigured()) {
-  localStorage.setItem("geofield-demo-mode", "true");
+// A configured native build is account-first. Clear the fallback left by older
+// unconfigured simulator builds so every user reaches Cognito login again.
+if (Capacitor.isNativePlatform() && isAuthConfigured()) {
+  localStorage.removeItem("geofield-demo-mode");
 }
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {

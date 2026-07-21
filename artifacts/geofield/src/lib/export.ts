@@ -13,6 +13,7 @@ import {
   type ExportFormatConfig,
 } from "./export-config";
 import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
+import { saveFile } from "./save-file";
 
 export { getSampleColumns } from "./export-config";
 
@@ -46,7 +47,7 @@ export function datasetNameForId(
  * Export samples with a specific column order and formatting config.
  * Called from ExportDialog after the user has customized their export.
  */
-export function exportSamplesWithConfig(
+export async function exportSamplesWithConfig(
   samples: Sample[],
   folderName: string,
   filename: string,
@@ -64,10 +65,14 @@ export function exportSamplesWithConfig(
 
   const wb = XLSX.utils.book_new();
   appendSheet(wb, ws, config.sheetName || "Samples");
-  XLSX.writeFile(wb, `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`);
+  const output = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  await saveFile(
+    new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`,
+  );
 }
 
-export function exportDatasetWorkbookWithConfig({
+export async function exportDatasetWorkbookWithConfig({
   samples,
   measurements,
   datasets,
@@ -112,14 +117,18 @@ export function exportDatasetWorkbookWithConfig({
     );
   }
 
-  XLSX.writeFile(workbook, `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`);
+  const output = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  await saveFile(
+    new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`,
+  );
 }
 
 /**
  * Quick export with saved (or default) preferences — no customization dialog.
  * Kept for backwards compatibility if needed.
  */
-export function exportSamplesToExcel(
+export async function exportSamplesToExcel(
   samples: Sample[],
   folderName: string = "All Samples",
   filename: string = "geofield-export"
@@ -130,5 +139,5 @@ export function exportSamplesToExcel(
   const columns = loadColumnPrefs("samples", defaultCols);
   const config = loadExportConfig("samples");
 
-  exportSamplesWithConfig(samples, folderName, filename, columns, config);
+  await exportSamplesWithConfig(samples, folderName, filename, columns, config);
 }
