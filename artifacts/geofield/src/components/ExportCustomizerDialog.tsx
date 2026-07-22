@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 import {
   type ExportColumn, type ExportFormatConfig, type ExportCustomRow,
   DEFAULT_FORMAT_CONFIG,
-  saveExportConfig, saveColumnPrefs,
 } from "@/lib/export-config";
 
 export interface ExportSheetGroup {
@@ -132,6 +131,45 @@ export function ExportCustomizerDialog({
     });
   };
 
+  const stopGroupPointerDrag = () => {
+    groupDragRef.current = null;
+    document.removeEventListener("pointermove", handleGroupPointerMove);
+    document.removeEventListener("pointerup", stopGroupPointerDrag);
+    document.removeEventListener("pointercancel", stopGroupPointerDrag);
+  };
+
+  const handleGroupPointerMove = (event: PointerEvent) => {
+    const active = groupDragRef.current;
+    if (!active) return;
+    event.preventDefault();
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-group-key][data-column-index]"))
+      .filter((row) => row.dataset.groupKey === active.groupKey);
+    if (rows.length === 0) return;
+    let targetIndex = active.index;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect();
+      const distance = Math.abs(event.clientY - (rect.top + rect.height / 2));
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        targetIndex = Number(row.dataset.columnIndex);
+      }
+    }
+    if (!Number.isInteger(targetIndex) || targetIndex === active.index) return;
+    moveGroupColumn(active.groupKey, active.index, targetIndex);
+    groupDragRef.current = { groupKey: active.groupKey, index: targetIndex };
+  };
+
+  const startGroupPointerDrag = (event: React.PointerEvent, groupKey: string, index: number) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    stopGroupPointerDrag();
+    groupDragRef.current = { groupKey, index };
+    document.addEventListener("pointermove", handleGroupPointerMove, { passive: false });
+    document.addEventListener("pointerup", stopGroupPointerDrag, { once: true });
+    document.addEventListener("pointercancel", stopGroupPointerDrag, { once: true });
+  };
+
   const addRowToGroups = (groupKey: string | "all") => {
     setGroups((current) => current.map((group) =>
       groupKey === "all" || group.key === groupKey
@@ -159,9 +197,6 @@ export function ExportCustomizerDialog({
       orientation,
       customRows,
     };
-    if (grouped) groups.forEach((group) => saveColumnPrefs(`${configKey}-${group.key}`, group.columns));
-    else saveColumnPrefs(configKey, columns);
-    saveExportConfig(configKey, config);
     setIsExporting(true);
     setExportError("");
     try {
@@ -365,23 +400,9 @@ export function ExportCustomizerDialog({
                           >
                             <button
                               type="button"
-                              draggable
                               aria-label={`Drag ${column.label} to reorder`}
                               className="touch-none cursor-grab rounded p-1.5 text-muted-foreground/60 active:cursor-grabbing active:bg-muted"
-                              onDragStart={(event) => { groupDragRef.current = { groupKey: group.key, index: columnIndex }; event.dataTransfer.effectAllowed = "move"; }}
-                              onDragEnd={() => { groupDragRef.current = null; }}
-                              onPointerDown={(event) => { groupDragRef.current = { groupKey: group.key, index: columnIndex }; event.currentTarget.setPointerCapture(event.pointerId); }}
-                              onPointerMove={(event) => {
-                                if (!groupDragRef.current || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
-                                const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-group-key][data-column-index]");
-                                if (!target || target.dataset.groupKey !== group.key) return;
-                                const to = Number(target.dataset.columnIndex);
-                                const active = groupDragRef.current;
-                                if (!Number.isInteger(to) || active.index === to) return;
-                                moveGroupColumn(group.key, active.index, to);
-                                groupDragRef.current = { groupKey: group.key, index: to };
-                              }}
-                              onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); groupDragRef.current = null; }}
+                              onPointerDown={(event) => startGroupPointerDrag(event, group.key, columnIndex)}
                             >
                               <GripVertical className="h-4 w-4" />
                             </button>

@@ -123,8 +123,8 @@ export async function exportDatasetWorkbookWithConfig({
   }
 
   if (measurements.length > 0) {
-    const strikeColumns = loadColumnPrefs("strikedip", STRIKE_DIP_COLUMNS);
-    const strikeConfig = { ...loadExportConfig("strikedip"), sheetName: "Strike & Dip" };
+    const strikeColumns = STRIKE_DIP_COLUMNS;
+    const strikeConfig = { ...sampleConfig, customRows: [], sheetName: "Strike & Dip" };
     const strikeRows = measurements.map((measurement, index) =>
       strikeDipToDataRow(measurement, index, datasetNameForId(measurement.datasetId, datasets))
     );

@@ -208,7 +208,6 @@ const TRIP_MAP_STYLE: any = {
     // overlays inserted dynamically before "labels"
     { id: "labels",          type: "raster", source: "labels",    layout: { visibility: "visible" } },
   ],
-  terrain: { source: "terrain", exaggeration: 1.5 },
   sky: {
     "sky-color": "#87CEEB",
     "sky-horizon-blend": 0.5,
@@ -229,7 +228,7 @@ export default function TripPlannerPage() {
 
   // Map layer state
   const [baseLayer,    setBaseLayer]    = useState<BaseLayer>("satellite");
-  const [terrain,      setTerrain]      = useState(true);
+  const [terrain,      setTerrain]      = useState(false);
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
   const [customLayers, setCustomLayers] = useState<CustomMapLayer[]>(loadCustomLayers);
 
@@ -239,6 +238,7 @@ export default function TripPlannerPage() {
   const mapMarkersRef    = useRef<any[]>([]);
   const mapLoadedRef     = useRef(false);
   const overlayLayerRef  = useRef<OverlayLayer>("none");
+  const terrainRef       = useRef(false);
   const pinModeRef       = useRef(false);
   const customLayersRef  = useRef<CustomMapLayer[]>(loadCustomLayers());
   const spreadsheetInputRef = useRef<HTMLInputElement>(null);
@@ -259,6 +259,7 @@ export default function TripPlannerPage() {
 
   // Keep refs in sync
   useEffect(() => { overlayLayerRef.current = overlayLayer; setGeoInfo(null); }, [overlayLayer]);
+  useEffect(() => { terrainRef.current = terrain; }, [terrain]);
 
   // Sync custom layers from localStorage
   useEffect(() => {
@@ -495,6 +496,7 @@ export default function TripPlannerPage() {
       setPendingCoords(null);
       setPinMode(false);
       setGeoInfo(null);
+      setTerrain(false);
       return;
     }
 
@@ -513,12 +515,44 @@ export default function TripPlannerPage() {
             style: TRIP_MAP_STYLE,
             center: [-98.35, 39.5],
             zoom: 4,
-            pitch: 40,
+            pitch: 0,
             maxPitch: 85,
+            dragRotate: true,
+            pitchWithRotate: true,
+            touchPitch: true,
           });
           mapInstanceRef.current = map;
 
           map.addControl(new L.NavigationControl({ visualizePitch: true }), "top-right");
+          map.addControl({
+            onAdd(controlMap: any) {
+              const container = document.createElement("div");
+              container.className = "maplibregl-ctrl maplibregl-ctrl-group";
+
+              const makeTiltButton = (direction: "up" | "down") => {
+                const button = document.createElement("button");
+                button.type = "button";
+                const towardHorizon = direction === "up";
+                button.title = towardHorizon ? "Tilt view toward the horizon" : "Tilt view toward the ground";
+                button.setAttribute("aria-label", button.title);
+                button.innerHTML = `<span aria-hidden="true" style="display:block;font-size:20px;line-height:20px;font-weight:700;transform:${towardHorizon ? "translateY(2px)" : "translateY(-2px)"}">${towardHorizon ? "⌃" : "⌄"}</span>`;
+                button.addEventListener("click", () => {
+                  if (towardHorizon && !terrainRef.current) {
+                    setTerrain(true);
+                    return;
+                  }
+                  if (!terrainRef.current) return;
+                  const nextPitch = Math.max(0, Math.min(80, controlMap.getPitch() + (towardHorizon ? 10 : -10)));
+                  controlMap.easeTo({ pitch: nextPitch, duration: 250, essential: true });
+                });
+                return button;
+              };
+
+              container.append(makeTiltButton("up"), makeTiltButton("down"));
+              return container;
+            },
+            onRemove() {},
+          }, "top-right");
           map.addControl(new L.ScaleControl(), "bottom-left");
           map.getCanvas().style.cursor = "default";
 
@@ -533,9 +567,8 @@ export default function TripPlannerPage() {
               map.setLayoutProperty("labels",          "visibility", baseLayer === "satellite" ? "visible" : "none");
             } catch {}
 
-            // Apply terrain state
-            if (!terrain) {
-              try { map.setTerrain(null); map.setPitch(0); } catch {}
+            if (terrainRef.current) {
+              try { map.setTerrain({ source: "terrain", exaggeration: 1.5 }); } catch {}
             }
 
             // Apply overlay
@@ -645,10 +678,16 @@ export default function TripPlannerPage() {
       if (terrain) {
         mapInstanceRef.current.setTerrain({ source: "terrain", exaggeration: 1.5 });
         mapInstanceRef.current.setMaxPitch(85);
+        mapInstanceRef.current.easeTo({
+          pitch: Math.max(mapInstanceRef.current.getPitch(), 62),
+          bearing: mapInstanceRef.current.getBearing() === 0 ? -25 : mapInstanceRef.current.getBearing(),
+          duration: 900,
+          essential: true,
+        });
       } else {
         mapInstanceRef.current.setTerrain(null);
         mapInstanceRef.current.setMaxPitch(60);
-        mapInstanceRef.current.setPitch(0);
+        mapInstanceRef.current.easeTo({ pitch: 0, bearing: 0, duration: 600, essential: true });
       }
     } catch {}
   }, [terrain]);
@@ -719,8 +758,9 @@ export default function TripPlannerPage() {
       }
       mapInstanceRef.current.flyTo({
         center: [result.lng, result.lat],
-        zoom: 16,
-        pitch: terrain ? 45 : 0,
+        zoom: terrain ? 13.5 : 16,
+        pitch: terrain ? 64 : 0,
+        bearing: terrain ? -25 : 0,
         essential: true,
       });
       setAddressSearch("");
@@ -994,7 +1034,7 @@ export default function TripPlannerPage() {
                 <Input
                   value={addressSearch}
                   onChange={(e) => { setAddressSearch(e.target.value); setAddressLookupError(""); }}
-                  placeholder="Search street address..."
+                  placeholder="Search place, mountain, or address..."
                   className="h-9 pl-8 pr-9 bg-card"
                 />
                 <button
@@ -1018,7 +1058,7 @@ export default function TripPlannerPage() {
                 className={`flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-sm font-medium shadow-sm transition-all sm:w-auto sm:px-3 ${terrain ? "bg-accent text-accent-foreground border-accent" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}
               >
                 <Mountain className="w-3.5 h-3.5" />
-                3D Terrain
+                {terrain ? "3D Terrain" : "2D Map"}
               </button>
 
               {/* Overlay dropdown */}
@@ -1198,6 +1238,11 @@ export default function TripPlannerPage() {
                 ref={mapContainerRef}
                 style={{ width: "100%", height: "100%" }}
               />
+              {terrain && !pendingCoords && (
+                <div className="pointer-events-none absolute bottom-7 left-3 right-3 z-10 mx-auto w-fit max-w-[calc(100%-1.5rem)] rounded-lg bg-black/65 px-3 py-1.5 text-center text-xs text-white shadow backdrop-blur-sm">
+                  Two-finger drag tilts · twist rotates · use the right-side arrows for precise tilt
+                </div>
+              )}
             </div>
           </div>
         </div>

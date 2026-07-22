@@ -6,7 +6,7 @@ import { Download, FolderOpen, Layers, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportCustomizerDialog } from "./ExportCustomizerDialog";
 import { exportDatasetWorkbookWithConfig, getSampleColumns, SAMPLE_TYPE_SHEETS, type SampleTypeSheetKey } from "@/lib/export";
-import { loadExportConfig, loadColumnPrefs } from "@/lib/export-config";
+import { DEFAULT_FORMAT_CONFIG } from "@/lib/export-config";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
@@ -91,17 +91,13 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
         key: sheet.key,
         label: `${sheet.label} sheet`,
         count: typeSamples.length,
-        columns: loadColumnPrefs(`samples-${sheet.key}`, getSampleColumns(typeSamples)),
+        columns: getSampleColumns(typeSamples),
       }];
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [customizerOpen]
+    [customizerOpen, samplesToExport]
   );
-  const savedConfig = useMemo(
-    () => loadExportConfig("samples"),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [customizerOpen]
-  );
+  const savedConfig = DEFAULT_FORMAT_CONFIG;
 
   const handleCustomize = () => {
     if (count === 0) return;
