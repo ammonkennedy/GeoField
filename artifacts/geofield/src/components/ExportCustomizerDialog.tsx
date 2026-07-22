@@ -55,6 +55,7 @@ export function ExportCustomizerDialog({
   const [exportError, setExportError] = useState("");
   const dragIndexRef = useRef<number | null>(null);
   const groupDragRef = useRef<{ groupKey: string; index: number } | null>(null);
+  const customRowDragRef = useRef<{ groupKey: string; index: number } | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const handleOpenChange = (v: boolean) => {
@@ -188,6 +189,55 @@ export function ExportCustomizerDialog({
     setGroups((current) => current.map((group) => group.key === groupKey
       ? { ...group, customRows: (group.customRows || []).filter((row) => row.id !== rowId) }
       : group));
+
+  const moveGroupCustomRow = (groupKey: string, from: number, to: number) => {
+    if (from === to) return;
+    setGroups((current) => current.map((group) => {
+      if (group.key !== groupKey) return group;
+      const rows = [...(group.customRows || [])];
+      const [moved] = rows.splice(from, 1);
+      rows.splice(to, 0, moved);
+      return { ...group, customRows: rows };
+    }));
+  };
+
+  const stopCustomRowPointerDrag = () => {
+    customRowDragRef.current = null;
+    document.removeEventListener("pointermove", handleCustomRowPointerMove);
+    document.removeEventListener("pointerup", stopCustomRowPointerDrag);
+    document.removeEventListener("pointercancel", stopCustomRowPointerDrag);
+  };
+
+  const handleCustomRowPointerMove = (event: PointerEvent) => {
+    const active = customRowDragRef.current;
+    if (!active) return;
+    event.preventDefault();
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-custom-row-group][data-custom-row-index]"))
+      .filter((row) => row.dataset.customRowGroup === active.groupKey);
+    let targetIndex = active.index;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect();
+      const distance = Math.abs(event.clientY - (rect.top + rect.height / 2));
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        targetIndex = Number(row.dataset.customRowIndex);
+      }
+    }
+    if (!Number.isInteger(targetIndex) || targetIndex === active.index) return;
+    moveGroupCustomRow(active.groupKey, active.index, targetIndex);
+    customRowDragRef.current = { groupKey: active.groupKey, index: targetIndex };
+  };
+
+  const startCustomRowPointerDrag = (event: React.PointerEvent, groupKey: string, index: number) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    stopCustomRowPointerDrag();
+    customRowDragRef.current = { groupKey, index };
+    document.addEventListener("pointermove", handleCustomRowPointerMove, { passive: false });
+    document.addEventListener("pointerup", stopCustomRowPointerDrag, { once: true });
+    document.addEventListener("pointercancel", stopCustomRowPointerDrag, { once: true });
+  };
 
   const handleExport = async () => {
     const config: ExportFormatConfig = {
@@ -378,7 +428,10 @@ export function ExportCustomizerDialog({
                           <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => updateGroupColumns(group.key, (items) => items.map((item) => ({ ...item, enabled: false })))}>None</button>
                         </div>
                         {(group.customRows || []).map((row, rowIndex) => (
-                          <div key={row.id} className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+                          <div key={row.id} data-custom-row-group={group.key} data-custom-row-index={rowIndex} className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-2 py-2">
+                            <button type="button" aria-label={`Drag top row ${rowIndex + 1} to reorder`} className="touch-none cursor-grab rounded p-1.5 text-muted-foreground/60 active:cursor-grabbing active:bg-muted" onPointerDown={(event) => startCustomRowPointerDrag(event, group.key, rowIndex)}>
+                              <GripVertical className="h-4 w-4" />
+                            </button>
                             <span className="shrink-0 text-xs text-muted-foreground">Top row {rowIndex + 1}</span>
                             <Input value={row.text} onChange={(event) => updateGroupRow(group.key, row.id, event.target.value)} placeholder="Blank spacing or title text…" className="h-8" />
                             <button type="button" aria-label="Remove custom row" onClick={() => removeGroupRow(group.key, row.id)} className="rounded p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>

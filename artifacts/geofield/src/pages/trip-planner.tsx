@@ -852,7 +852,7 @@ export default function TripPlannerPage() {
 
         {/* Sample Sites */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col items-stretch gap-3">
             <h2 className="text-lg font-semibold font-display flex items-center gap-2">
               <MapPin className="w-5 h-5 text-primary" />
               Planned Sample Sites
@@ -860,14 +860,14 @@ export default function TripPlannerPage() {
                 <span className="text-sm font-normal text-muted-foreground">({activeTrip?.sites.length})</span>
               )}
             </h2>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => spreadsheetInputRef.current?.click()} className="gap-2">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:self-start">
+              <Button variant="outline" onClick={() => spreadsheetInputRef.current?.click()} className="min-w-0 gap-2 px-2 sm:px-4">
                 <Upload className="w-4 h-4" />
                 Import Excel
               </Button>
-              <Button onClick={() => setMapOpen(true)} className="gap-2">
+              <Button onClick={() => setMapOpen(true)} className="min-w-0 gap-2 px-2 sm:px-4">
                 <Map className="w-4 h-4" />
-                Add Sample Sites
+                Add Sample
               </Button>
             </div>
           </div>
@@ -889,7 +889,7 @@ export default function TripPlannerPage() {
               <MapPin className="w-10 h-10 text-muted-foreground mb-3" />
               <h3 className="font-semibold">No sites planned yet</h3>
               <p className="text-muted-foreground text-sm mt-1 max-w-xs">
-                Click "Add Sample Sites" to pin future collection spots, or import an Excel spreadsheet with latitude and longitude columns.
+                Click "Add Sample" to pin future collection spots, or import an Excel spreadsheet with latitude and longitude columns.
               </p>
             </div>
           ) : (
