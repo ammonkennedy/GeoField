@@ -51,22 +51,6 @@ function PlaneCompass({ strike, dipDirection, dip }: { strike: number | null; di
   </svg>;
 }
 
-function HeadingCompass({ heading, reference }: { heading: number | null; reference: "true" | "magnetic" }) {
-  const value = heading === null ? null : normalizeAzimuth(heading);
-  return <div className="absolute right-3 top-3 rounded-2xl border border-white/10 bg-[#090e16]/95 p-2 shadow-xl backdrop-blur" aria-label="General phone direction">
-    <div className="mb-1 text-center text-[8px] font-semibold uppercase tracking-[0.16em] text-slate-400">Phone heading</div>
-    <svg viewBox="0 0 76 76" className="h-[68px] w-[68px]">
-      <circle cx="38" cy="38" r="35" fill="#111827" stroke="#64748b" strokeWidth="1.5" />
-      {Array.from({ length: 12 }, (_, index) => { const a = (index * 30 - 90) * Math.PI / 180; return <line key={index} x1={38 + 31 * Math.cos(a)} y1={38 + 31 * Math.sin(a)} x2={38 + 27 * Math.cos(a)} y2={38 + 27 * Math.sin(a)} stroke="#94a3b8" />; })}
-      <text x="38" y="13" textAnchor="middle" fill="#fb7185" fontSize="9" fontWeight="800">N</text>
-      <g transform={`rotate(${value === null ? 0 : -value},38,38)`}><path d="M38 15 L33 39 L38 35 L43 39 Z" fill="#ef4444" /><path d="M38 61 L33 37 L38 41 L43 37 Z" fill="#cbd5e1" /></g>
-      <circle cx="38" cy="38" r="3" fill="#f8fafc" />
-    </svg>
-    <div className="text-center font-mono text-xs font-bold text-slate-100">{fmt(value)}</div>
-    <div className="text-center text-[8px] uppercase text-slate-500">{reference}</div>
-  </div>;
-}
-
 export function CompassModal({ open, onClose, onCapture }: Props) {
   const [status, setStatus] = useState<"starting" | "active" | "unavailable" | "error">("starting");
   const [error, setError] = useState("");
@@ -109,7 +93,6 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   }, [open, native]);
 
   const northReference: "true" | "magnetic" = typeof reading?.trueHeading === "number" ? "true" : "magnetic";
-  const generalHeading = typeof reading?.trueHeading === "number" ? reading.trueHeading : typeof reading?.magneticHeading === "number" ? reading.magneticHeading : null;
   const accuracyLow = typeof reading?.headingAccuracy === "number" && reading.headingAccuracy > 20;
   const diagnostic = useMemo(() => reading ? JSON.stringify({ quaternion: [reading.quaternionX, reading.quaternionY, reading.quaternionZ, reading.quaternionW], gravity: [reading.gravityX, reading.gravityY, reading.gravityZ], normalENU: [reading.normalEast, reading.normalNorth, reading.normalUp], heading: { magnetic: reading.magneticHeading, true: reading.trueHeading, accuracy: reading.headingAccuracy }, filtered, screenOrientation: screen.orientation?.type }, null, 2) : "No reading", [reading, filtered]);
   if (!open) return null;
@@ -131,9 +114,8 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       {status === "starting" && <p className="py-8 text-center text-sm text-slate-400">Getting full 3D orientation and compass…</p>}
       {status === "error" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>}
       {(status === "active" || reading) && <>
-        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#121a27] to-[#080d14] px-3 pb-5 pt-24 shadow-inner sm:pt-5">
-          <HeadingCompass heading={generalHeading} reference={northReference} />
-          <div className="mb-3 grid grid-cols-2 gap-3 pr-0 sm:pr-24">
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#121a27] to-[#080d14] px-3 pb-5 pt-5 shadow-inner">
+          <div className="mb-3 grid grid-cols-2 gap-3">
             <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">Strike · RHR</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{fmt(filtered.strike)}</p><p className="text-[10px] text-blue-200/70">{cardinalDirection(filtered.strike)}</p></div>
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">Dip</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(filtered.dip)}°</p><p className="text-[10px] text-amber-200/70">plane slope</p></div>
           </div>
