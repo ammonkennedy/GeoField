@@ -4,6 +4,7 @@ import { Amplify } from "aws-amplify";
 import {
   confirmSignUp,
   confirmUserAttribute,
+  deleteUser,
   fetchAuthSession,
   fetchUserAttributes,
   getCurrentUser,
@@ -53,6 +54,16 @@ type QueryOptions<TData> = {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+const DELETED_RETENTION_MS = 20 * 24 * 60 * 60 * 1000;
+
+function isActive(record: { deletedAt?: string | null }) {
+  return !record.deletedAt;
+}
+
+function isExpired(record: { deletedAt?: string | null }) {
+  return Boolean(record.deletedAt) && Date.now() - Date.parse(record.deletedAt as string) >= DELETED_RETENTION_MS;
 }
 
 function errorMessage(errors: Array<{ message?: string }> = []) {
@@ -206,6 +217,26 @@ export async function signOutUser() {
   await signOut();
 }
 
+export async function deleteCurrentAccount() {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before deleting your account.");
+
+  // Cognito does not cascade account deletion into AppSync records. Remove all
+  // owner-scoped data while the user still has permission, then remove the user.
+  for (const modelName of ["Sample", "StrikeDipMeasurement", "Dataset"] as const) {
+    let nextToken: string | null | undefined;
+    do {
+      const result = await client.models[modelName].list({ limit: 1000, nextToken });
+      if (result.errors?.length) throw new Error(errorMessage(result.errors));
+      for (const record of result.data ?? []) {
+        const deleted = await client.models[modelName].delete({ id: String(record.id) });
+        if (deleted.errors?.length) throw new Error(errorMessage(deleted.errors));
+      }
+      nextToken = result.nextToken;
+    } while (nextToken);
+  }
+  await deleteUser();
+}
+
 export async function updateAccountEmail(input: { email: string }) {
   return updateUserAttribute({
     userAttribute: {
@@ -253,7 +284,13 @@ export async function getFolders(): Promise<Folder[]> {
   do {
     const result = await client.models.Dataset.list({ limit: 1000, nextToken });
     if (result.errors?.length) throw new Error(errorMessage(result.errors));
-    folders.push(...(result.data ?? []).map(asFolder));
+    for (const record of result.data ?? []) {
+      if (isExpired(record)) {
+        await client.models.Dataset.delete({ id: String(record.id) });
+      } else if (isActive(record)) {
+        folders.push(asFolder(record));
+      }
+    }
     nextToken = result.nextToken;
   } while (nextToken);
   return folders;
@@ -295,7 +332,29 @@ export async function deleteFolder({ id }: { id: string | number }): Promise<voi
       } as any),
     ),
   );
-  const result = await client.models.Dataset.delete({ id: String(id) });
+  const result = await client.models.Dataset.update({ id: String(id), deletedAt: nowIso(), updatedAt: nowIso() });
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+}
+
+export async function getRecentlyDeletedFolders(): Promise<Array<Folder & { deletedAt: string }>> {
+  if (!(await hasCurrentUser())) return [];
+  const items: Array<Folder & { deletedAt: string }> = [];
+  let nextToken: string | null | undefined;
+  do {
+    const result = await client.models.Dataset.list({ limit: 1000, nextToken });
+    if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    for (const record of result.data ?? []) {
+      if (!record.deletedAt) continue;
+      if (isExpired(record)) await client.models.Dataset.delete({ id: String(record.id) });
+      else items.push({ ...asFolder(record), deletedAt: record.deletedAt });
+    }
+    nextToken = result.nextToken;
+  } while (nextToken);
+  return items;
+}
+
+export async function restoreFolder(id: string | number): Promise<void> {
+  const result = await client.models.Dataset.update({ id: String(id), deletedAt: null, updatedAt: nowIso() });
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
 export function useDeleteFolder(options?: MutationOptions<void, { id: string | number }>) {
@@ -314,7 +373,13 @@ export async function getSamples(
   do {
     const result = await client.models.Sample.list({ limit: 1000, nextToken });
     if (result.errors?.length) throw new Error(errorMessage(result.errors));
-    samples.push(...(result.data ?? []).map(asSample));
+    for (const record of result.data ?? []) {
+      if (isExpired(record)) {
+        await client.models.Sample.delete({ id: String(record.id) });
+      } else if (isActive(record)) {
+        samples.push(asSample(record));
+      }
+    }
     page += 1;
     onPage?.({ page, downloaded: samples.length });
     nextToken = result.nextToken;
@@ -402,7 +467,29 @@ export function useUpdateSample(options?: MutationOptions<Sample, { id: string |
 export async function deleteSample({ id }: { id: string | number }): Promise<void> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before deleting samples.");
   const sampleId = currentSampleIdFallback(id);
-  const result = await client.models.Sample.delete({ id: String(sampleId) });
+  const result = await client.models.Sample.update({ id: String(sampleId), deletedAt: nowIso(), updatedAt: nowIso() });
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+}
+
+export async function getRecentlyDeletedSamples(): Promise<Array<Sample & { deletedAt: string }>> {
+  if (!(await hasCurrentUser())) return [];
+  const items: Array<Sample & { deletedAt: string }> = [];
+  let nextToken: string | null | undefined;
+  do {
+    const result = await client.models.Sample.list({ limit: 1000, nextToken });
+    if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    for (const record of result.data ?? []) {
+      if (!record.deletedAt) continue;
+      if (isExpired(record)) await client.models.Sample.delete({ id: String(record.id) });
+      else items.push({ ...asSample(record), deletedAt: record.deletedAt });
+    }
+    nextToken = result.nextToken;
+  } while (nextToken);
+  return items;
+}
+
+export async function restoreSample(id: string | number): Promise<void> {
+  const result = await client.models.Sample.update({ id: String(id), deletedAt: null, updatedAt: nowIso() });
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
 export function useDeleteSample(options?: MutationOptions<void, { id: string | number }>) {

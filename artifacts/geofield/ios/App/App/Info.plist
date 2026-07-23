@@ -27,11 +27,13 @@
 	<key>NSCameraUsageDescription</key>
 	<string>GeoField uses the camera to photograph and record field samples.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>GeoField uses the microphone when recording sample videos.</string>
+	<string>GeoField uses the microphone to dictate field notes and record sample videos.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>GeoField converts your spoken field observations into written sample notes.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>GeoField uses your location while the app is open to attach GPS coordinates to field samples and measurements.</string>
+	<string>GeoField uses location while open to determine true north and attach coordinates to field measurements.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>GeoField uses device motion and orientation to help capture compass, strike, and dip measurements.</string>
+	<string>GeoField uses full device motion and orientation to calculate the geological plane beneath the back of your phone.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>GeoField accesses your photo library so you can attach photos and videos to field samples.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

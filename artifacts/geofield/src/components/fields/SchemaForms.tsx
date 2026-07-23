@@ -1,6 +1,36 @@
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 
+const DECIMAL_PRECISION_MESSAGE = "Use no more than 7 digits after the decimal point.";
+
+function parameterPrecisionError(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  // Text qualifiers are valid parameter values. For values that are entirely
+  // numeric (including scientific notation), constrain the mantissa only.
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return "";
+  const mantissa = text.split(/[eE]/)[0];
+  const decimals = mantissa.split(".")[1]?.length ?? 0;
+  return decimals > 7 ? DECIMAL_PRECISION_MESSAGE : "";
+}
+
+function ParameterInput({ register, name, placeholder }: { register: any; name: string; placeholder?: string }) {
+  const registration = register(name, {
+    validate: (value: unknown) => parameterPrecisionError(value) || true,
+  });
+  return (
+    <Input
+      type="text"
+      inputMode="text"
+      placeholder={placeholder}
+      {...registration}
+      onInput={(event) => {
+        event.currentTarget.setCustomValidity(parameterPrecisionError(event.currentTarget.value));
+      }}
+    />
+  );
+}
+
 export const BaseFields = ({ register, errors }: any) => (
   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
     <div className="space-y-2">
@@ -21,12 +51,12 @@ export const BaseFields = ({ register, errors }: any) => (
 
 export const WaterFields = ({ register }: any) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-    <div className="space-y-2"><Label>Water Temp (°C)</Label><Input type="number" step="0.1" {...register("fields.temperature")} /></div>
-    <div className="space-y-2"><Label>pH Level</Label><Input type="number" step="0.1" {...register("fields.ph")} /></div>
-    <div className="space-y-2"><Label>Dissolved Oxygen (mg/L)</Label><Input type="number" step="0.1" {...register("fields.do")} /></div>
-    <div className="space-y-2"><Label>Conductivity (μS/cm)</Label><Input type="number" step="0.1" {...register("fields.conductivity")} /></div>
-    <div className="space-y-2"><Label>Turbidity (NTU)</Label><Input type="number" step="0.1" {...register("fields.turbidity")} /></div>
-    <div className="space-y-2"><Label>Flow Rate (m³/s)</Label><Input type="number" step="0.01" {...register("fields.flowRate")} /></div>
+    <div className="space-y-2"><Label>Water Temp (°C)</Label><ParameterInput register={register} name="fields.temperature" /></div>
+    <div className="space-y-2"><Label>pH Level</Label><ParameterInput register={register} name="fields.ph" /></div>
+    <div className="space-y-2"><Label>Dissolved Oxygen (mg/L)</Label><ParameterInput register={register} name="fields.do" /></div>
+    <div className="space-y-2"><Label>Conductivity (μS/cm)</Label><ParameterInput register={register} name="fields.conductivity" /></div>
+    <div className="space-y-2"><Label>Turbidity (NTU)</Label><ParameterInput register={register} name="fields.turbidity" /></div>
+    <div className="space-y-2"><Label>Flow Rate (m³/s)</Label><ParameterInput register={register} name="fields.flowRate" /></div>
     <div className="space-y-2"><Label>Water Color</Label><Input {...register("fields.color")} placeholder="e.g. Clear, murky brown" /></div>
     <div className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, sulfur" /></div>
     <div className="space-y-2"><Label>Preservation Method</Label><Input {...register("fields.preservation")} placeholder="e.g. HNO3, None" /></div>
@@ -101,10 +131,10 @@ export const RockFields = ({ register }: { register: any }) => (
         <option value="N/A">N/A (non-clastic)</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Hardness (Mohs)</Label><Input type="number" step="0.5" max="10" min="1" {...register("fields.hardness")} /></div>
-    <div className="space-y-2"><Label>Specific Gravity</Label><Input type="number" step="0.1" {...register("fields.specificGravity")} /></div>
+    <div className="space-y-2"><Label>Hardness (Mohs)</Label><ParameterInput register={register} name="fields.hardness" /></div>
+    <div className="space-y-2"><Label>Specific Gravity</Label><ParameterInput register={register} name="fields.specificGravity" /></div>
     <div className="space-y-2"><Label>Magnetism</Label><Input {...register("fields.magnetism")} /></div>
-    <div className="space-y-2"><Label>Weight (g)</Label><Input type="number" step="0.1" {...register("fields.weight")} /></div>
+    <div className="space-y-2"><Label>Weight (g)</Label><ParameterInput register={register} name="fields.weight" /></div>
   </div>
 );
 
@@ -129,18 +159,18 @@ export const SoilFields = ({ register }: any) => (
         <option value="Wet">Wet</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>pH Level</Label><Input type="number" step="0.1" {...register("fields.ph")} /></div>
-    <div className="space-y-2"><Label>Depth (cm)</Label><Input type="number" step="0.1" {...register("fields.depth")} /></div>
+    <div className="space-y-2"><Label>pH Level</Label><ParameterInput register={register} name="fields.ph" /></div>
+    <div className="space-y-2"><Label>Depth (cm)</Label><ParameterInput register={register} name="fields.depth" /></div>
     <div className="space-y-2"><Label>Structure</Label><Input {...register("fields.structure")} placeholder="e.g. Granular, Blocky" /></div>
-    <div className="space-y-2"><Label>Organic Matter (%)</Label><Input type="number" step="0.1" {...register("fields.organicMatter")} /></div>
-    <div className="space-y-2"><Label>Electrical Conductivity (mS/cm)</Label><Input type="number" step="0.01" {...register("fields.ec")} /></div>
-    <div className="space-y-2"><Label>Weight (g)</Label><Input type="number" step="0.1" {...register("fields.weight")} /></div>
+    <div className="space-y-2"><Label>Organic Matter (%)</Label><ParameterInput register={register} name="fields.organicMatter" /></div>
+    <div className="space-y-2"><Label>Electrical Conductivity (mS/cm)</Label><ParameterInput register={register} name="fields.ec" /></div>
+    <div className="space-y-2"><Label>Weight (g)</Label><ParameterInput register={register} name="fields.weight" /></div>
   </div>
 );
 
 export const AirFields = ({ register }: any) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-    <div className="space-y-2"><Label>PID Reading</Label><Input type="number" step="0.001" {...register("fields.pidReading")} placeholder="e.g. 2.450" /></div>
+    <div className="space-y-2"><Label>PID Reading</Label><ParameterInput register={register} name="fields.pidReading" placeholder="e.g. 2.450 or ND" /></div>
     <div className="space-y-2">
       <Label>PID Units</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.pidUnits")}>
@@ -183,8 +213,8 @@ export const AirFields = ({ register }: any) => (
         <option value="Breathing Zone">Breathing Zone</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Ambient Temp (°C)</Label><Input type="number" step="0.1" {...register("fields.ambientTemperature")} /></div>
-    <div className="space-y-2"><Label>Relative Humidity (%)</Label><Input type="number" step="0.1" min="0" max="100" {...register("fields.relativeHumidity")} /></div>
+    <div className="space-y-2"><Label>Ambient Temp (°C)</Label><ParameterInput register={register} name="fields.ambientTemperature" /></div>
+    <div className="space-y-2"><Label>Relative Humidity (%)</Label><ParameterInput register={register} name="fields.relativeHumidity" /></div>
     <div className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, solvent, petroleum" /></div>
   </div>
 );

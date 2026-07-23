@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Droplet, Mountain, Sprout, Wind, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck, FileQuestion } from "lucide-react";
+import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck, FileQuestion } from "lucide-react";
 import { useSamplesMutations } from "@/hooks/use-geofield";
 import { useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -20,12 +20,13 @@ import { BaseFields, WaterFields, RockFields, SoilFields, AirFields } from "@/co
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
+import { Capacitor } from "@capacitor/core";
+import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 
 const sampleTypes = [
-  { id: 'water', label: 'Water', icon: Droplet, color: 'text-[var(--color-water)]', bg: 'bg-[var(--color-water)]/10' },
   { id: 'rock', label: 'Rock', icon: Mountain, color: 'text-[var(--color-rock)]', bg: 'bg-[var(--color-rock)]/10' },
+  { id: 'water', label: 'Water', icon: Droplet, color: 'text-[var(--color-water)]', bg: 'bg-[var(--color-water)]/10' },
   { id: 'soil_sand', label: 'Soil/Sediment', icon: Sprout, color: 'text-[var(--color-soil)]', bg: 'bg-[var(--color-soil)]/10' },
-  { id: 'air', label: 'Air', icon: Wind, color: 'text-[var(--color-air)]', bg: 'bg-[var(--color-air)]/10' },
   { id: 'other', label: 'Other', icon: FileQuestion, color: 'text-muted-foreground', bg: 'bg-muted' },
 ] as const;
 
@@ -80,6 +81,13 @@ function getTypeLabel(type: string) {
   if (type === "air") return "Air";
   if (type === "other") return "Other";
   return "Sample";
+}
+
+function exceedsSevenDecimalPlaces(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return false;
+  const mantissa = text.split(/[eE]/)[0];
+  return (mantissa.split(".")[1]?.length ?? 0) > 7;
 }
 
 function isLocalDatasetId(value: unknown) {
@@ -393,15 +401,63 @@ export default function SampleEntry() {
     }));
   }
 
-  const toggleRecording = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) {
-      alert("Speech recognition is not supported in this browser. Try Chrome or Safari on iOS.");
+  const toggleRecording = async () => {
+    if (isRecording) {
+      await recognitionRef.current?.stop?.();
+      recognitionRef.current = null;
+      setIsRecording(false);
       return;
     }
-    if (isRecording) {
-      recognitionRef.current?.stop();
-      setIsRecording(false);
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const available = await SpeechRecognition.available();
+        if (!available.available) throw new Error("Speech recognition is not available on this device.");
+
+        let permission = await SpeechRecognition.checkPermissions();
+        if (permission.speechRecognition !== "granted") permission = await SpeechRecognition.requestPermissions();
+        if (permission.speechRecognition !== "granted") {
+          throw new Error("Microphone and speech recognition access are required. Enable them for GeoField in iPhone Settings.");
+        }
+
+        const originalNotes = (document.getElementById("notes") as HTMLTextAreaElement)?.value ?? "";
+        const applyTranscript = (transcript: string) => {
+          const spoken = transcript.trim();
+          const joined = originalNotes.trim() && spoken ? `${originalNotes.trimEnd()} ${spoken}` : originalNotes || spoken;
+          setValue("notes", joined, { shouldDirty: true, shouldTouch: true });
+        };
+        const partialHandle = await SpeechRecognition.addListener("partialResults", ({ matches }) => {
+          if (matches?.[0]) applyTranscript(matches[0]);
+        });
+        const stateHandle = await SpeechRecognition.addListener("listeningState", ({ status }) => {
+          if (status === "stopped") {
+            setIsRecording(false);
+            recognitionRef.current = null;
+            void partialHandle.remove();
+            void stateHandle.remove();
+          }
+        });
+        recognitionRef.current = {
+          stop: async () => {
+            await SpeechRecognition.stop();
+            await partialHandle.remove();
+            await stateHandle.remove();
+          },
+        };
+        setIsRecording(true);
+        await SpeechRecognition.start({ language: "en-US", maxResults: 1, partialResults: true, popup: false });
+      } catch (error: any) {
+        recognitionRef.current = null;
+        setIsRecording(false);
+        await SpeechRecognition.removeAllListeners().catch(() => undefined);
+        toast({ title: "Dictation unavailable", description: error?.message || "GeoField could not start speech recognition.", variant: "destructive" });
+      }
+      return;
+    }
+
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      toast({ title: "Dictation unavailable", description: "Speech recognition is not supported in this browser.", variant: "destructive" });
       return;
     }
     const recognition = new SR();
@@ -415,7 +471,7 @@ export default function SampleEntry() {
         .join(" ");
       const current = (document.getElementById("notes") as HTMLTextAreaElement)?.value ?? "";
       const joined = current ? `${current.trimEnd()} ${transcript.trim()}` : transcript.trim();
-      setValue("notes", joined);
+      setValue("notes", joined, { shouldDirty: true, shouldTouch: true });
     };
     recognition.onerror = () => setIsRecording(false);
     recognition.onend = () => setIsRecording(false);
@@ -439,12 +495,41 @@ export default function SampleEntry() {
   };
 
   const onSubmit = async (data: FormValues) => {
+    const invalidField = Object.entries(data.fields).find(([, value]) => exceedsSevenDecimalPlaces(value));
+    const invalidCustomParameter = customParams.find((parameter) => exceedsSevenDecimalPlaces(parameter.value));
+    if (invalidField || invalidCustomParameter) {
+      toast({
+        title: "Too many decimal places",
+        description: "Numerical parameter values can contain up to 7 digits after the decimal point. Text and mixed letter/number values are also allowed.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const processedFields: Record<string, any> = {};
     Object.entries(data.fields).forEach(([k, v]) => {
       if (v === "") return;
       const num = Number(v);
       processedFields[k] = !isNaN(num) && typeof v === "string" && v.trim() !== "" ? num : v;
     });
+
+    const plannedSiteId = typeof data.fields.plannedSiteId === "string" ? data.fields.plannedSiteId : null;
+    if (plannedSiteId && data.fields.collectionStatus === "planned") {
+      const collectedAt = new Date().toISOString();
+      processedFields.collectionStatus = "collected";
+      processedFields.collectedAt = collectedAt;
+      // Keep the Trip Planner representation in step with its queued sample.
+      try {
+        const trips = JSON.parse(localStorage.getItem("geofield_trips") || "[]");
+        const updatedTrips = trips.map((trip: any) => ({
+          ...trip,
+          sites: Array.isArray(trip.sites) ? trip.sites.map((site: any) => site.id === plannedSiteId ? { ...site, collectedAt } : site) : [],
+          updatedAt: trip.sites?.some((site: any) => site.id === plannedSiteId) ? collectedAt : trip.updatedAt,
+        }));
+        localStorage.setItem("geofield_trips", JSON.stringify(updatedTrips));
+        window.dispatchEvent(new CustomEvent("trips-updated"));
+      } catch {}
+    }
 
     const filledSlots = mediaSlots.some(Boolean);
     if (filledSlots) {
@@ -478,7 +563,9 @@ export default function SampleEntry() {
       localStorage.getItem("geofield-demo-mode") === "true" ||
       isLocalDatasetId(folderId);
     const payload = {
-      sampleType: data.sampleType,
+      // Air remains in the data model so historical records can be opened and
+      // edited, but it is no longer a valid choice for a newly created sample.
+      sampleType: !isEdit && data.sampleType === "air" ? "other" : data.sampleType,
       sampleId: data.sampleId,
       folderId,
       notes: data.notes,
@@ -607,10 +694,7 @@ export default function SampleEntry() {
 
             <div className="space-y-4">
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">4</span>Photos &amp; Video</h3>
-              <p className="text-xs text-muted-foreground -mt-1">Up to 3 slots — each can be a photo or a short video clip (max 10 seconds).</p>
-              {(globalThis as any).Capacitor?.getPlatform?.() === "ios" && (
-                <p className="text-xs text-muted-foreground">The iOS Simulator has no camera. Use Choose Media with an image/video added to the Simulator, or test Take Photo and Record Video on a physical iPhone.</p>
-              )}
+              <p className="text-xs text-muted-foreground -mt-1">Videos have a 10-second maximum.</p>
               <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaChange} />
               <input ref={photoCaptureInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleMediaChange} />
               <input ref={videoCaptureInputRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={handleMediaChange} />

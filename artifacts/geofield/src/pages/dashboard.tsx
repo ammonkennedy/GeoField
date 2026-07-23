@@ -25,6 +25,7 @@ const typeStyles = {
 };
 
 function getSampleTypeLabel(sample: any) {
+  if (sample.fields?.collectionStatus === "planned") return "Future Sample Site";
   if (sample.sampleType === "other") {
     return sample.fields?.otherSampleTitle || sample.fields?.title || sample.sampleId || "Other";
   }
@@ -381,11 +382,11 @@ export default function Dashboard() {
           <DialogTitle>Delete Sample</DialogTitle>
         </DialogHeader>
         <DialogContent>
-          <p className="py-4">Are you sure you want to permanently delete this sample? This action cannot be undone.</p>
+          <p className="py-4">Delete this sample? You can restore it from Settings for 20 days.</p>
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteSample} disabled={deleteSample.isPending}>
-              {deleteSample.isPending ? "Deleting..." : "Delete Permanently"}
+              {deleteSample.isPending ? "Deleting..." : "Delete Sample"}
             </Button>
           </div>
         </DialogContent>

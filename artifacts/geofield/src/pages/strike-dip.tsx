@@ -4,7 +4,7 @@ import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CompassModal } from "@/components/CompassModal";
+import { CompassModal, type StrikeDipCapture } from "@/components/CompassModal";
 import { ExportCustomizerDialog } from "@/components/ExportCustomizerDialog";
 import { FolderDialog } from "@/components/FolderDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -33,6 +33,11 @@ function normalizeAngle(value: string, maximum: number): string {
   const number = Number(value);
   if (!Number.isFinite(number)) return "";
   return String(Math.min(maximum, Math.max(0, number)));
+}
+
+function normalizeStrike(value: string): string {
+  const number = Number(value);
+  return Number.isFinite(number) ? String(((Math.round(number) % 360) + 360) % 360) : "";
 }
 
 function toLocalDateTimeInputValue(date = new Date()): string {
@@ -115,7 +120,9 @@ function MeasurementRow({
   const upd = (k: keyof StrikeDipMeasurement, v: string) => {
     if (k === "strike") {
       const cleanStrike = v.replace(/[^0-9.]/g, "");
-      onChange({ ...measurement, strike: cleanStrike, dipDir: deriveDipDir(cleanStrike) });
+      const numeric = Number(cleanStrike);
+      const direction = Number.isFinite(numeric) ? ((numeric + 90) % 360) : undefined;
+      onChange({ ...measurement, strike: cleanStrike, strikeDegrees: numeric, dipDirectionDegrees: direction, dipDir: direction === undefined ? "" : `${Math.round(direction).toString().padStart(3, "0")}° ${deriveDipDir(cleanStrike)}`, convention: "right-hand-rule" });
       return;
     }
     if (k === "dip") {
@@ -249,7 +256,7 @@ function MeasurementRow({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Strike</Label>
-              <Input type="text" inputMode="decimal" value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} onBlur={() => upd("strike", normalizeAngle(measurement.strike, 359))} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Strike in degrees" />
+              <Input type="text" inputMode="numeric" value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} onBlur={() => upd("strike", normalizeStrike(measurement.strike))} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Strike in degrees" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Dip</Label>
@@ -257,7 +264,7 @@ function MeasurementRow({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Dip Direction</Label>
-              <Input value={measurement.dipDir} onChange={(e) => upd("dipDir", e.target.value)} placeholder="e.g. SE" className="h-8 text-sm" />
+              <Input value={measurement.dipDir} readOnly placeholder="Derived from strike (RHR)" className="h-8 text-sm bg-muted" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Feature Type</Label>
@@ -507,13 +514,16 @@ export default function StrikeDipPage() {
   };
 
   const saveManualMeasurement = () => {
-    const strike = normalizeAngle(manualDraft.strike, 359);
+    const strike = normalizeStrike(manualDraft.strike);
     const dip = normalizeAngle(manualDraft.dip, 90);
     if (!strike || !dip) {
       toast({ title: "Strike and dip required", description: "Enter a strike from 0–359° and a dip from 0–90°.", variant: "destructive" });
       return;
     }
-    const measurement = { ...manualDraft, strike, dip, dipDir: manualDraft.dipDir || deriveDipDir(strike) };
+    const strikeDegrees = Number(strike);
+    const dipDegrees = Number(dip);
+    const dipDirectionDegrees = ((strikeDegrees + 90) % 360);
+    const measurement: StrikeDipMeasurement = { ...manualDraft, strike, dip, strikeDegrees, dipDegrees, dipDirectionDegrees, dipDir: `${dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(strike)}`, convention: "right-hand-rule", northReference: "magnetic", quality: "manual" };
     setMeasurements((prev) => [...prev, measurement]);
     setNewlyCreatedId(measurement.id);
     setManualOpen(false);
@@ -666,14 +676,15 @@ export default function StrikeDipPage() {
       <CompassModal
         open={compassOpen}
         onClose={() => setCompassOpen(false)}
-        onCapture={(strike, dip) => {
+        onCapture={(capture: StrikeDipCapture) => {
           const m: StrikeDipMeasurement = {
             ...blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId),
-            strike,
-            dip,
-            dipDir: deriveDipDir(strike),
+            ...capture,
+            strike: String(capture.strikeDegrees),
+            dip: String(capture.dipDegrees),
+            dipDir: `${capture.dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(String(capture.strikeDegrees))}`,
           };
-          addMeasurementWithGps(m, "Measurement captured", `Strike ${strike} / Dip ${dip}`);
+          addMeasurementWithGps(m, "Measurement captured", `Strike ${m.strike}° / Dip ${m.dip}° toward ${m.dipDir}`);
         }}
       />
 
@@ -685,7 +696,7 @@ export default function StrikeDipPage() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="manual-strike">Strike (0–359°)</Label>
-              <Input id="manual-strike" autoFocus inputMode="decimal" value={manualDraft.strike} onChange={(e) => setManualDraft((draft) => ({ ...draft, strike: e.target.value.replace(/[^0-9.]/g, ""), dipDir: deriveDipDir(e.target.value) }))} placeholder="045" />
+              <Input id="manual-strike" autoFocus inputMode="numeric" value={manualDraft.strike} onChange={(e) => { const strike = e.target.value.replace(/[^0-9]/g, ""); const direction = strike ? (Number(strike) + 90) % 360 : undefined; setManualDraft((draft) => ({ ...draft, strike, strikeDegrees: strike ? Number(strike) : undefined, dipDirectionDegrees: direction, dipDir: direction === undefined ? "" : String(direction) })); }} onBlur={() => setManualDraft((draft) => ({ ...draft, strike: normalizeStrike(draft.strike) }))} placeholder="045" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="manual-dip">Dip (0–90°)</Label>
@@ -698,8 +709,8 @@ export default function StrikeDipPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="manual-direction">Dip Direction</Label>
-              <Input id="manual-direction" value={manualDraft.dipDir} onChange={(e) => setManualDraft((draft) => ({ ...draft, dipDir: e.target.value }))} placeholder="SE" />
+              <Label htmlFor="manual-direction">Dip Direction (RHR)</Label>
+              <Input id="manual-direction" inputMode="numeric" value={manualDraft.dipDirectionDegrees ?? ""} onChange={(e) => { const direction = ((Number(e.target.value.replace(/[^0-9]/g, "")) % 360) + 360) % 360; const strike = (direction + 270) % 360; setManualDraft((draft) => ({ ...draft, dipDirectionDegrees: direction, strikeDegrees: strike, strike: String(strike), dipDir: String(direction) })); }} placeholder="135" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="manual-feature">Feature Type</Label>

@@ -42,6 +42,7 @@ function formatCoord(value: number) {
 }
 
 function getSampleLabel(sample: any) {
+  if (sample.fields?.collectionStatus === "planned") return "Future Sample Site";
   if (sample.sampleType === "other") {
     return sample.fields?.otherSampleTitle || sample.fields?.title || sample.sampleId || "Other";
   }
@@ -475,9 +476,10 @@ export default function MapViewPage() {
       if (!coords) return;
       allCoords.push([coords[1], coords[0]]);
 
-      const color = TYPE_COLORS[sample.sampleType] || "#666";
+      const isFutureSite = (sample.fields as any)?.collectionStatus === "planned";
+      const color = isFutureSite ? "#f59e0b" : TYPE_COLORS[sample.sampleType] || "#666";
       const label = getSampleLabel(sample);
-      const letter = sample.sampleType === "water" ? "W" : sample.sampleType === "rock" ? "R" : sample.sampleType === "air" ? "A" : sample.sampleType === "other" ? String(label).charAt(0).toUpperCase() || "O" : "S";
+      const letter = isFutureSite ? "☆" : sample.sampleType === "water" ? "W" : sample.sampleType === "rock" ? "R" : sample.sampleType === "air" ? "A" : sample.sampleType === "other" ? String(label).charAt(0).toUpperCase() || "O" : "S";
       const dateStr = (sample.fields as any)?.collectionDate
         ? new Date((sample.fields as any).collectionDate).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
         : "";
@@ -493,7 +495,9 @@ export default function MapViewPage() {
             : "";
 
       const el = document.createElement("div");
-      el.innerHTML = `<div style="background:${color};color:white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:34px;height:34px;border:2.5px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;"><span style="transform:rotate(45deg);font-size:14px;font-weight:700;">${letter}</span></div>`;
+      el.innerHTML = isFutureSite
+        ? `<div style="background:${color};color:white;border-radius:50%;width:34px;height:34px;border:2.5px dashed white;box-shadow:0 3px 10px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:19px;">${letter}</div>`
+        : `<div style="background:${color};color:white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:34px;height:34px;border:2.5px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;"><span style="transform:rotate(45deg);font-size:14px;font-weight:700;">${letter}</span></div>`;
       const marker = new L.Marker({ element: el, anchor: "bottom" }).setLngLat([coords[1], coords[0]]).addTo(map);
 
       el.addEventListener("click", (e: Event) => {

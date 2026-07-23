@@ -2,6 +2,7 @@ import { getQueue, setQueue } from "@/lib/offline-queue";
 import { reassignMeasurementsDataset } from "@/lib/strike-dip-measurements";
 import { archiveLocalItem, removeLocalDeletedItem, type LocalDeletedItem } from "@/lib/recently-deleted";
 import { readDurableArray, writeDurableArray } from "@/lib/durable-storage";
+import { deleteFolder as deleteCloudFolder, restoreFolder } from "@workspace/api-client-react";
 
 export interface LocalDataset {
   id: number;
@@ -120,10 +121,7 @@ export function deleteLocalDataset(id: number | string) {
   // A synced local dataset has two identities. Tombstone the cloud record too so
   // the next refresh/deploy cannot make it appear again.
   if (dataset?.cloudId) {
-    fetch(`/api/folders/${encodeURIComponent(dataset.cloudId)}`, {
-      method: "DELETE",
-      credentials: "include",
-    }).catch(() => undefined);
+    deleteCloudFolder({ id: dataset.cloudId }).catch(() => undefined);
   }
   saveLocalDatasets(getLocalDatasets().filter((dataset) => String(dataset.id) !== String(id)));
 
@@ -138,11 +136,12 @@ export function deleteLocalDataset(id: number | string) {
   reassignMeasurementsDataset(id, null);
 }
 
-export function restoreLocalDataset(item: LocalDeletedItem) {
+export async function restoreLocalDataset(item: LocalDeletedItem) {
   if (item.kind !== "dataset") return;
   const datasets = getLocalDatasets();
   if (!datasets.some((dataset) => String(dataset.id) === String(item.data.id))) {
     saveLocalDatasets([...datasets, item.data]);
   }
+  if (item.data.cloudId) await restoreFolder(item.data.cloudId);
   removeLocalDeletedItem(item.trashId);
 }

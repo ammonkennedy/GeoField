@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   confirmAccountEmail,
+  deleteCurrentAccount,
+  getRecentlyDeletedFolders,
+  getRecentlyDeletedSamples,
+  restoreFolder,
+  restoreSample,
   getGetCurrentAuthUserQueryKey,
   updateAccountEmail,
   updateAccountPassword,
@@ -9,6 +14,7 @@ import {
 } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, CheckCircle2, KeyRound, Loader2, Settings, UserRound, Trash2, RotateCcw } from "lucide-react";
@@ -17,7 +23,7 @@ import { restoreLocalDataset } from "@/lib/local-datasets";
 import { getQueue, setQueue } from "@/lib/offline-queue";
 import { restoreMeasurement } from "@/lib/strike-dip-measurements";
 
-type CloudDeletedItem = { id: number; name?: string; sampleId?: string; deletedAt: string; kind: "dataset" | "sample" };
+type CloudDeletedItem = { id: number | string; name?: string; sampleId?: string; deletedAt: string; kind: "dataset" | "sample" };
 
 export default function AccountSettingsPage() {
   const queryClient = useQueryClient();
@@ -37,6 +43,9 @@ export default function AccountSettingsPage() {
   const [passwordError, setPasswordError] = useState("");
   const [deletedItems, setDeletedItems] = useState<Array<CloudDeletedItem | LocalDeletedItem>>([]);
   const [trashLoading, setTrashLoading] = useState(true);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteAccountPending, setDeleteAccountPending] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState("");
 
   useEffect(() => {
     setEmail(user?.email || "");
@@ -46,12 +55,10 @@ export default function AccountSettingsPage() {
     setTrashLoading(true);
     const local = getLocalDeletedItems();
     try {
-      const [datasetsResponse, samplesResponse] = await Promise.all([
-        fetch("/api/folders/recently-deleted", { credentials: "include" }),
-        fetch("/api/samples/recently-deleted", { credentials: "include" }),
+      const [datasets, samples] = await Promise.all([
+        getRecentlyDeletedFolders(),
+        getRecentlyDeletedSamples(),
       ]);
-      const datasets = datasetsResponse.ok ? await datasetsResponse.json() : [];
-      const samples = samplesResponse.ok ? await samplesResponse.json() : [];
       setDeletedItems([
         ...local,
         ...datasets.map((item: any) => ({ ...item, kind: "dataset" as const })),
@@ -65,19 +72,33 @@ export default function AccountSettingsPage() {
 
   const restoreItem = async (item: CloudDeletedItem | LocalDeletedItem) => {
     if ("trashId" in item) {
-      if (item.kind === "dataset") restoreLocalDataset(item);
+      if (item.kind === "dataset") await restoreLocalDataset(item);
       else if (item.kind === "measurement") restoreMeasurement(item);
       else {
         if (!getQueue().some((queued) => queued.queuedId === item.data.queuedId)) setQueue([...getQueue(), item.data]);
         removeLocalDeletedItem(item.trashId);
       }
     } else {
-      const resource = item.kind === "dataset" ? "folders" : "samples";
-      const response = await fetch(`/api/${resource}/${item.id}/restore`, { method: "POST", credentials: "include" });
-      if (!response.ok) throw new Error("Could not restore item");
+      if (item.kind === "dataset") await restoreFolder(item.id);
+      else await restoreSample(item.id);
     }
     queryClient.invalidateQueries();
     await loadDeletedItems();
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleteAccountPending(true);
+    setDeleteAccountError("");
+    try {
+      await deleteCurrentAccount();
+      Object.keys(localStorage).filter((key) => key.startsWith("geofield_")).forEach((key) => localStorage.removeItem(key));
+      indexedDB.deleteDatabase("geofield_media_store");
+      queryClient.clear();
+      window.location.assign("/login");
+    } catch (error: any) {
+      setDeleteAccountError(error?.message || "Could not delete the account.");
+      setDeleteAccountPending(false);
+    }
   };
 
   const refreshUser = () => {
@@ -215,7 +236,7 @@ export default function AccountSettingsPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold">Recently Deleted</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Datasets and samples can be recovered for 20 days, then are permanently deleted.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Datasets, samples, and measurements can be recovered for 20 days, then are permanently deleted.</p>
                 </div>
               </div>
               {trashLoading ? <p className="text-sm text-muted-foreground">Loading deleted items…</p> : deletedItems.length === 0 ? (
@@ -280,9 +301,29 @@ export default function AccountSettingsPage() {
                 </p>
               )}
             </div>
+
+            <div className="rounded-2xl border border-destructive/40 bg-card p-6 space-y-4">
+              <div className="flex items-start gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10"><Trash2 className="h-5 w-5 text-destructive" /></div>
+                <div><h2 className="text-lg font-semibold">Delete Account</h2><p className="mt-1 text-sm text-muted-foreground">Permanently delete your account and all cloud and device data.</p></div>
+              </div>
+              <Button variant="destructive" onClick={() => setDeleteAccountOpen(true)}>Delete My Account</Button>
+            </div>
           </>
         )}
       </div>
+
+      <Dialog open={deleteAccountOpen} onOpenChange={(open) => !deleteAccountPending && setDeleteAccountOpen(open)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Are you sure you want to delete your account?</DialogTitle></DialogHeader>
+          <p className="py-2 text-sm text-muted-foreground">This permanently removes your datasets, samples, measurements, photos, videos, trips, and sign-in account. This cannot be undone.</p>
+          {deleteAccountError && <p className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{deleteAccountError}</p>}
+          <div className="flex justify-end gap-3 border-t pt-4">
+            <Button variant="outline" disabled={deleteAccountPending} onClick={() => setDeleteAccountOpen(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleteAccountPending} onClick={handleDeleteAccount}>{deleteAccountPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{deleteAccountPending ? "Deleting…" : "Yes, Delete Account"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

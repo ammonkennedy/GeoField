@@ -68,6 +68,7 @@ export interface PlannedSite {
   lng: number;
   addedAt: string;
   queuedSampleId?: string;
+  collectedAt?: string;
 }
 
 export interface Trip {
@@ -149,7 +150,8 @@ function normalizeSampleType(value: string): PlannedSite["sampleType"] {
   const normalized = normalizeHeader(value);
   if (normalized.includes("water")) return "water";
   if (normalized.includes("soil") || normalized.includes("sediment") || normalized.includes("sand")) return "soil_sand";
-  if (normalized.includes("air") || normalized.includes("pid") || normalized.includes("voc")) return "air";
+  // Legacy Air sites remain readable, but new imports should not create them.
+  if (normalized.includes("air") || normalized.includes("pid") || normalized.includes("voc")) return "other";
   if (normalized.includes("other")) return "other";
   return "rock";
 }
@@ -336,6 +338,9 @@ export default function TripPlannerPage() {
 
   const upsertPlannedSiteSample = (trip: Trip, site: PlannedSite, datasetId: number, siteIndex: number): PlannedSite => {
     const queue = getQueue();
+    // Once field information has been recorded, this queue item is a normal
+    // sample. Editing the trip must never turn it back into a planned site.
+    if (site.collectedAt) return site;
     const queuedId = site.queuedSampleId || `q_site_${site.id}`;
     const payload: QueuedSample["payload"] = {
       sampleType: site.sampleType ?? "other",
@@ -711,14 +716,20 @@ export default function TripPlannerPage() {
   }, [activeTrip?.sites, mapOpen]);
 
   // ── Site marker helper ─────────────────────────────────────────────────────
-  function addSiteMarker(L: any, map: any, site: { name: string; lat: number; lng: number; description?: string }) {
+  function addSiteMarker(L: any, map: any, site: PlannedSite) {
     const el = document.createElement("div");
-    el.style.cssText =
-      "display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:#155e4e;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:15px;cursor:pointer;";
-    el.textContent = "⭐";
+    const collected = Boolean(site.collectedAt);
+    const sampleColors: Record<string, string> = { water: "#0284c7", rock: "#92400e", soil_sand: "#a16207", air: "#64748b", other: "#6b7280" };
+    const collectedColor = sampleColors[site.sampleType ?? "other"];
+    el.style.cssText = collected
+      ? `display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:${collectedColor};border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:12px;font-weight:700;color:white;cursor:pointer;`
+      : "display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:#f59e0b;border-radius:50%;border:3px dashed white;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:15px;cursor:pointer;";
+    el.innerHTML = collected ? `<span style="transform:rotate(45deg)">${plannedSiteSampleTypeLabel(site).charAt(0)}</span>` : "☆";
 
     const popup = new L.Popup({ closeButton: false, offset: [0, -18] }).setHTML(
-      `<div style="font-family:system-ui,sans-serif;"><strong>${site.name}</strong>${
+      `<div style="font-family:system-ui,sans-serif;"><strong>${collected ? site.name : "Future Sample Site"}</strong>${
+        !collected ? `<br/><span style="font-size:12px;color:#b45309;">${site.name}</span>` : ""
+      }${
         site.description ? `<br/><span style="font-size:12px;color:#555;">${site.description}</span>` : ""
       }<br/><span style="font-size:11px;color:#888;">${formatCoord(site.lat)}, ${formatCoord(site.lng)}</span></div>`
     );
@@ -917,7 +928,6 @@ export default function TripPlannerPage() {
                               <option value="rock">Rock</option>
                               <option value="water">Water</option>
                               <option value="soil_sand">Soil / Sediment</option>
-                              <option value="air">Air</option>
                               <option value="other">Other</option>
                             </select>
                           </div>
@@ -944,8 +954,8 @@ export default function TripPlannerPage() {
                       <>
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-semibold">{site.name}</p>
-                          <span className="text-xs rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                            {plannedSiteSampleTypeLabel(site)}
+                          <span className={`text-xs rounded-full px-2 py-0.5 ${site.collectedAt ? "bg-muted text-muted-foreground" : "bg-amber-100 text-amber-800"}`}>
+                            {site.collectedAt ? plannedSiteSampleTypeLabel(site) : "Future Sample Site"}
                           </span>
                         </div>
                         {site.description && (
@@ -1208,7 +1218,6 @@ export default function TripPlannerPage() {
                         <option value="rock">Rock</option>
                         <option value="water">Water</option>
                         <option value="soil_sand">Soil / Sediment</option>
-                        <option value="air">Air</option>
                         <option value="other">Other</option>
                       </select>
                     </div>
