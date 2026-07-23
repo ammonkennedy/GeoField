@@ -140,6 +140,14 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
     @objc func start(_ call: CAPPluginCall) {
         guard motion.isDeviceMotionAvailable else { call.reject("Core Motion orientation is unavailable."); return }
         if location.authorizationStatus == .notDetermined { location.requestWhenInUseAuthorization() }
+        if let interfaceOrientation = bridge?.viewController?.view.window?.windowScene?.interfaceOrientation {
+            switch interfaceOrientation {
+            case .landscapeLeft: location.headingOrientation = .landscapeLeft
+            case .landscapeRight: location.headingOrientation = .landscapeRight
+            case .portraitUpsideDown: location.headingOrientation = .portraitUpsideDown
+            default: location.headingOrientation = .portrait
+            }
+        }
         if CLLocationManager.headingAvailable() { location.startUpdatingHeading() }
         motion.deviceMotionUpdateInterval = 1.0 / 15.0
         let frames = CMMotionManager.availableAttitudeReferenceFrames()

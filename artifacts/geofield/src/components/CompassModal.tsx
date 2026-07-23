@@ -27,20 +27,43 @@ const STABILITY_WINDOW = 12, AZIMUTH_TOLERANCE = 3, DIP_TOLERANCE = 2;
 const fmt = (value: number | null) => value === null ? "—" : `${Math.round(normalizeAzimuth(value)).toString().padStart(3, "0")}°`;
 
 function PlaneCompass({ strike, dipDirection, dip }: { strike: number | null; dipDirection: number | null; dip: number }) {
-  const ticks = Array.from({ length: 36 }, (_, i) => i * 10);
-  return <div className="grid grid-cols-[220px_1fr] items-center gap-3">
-    <svg viewBox="0 0 220 220" className="h-[220px] w-[220px]">
-      <circle cx="110" cy="110" r="104" fill="#111827" stroke="#475569" strokeWidth="2" />
-      {ticks.map((degree) => { const a = (degree - 90) * Math.PI / 180; const major = degree % 90 === 0; return <line key={degree} x1={110 + 98 * Math.cos(a)} y1={110 + 98 * Math.sin(a)} x2={110 + (major ? 82 : 89) * Math.cos(a)} y2={110 + (major ? 82 : 89) * Math.sin(a)} stroke={major ? "#e2e8f0" : "#64748b"} strokeWidth={major ? 2 : 1} />; })}
-      {[["N",110,24],["E",196,114],["S",110,202],["W",24,114]].map(([label,x,y]) => <text key={String(label)} x={Number(x)} y={Number(y)} textAnchor="middle" fill={label === "N" ? "#f87171" : "#cbd5e1"} fontWeight="700">{label}</text>)}
-      {strike !== null && <g transform={`rotate(${strike},110,110)`}><line x1="110" y1="34" x2="110" y2="186" stroke="#60a5fa" strokeWidth="5" strokeLinecap="round" /><circle cx="110" cy="110" r="7" fill="#dbeafe" /></g>}
-      {dipDirection !== null && <g transform={`rotate(${dipDirection},110,110)`}><line x1="110" y1="110" x2="110" y2="46" stroke="#34d399" strokeWidth="4" /><path d="M110 36 L102 51 L118 51 Z" fill="#34d399" /></g>}
+  const ticks = Array.from({ length: 72 }, (_, index) => index * 5);
+  const labels = Array.from({ length: 12 }, (_, index) => index * 30);
+  return <svg viewBox="0 0 300 300" className="mx-auto w-full max-w-[310px] drop-shadow-2xl" aria-label="Geological strike and dip instrument">
+    <defs>
+      <radialGradient id="geoFace" cx="42%" cy="35%"><stop offset="0" stopColor="#202a3a" /><stop offset="0.68" stopColor="#101722" /><stop offset="1" stopColor="#080d14" /></radialGradient>
+      <filter id="geoGlow"><feGaussianBlur stdDeviation="3" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+    </defs>
+    <circle cx="150" cy="150" r="143" fill="#05080d" stroke="#64748b" strokeWidth="2" />
+    <circle cx="150" cy="150" r="136" fill="url(#geoFace)" stroke="#293548" strokeWidth="2" />
+    <circle cx="150" cy="150" r="108" fill="none" stroke="#334155" strokeWidth="1" />
+    {ticks.map((degree) => { const angle = (degree - 90) * Math.PI / 180; const major = degree % 30 === 0; const medium = degree % 10 === 0; const outer = 132; const inner = major ? 116 : medium ? 120 : 125; return <line key={degree} x1={150 + outer * Math.cos(angle)} y1={150 + outer * Math.sin(angle)} x2={150 + inner * Math.cos(angle)} y2={150 + inner * Math.sin(angle)} stroke={major ? "#e2e8f0" : medium ? "#94a3b8" : "#526176"} strokeWidth={major ? 2 : 1} />; })}
+    {labels.map((degree) => { const angle = (degree - 90) * Math.PI / 180; return <text key={degree} x={150 + 99 * Math.cos(angle)} y={150 + 99 * Math.sin(angle) + 4} textAnchor="middle" fill="#94a3b8" fontFamily="ui-monospace, SFMono-Regular" fontSize="9">{degree}</text>; })}
+    {[["N",150,34],["E",266,154],["S",150,274],["W",34,154]].map(([label,x,y]) => <text key={String(label)} x={Number(x)} y={Number(y)} textAnchor="middle" fill={label === "N" ? "#fb7185" : "#e2e8f0"} fontSize="14" fontWeight="800">{label}</text>)}
+    {strike !== null && <g transform={`rotate(${strike},150,150)`} filter="url(#geoGlow)"><line x1="150" y1="52" x2="150" y2="248" stroke="#60a5fa" strokeWidth="5" strokeLinecap="round" /><line x1="150" y1="56" x2="150" y2="244" stroke="#dbeafe" strokeWidth="1" /><path d="M150 44 L143 58 L157 58 Z" fill="#93c5fd" /><path d="M150 256 L143 242 L157 242 Z" fill="#93c5fd" /></g>}
+    {dipDirection !== null && <g transform={`rotate(${dipDirection},150,150)`}><line x1="150" y1="150" x2="150" y2="83" stroke="#fbbf24" strokeWidth="3" strokeDasharray="5 4" /><path d="M150 72 L143 87 L157 87 Z" fill="#fbbf24" /></g>}
+    <circle cx="150" cy="150" r="40" fill="#0a1019" stroke="#64748b" strokeWidth="2" />
+    <circle cx="150" cy="150" r="29" fill="none" stroke="#334155" />
+    <line x1="137" y1="150" x2="163" y2="150" stroke="#64748b" /><line x1="150" y1="137" x2="150" y2="163" stroke="#64748b" />
+    <circle cx="150" cy="150" r="5" fill="#f8fafc" stroke="#60a5fa" strokeWidth="2" />
+    <g transform={`rotate(${-Math.min(90, Math.max(0, dip))},150,150)`}><line x1="128" y1="181" x2="172" y2="181" stroke="#fbbf24" strokeWidth="5" strokeLinecap="round" /></g>
+    <text x="150" y="205" textAnchor="middle" fill="#94a3b8" fontSize="8" letterSpacing="1.4">PLANE ATTITUDE</text>
+  </svg>;
+}
+
+function HeadingCompass({ heading, reference }: { heading: number | null; reference: "true" | "magnetic" }) {
+  const value = heading === null ? null : normalizeAzimuth(heading);
+  return <div className="absolute right-3 top-3 rounded-2xl border border-white/10 bg-[#090e16]/95 p-2 shadow-xl backdrop-blur" aria-label="General phone direction">
+    <div className="mb-1 text-center text-[8px] font-semibold uppercase tracking-[0.16em] text-slate-400">Phone heading</div>
+    <svg viewBox="0 0 76 76" className="h-[68px] w-[68px]">
+      <circle cx="38" cy="38" r="35" fill="#111827" stroke="#64748b" strokeWidth="1.5" />
+      {Array.from({ length: 12 }, (_, index) => { const a = (index * 30 - 90) * Math.PI / 180; return <line key={index} x1={38 + 31 * Math.cos(a)} y1={38 + 31 * Math.sin(a)} x2={38 + 27 * Math.cos(a)} y2={38 + 27 * Math.sin(a)} stroke="#94a3b8" />; })}
+      <text x="38" y="13" textAnchor="middle" fill="#fb7185" fontSize="9" fontWeight="800">N</text>
+      <g transform={`rotate(${value === null ? 0 : -value},38,38)`}><path d="M38 15 L33 39 L38 35 L43 39 Z" fill="#ef4444" /><path d="M38 61 L33 37 L38 41 L43 37 Z" fill="#cbd5e1" /></g>
+      <circle cx="38" cy="38" r="3" fill="#f8fafc" />
     </svg>
-    <svg viewBox="0 0 100 150" className="h-36 w-24">
-      <line x1="12" y1="126" x2="88" y2="126" stroke="#64748b" strokeWidth="2" />
-      <g transform={`rotate(${-Math.min(90, Math.max(0, dip))},50,126)`}><line x1="12" y1="126" x2="88" y2="126" stroke="#f59e0b" strokeWidth="7" strokeLinecap="round" /></g>
-      <text x="50" y="146" textAnchor="middle" fill="#94a3b8" fontSize="11">slope {Math.round(dip)}°</text>
-    </svg>
+    <div className="text-center font-mono text-xs font-bold text-slate-100">{fmt(value)}</div>
+    <div className="text-center text-[8px] uppercase text-slate-500">{reference}</div>
   </div>;
 }
 
@@ -86,6 +109,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   }, [open, native]);
 
   const northReference: "true" | "magnetic" = typeof reading?.trueHeading === "number" ? "true" : "magnetic";
+  const generalHeading = typeof reading?.trueHeading === "number" ? reading.trueHeading : typeof reading?.magneticHeading === "number" ? reading.magneticHeading : null;
   const accuracyLow = typeof reading?.headingAccuracy === "number" && reading.headingAccuracy > 20;
   const diagnostic = useMemo(() => reading ? JSON.stringify({ quaternion: [reading.quaternionX, reading.quaternionY, reading.quaternionZ, reading.quaternionW], gravity: [reading.gravityX, reading.gravityY, reading.gravityZ], normalENU: [reading.normalEast, reading.normalNorth, reading.normalUp], heading: { magnetic: reading.magneticHeading, true: reading.trueHeading, accuracy: reading.headingAccuracy }, filtered, screenOrientation: screen.orientation?.type }, null, 2) : "No reading", [reading, filtered]);
   if (!open) return null;
@@ -107,8 +131,15 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       {status === "starting" && <p className="py-8 text-center text-sm text-slate-400">Getting full 3D orientation and compass…</p>}
       {status === "error" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>}
       {(status === "active" || reading) && <>
-        <PlaneCompass strike={filtered.strike} dipDirection={filtered.dipDirection} dip={filtered.dip} />
-        <div className="grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-white/5 p-3"><p className="text-[10px] uppercase text-slate-500">Strike RHR</p><p className="font-mono text-xl">{fmt(filtered.strike)}</p><p className="text-xs text-slate-400">{cardinalDirection(filtered.strike)}</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-[10px] uppercase text-slate-500">Dip direction</p><p className="font-mono text-xl">{fmt(filtered.dipDirection)}</p><p className="text-xs text-slate-400">{cardinalDirection(filtered.dipDirection)}</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-[10px] uppercase text-slate-500">Dip</p><p className="font-mono text-xl">{Math.round(filtered.dip)}°</p></div></div>
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#121a27] to-[#080d14] px-3 pb-5 pt-24 shadow-inner sm:pt-5">
+          <HeadingCompass heading={generalHeading} reference={northReference} />
+          <div className="mb-3 grid grid-cols-2 gap-3 pr-0 sm:pr-24">
+            <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">Strike · RHR</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{fmt(filtered.strike)}</p><p className="text-[10px] text-blue-200/70">{cardinalDirection(filtered.strike)}</p></div>
+            <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">Dip</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(filtered.dip)}°</p><p className="text-[10px] text-amber-200/70">plane slope</p></div>
+          </div>
+          <PlaneCompass strike={filtered.strike} dipDirection={filtered.dipDirection} dip={filtered.dip} />
+          <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Strike</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Down-dip indicator</span></div>
+        </div>
         <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${stable ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{stable ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{stable ? "Stable — ready to capture" : "Hold steady to capture"}</div>
         {accuracyLow && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-300">Compass accuracy is low. Move iPhone in a figure-eight and keep it away from magnets or metal objects.</p>}
         <Button className="w-full" disabled={!stable || filtered.strike === null} onClick={capture}>Capture Measurement</Button>

@@ -121,7 +121,6 @@ export const STRIKE_DIP_COLUMNS: ExportColumn[] = [
   { key: "rockLayerType", label: "Rock / Layer Type", enabled: true, defaultWidth: 20 },
   { key: "strike",      label: "Strike",           enabled: true,  defaultWidth: 10 },
   { key: "dip",         label: "Dip",              enabled: true,  defaultWidth: 8  },
-  { key: "dipDir",      label: "Dip Direction",    enabled: true,  defaultWidth: 14 },
   { key: "featureType", label: "Feature Type",     enabled: true,  defaultWidth: 18 },
   { key: "location",    label: "Location",         enabled: true,  defaultWidth: 24 },
   { key: "latitude",    label: "Latitude",         enabled: true,  defaultWidth: 14 },

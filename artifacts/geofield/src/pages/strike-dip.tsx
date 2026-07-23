@@ -168,7 +168,6 @@ function MeasurementRow({
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
             <span className="text-xs font-mono text-primary">
               Strike {measurement.strike || "--"} / Dip {measurement.dip || "--"}
-              {measurement.dipDir ? ` ${measurement.dipDir}` : ""}
             </span>
             {measurement.featureType && (
               <span className="text-xs text-muted-foreground">{measurement.featureType}</span>
@@ -261,10 +260,6 @@ function MeasurementRow({
             <div className="space-y-1">
               <Label className="text-xs">Dip</Label>
               <Input type="text" inputMode="decimal" value={measurement.dip} onChange={(e) => upd("dip", e.target.value)} onBlur={() => upd("dip", normalizeAngle(measurement.dip, 90))} placeholder="0–90°" className="h-10 text-base font-mono" aria-label="Dip in degrees" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Dip Direction</Label>
-              <Input value={measurement.dipDir} readOnly placeholder="Derived from strike (RHR)" className="h-8 text-sm bg-muted" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Feature Type</Label>
@@ -684,7 +679,7 @@ export default function StrikeDipPage() {
             dip: String(capture.dipDegrees),
             dipDir: `${capture.dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(String(capture.strikeDegrees))}`,
           };
-          addMeasurementWithGps(m, "Measurement captured", `Strike ${m.strike}° / Dip ${m.dip}° toward ${m.dipDir}`);
+          addMeasurementWithGps(m, "Measurement captured", `Strike ${m.strike}° / Dip ${m.dip}°`);
         }}
       />
 
@@ -693,7 +688,7 @@ export default function StrikeDipPage() {
           <DialogTitle>Enter Strike &amp; Dip Manually</DialogTitle>
         </DialogHeader>
         <DialogContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="manual-strike">Strike (0–359°)</Label>
               <Input id="manual-strike" autoFocus inputMode="numeric" value={manualDraft.strike} onChange={(e) => { const strike = e.target.value.replace(/[^0-9]/g, ""); const direction = strike ? (Number(strike) + 90) % 360 : undefined; setManualDraft((draft) => ({ ...draft, strike, strikeDegrees: strike ? Number(strike) : undefined, dipDirectionDegrees: direction, dipDir: direction === undefined ? "" : String(direction) })); }} onBlur={() => setManualDraft((draft) => ({ ...draft, strike: normalizeStrike(draft.strike) }))} placeholder="045" />
@@ -707,11 +702,7 @@ export default function StrikeDipPage() {
             <Label htmlFor="manual-label">Label / Name</Label>
             <Input id="manual-label" value={manualDraft.label} onChange={(e) => setManualDraft((draft) => ({ ...draft, label: e.target.value }))} placeholder="Outcrop A — bedding plane" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="manual-direction">Dip Direction (RHR)</Label>
-              <Input id="manual-direction" inputMode="numeric" value={manualDraft.dipDirectionDegrees ?? ""} onChange={(e) => { const direction = ((Number(e.target.value.replace(/[^0-9]/g, "")) % 360) + 360) % 360; const strike = (direction + 270) % 360; setManualDraft((draft) => ({ ...draft, dipDirectionDegrees: direction, strikeDegrees: strike, strike: String(strike), dipDir: String(direction) })); }} placeholder="135" />
-            </div>
+          <div className="grid grid-cols-1 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="manual-feature">Feature Type</Label>
               <select id="manual-feature" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm" value={manualDraft.featureType} onChange={(e) => setManualDraft((draft) => ({ ...draft, featureType: e.target.value }))}>
