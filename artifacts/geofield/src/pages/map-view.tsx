@@ -341,6 +341,12 @@ export default function MapViewPage() {
       mapRef.current = map;
 
       map.addControl(new L.NavigationControl({ visualizePitch: true }), "top-right");
+      const geolocateControl = new L.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showAccuracyCircle: true,
+      });
+      map.addControl(geolocateControl, "top-right");
       map.addControl({
         onAdd(controlMap: any) {
           const container = document.createElement("div");
@@ -381,6 +387,7 @@ export default function MapViewPage() {
         // Add any saved custom layers
         customLayersRef.current.forEach((layer) => safeAddCustomLayer(map, layer));
         placeMarkers(L, map);
+        geolocateControl.trigger();
       });
 
       // Click handler — reads overlayLayerRef (never stale)
@@ -835,7 +842,7 @@ export default function MapViewPage() {
       </div>
 
       {/* Map + info panel */}
-      <div className={mapFullScreen ? "fixed inset-0 z-[100] flex bg-background" : "relative flex gap-4"} style={{ height: mapFullScreen ? "100dvh" : "calc(100vh - 320px)", minHeight: "400px" }}>
+      <div className={mapFullScreen ? "geofield-fullscreen-map fixed inset-0 z-[100] flex bg-background" : "relative flex gap-4"} style={{ height: mapFullScreen ? "100dvh" : "calc(100vh - 320px)", minHeight: "400px" }}>
         {geoInfo && (
           <div className="w-72 shrink-0 bg-card border border-border rounded-2xl shadow-lg overflow-y-auto p-5 space-y-3 z-10">
             <div className="flex items-center justify-between">
@@ -869,7 +876,7 @@ export default function MapViewPage() {
         )}
         <div className="flex-1 relative">
           <div ref={mapContainerRef} className={`h-full w-full overflow-hidden border border-border shadow-lg ${mapFullScreen ? "rounded-none" : "rounded-2xl"}`} />
-          <button type="button" onClick={() => { setGeoInfo(null); setMapFullScreen((value) => !value); }} className="absolute left-3 top-3 z-20 flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur transition-colors hover:bg-muted" title={mapFullScreen ? "Return to normal map size" : "Make map full screen"}>
+          <button type="button" onClick={() => { setGeoInfo(null); setMapFullScreen((value) => !value); }} className="absolute left-3 z-20 flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur transition-colors hover:bg-muted" style={{ top: mapFullScreen ? "calc(env(safe-area-inset-top, 0px) + 12px)" : "12px" }} title={mapFullScreen ? "Return to normal map size" : "Make map full screen"}>
             {mapFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             {mapFullScreen ? "Exit Full Screen" : "Full Screen"}
           </button>

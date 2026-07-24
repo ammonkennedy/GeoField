@@ -529,6 +529,12 @@ export default function TripPlannerPage() {
           mapInstanceRef.current = map;
 
           map.addControl(new L.NavigationControl({ visualizePitch: true }), "top-right");
+          const geolocateControl = new L.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true,
+            showAccuracyCircle: true,
+          });
+          map.addControl(geolocateControl, "top-right");
           map.addControl({
             onAdd(controlMap: any) {
               const container = document.createElement("div");
@@ -587,6 +593,7 @@ export default function TripPlannerPage() {
             // Place existing site markers
             const sitesSnapshot = activeTrip?.sites ?? [];
             sitesSnapshot.forEach((s) => addSiteMarker(L, map, s));
+            geolocateControl.trigger();
           });
 
           // Click: pin mode → place site; otherwise → query overlay info
@@ -990,7 +997,7 @@ export default function TripPlannerPage() {
 
       {/* ── Map Modal ──────────────────────────────────────────────────────── */}
       {mapOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 backdrop-blur-sm sm:p-4">
+        <div className="trip-map-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 backdrop-blur-sm sm:p-4">
           <div
             className="bg-card rounded-3xl shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden"
             style={{ height: MAP_MODAL_HEIGHT }}

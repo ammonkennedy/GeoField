@@ -145,6 +145,17 @@
   user-select: text;
 }
 
+/* Keep map controls clear of the iPhone status bar and Dynamic Island when a
+   map occupies the screen. The trip map receives the same safe-area spacing. */
+.geofield-fullscreen-map .maplibregl-ctrl-top-right {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+}
+
+.trip-map-overlay {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

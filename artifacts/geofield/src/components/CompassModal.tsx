@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, cardinalDirection, circularMean, normalizeAzimuth, planeOrientationFromNormal, rotateMagneticNormalToTrue, normalForDip, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, circularMean, normalizeAzimuth, planeOrientationFromNormal, rotateMagneticNormalToTrue, normalForDip, type Vector3 } from "@/lib/strike-dip-math";
 
 type SensorReading = {
   normalEast: number; normalNorth: number; normalUp: number;
@@ -128,7 +128,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       {(status === "active" || reading) && <>
         <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#121a27] to-[#080d14] px-3 pb-5 pt-5 shadow-inner">
           <div className="mb-3 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">Strike · RHR</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{fmt(filtered.strike)}</p><p className="text-[10px] text-blue-200/70">{cardinalDirection(filtered.strike)}</p></div>
+            <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">Strike · RHR</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{fmt(filtered.strike)}</p></div>
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">Dip</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(filtered.dip)}°</p><p className="text-[10px] text-amber-200/70">plane slope</p></div>
           </div>
           <PlaneCompass strike={filtered.strike} dipDirection={filtered.dipDirection} dip={filtered.dip} />
