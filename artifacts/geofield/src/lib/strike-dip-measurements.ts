@@ -10,6 +10,11 @@ export interface StrikeDipMeasurement {
   convention?: "right-hand-rule";
   northReference?: "true" | "magnetic";
   compassAccuracy?: number;
+  magneticHeading?: number;
+  trueHeading?: number;
+  magneticDeclination?: number;
+  referenceFrame?: "true" | "magnetic";
+  rawMagneticStrikeDegrees?: number;
   orientationQuaternion?: { x: number; y: number; z: number; w: number };
   planeNormal?: { east: number; north: number; up: number };
   quality?: "stable" | "manual" | "unstable";

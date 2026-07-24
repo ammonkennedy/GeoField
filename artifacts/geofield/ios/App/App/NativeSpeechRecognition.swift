@@ -151,11 +151,25 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
         if CLLocationManager.headingAvailable() { location.startUpdatingHeading() }
         motion.deviceMotionUpdateInterval = 1.0 / 15.0
         let frames = CMMotionManager.availableAttitudeReferenceFrames()
-        let frame: CMAttitudeReferenceFrame = frames.contains(.xMagneticNorthZVertical) ? .xMagneticNorthZVertical : .xArbitraryCorrectedZVertical
+        // Prefer Core Motion's true-north frame so strike is produced in one
+        // authoritative earth frame. Magnetic north remains a valid fallback,
+        // but a relative frame must never be presented as an absolute azimuth.
+        let frame: CMAttitudeReferenceFrame
+        let referenceFrame: String
+        if frames.contains(.xTrueNorthZVertical) {
+            frame = .xTrueNorthZVertical
+            referenceFrame = "true"
+        } else if frames.contains(.xMagneticNorthZVertical) {
+            frame = .xMagneticNorthZVertical
+            referenceFrame = "magnetic"
+        } else {
+            call.reject("A north-referenced Core Motion frame is unavailable.")
+            return
+        }
         motion.startDeviceMotionUpdates(using: frame, to: OperationQueue.main) { [weak self] data, _ in
             guard let self, let data else { return }
             let r = data.attitude.rotationMatrix
-            // xMagneticNorthZVertical is x=north, y=west, z=up. Transposing
+            // Both north-vertical frames are x=north, y=west, z=up. Transposing
             // attitude maps the phone-plane +Z normal into earth ENU. Its sign
             // is immaterial because the geological math always points it upward.
             var payload: JSObject = [
@@ -163,7 +177,7 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
                 "gravityX": data.gravity.x, "gravityY": data.gravity.y, "gravityZ": data.gravity.z,
                 "quaternionX": data.attitude.quaternion.x, "quaternionY": data.attitude.quaternion.y,
                 "quaternionZ": data.attitude.quaternion.z, "quaternionW": data.attitude.quaternion.w,
-                "referenceFrame": frame == .xMagneticNorthZVertical ? "magnetic" : "corrected-relative"
+                "referenceFrame": referenceFrame
             ]
             if let value = self.magneticHeading { payload["magneticHeading"] = value }
             if let value = self.trueHeading { payload["trueHeading"] = value }

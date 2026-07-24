@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
-import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search, Loader2 } from "lucide-react";
+import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +17,7 @@ import {
 } from "@/lib/custom-layers";
 import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-import { geocodeAddress } from "@/lib/geocoding";
+import { geocodeAddress, geocodeAddressSuggestions, type GeocodeResult } from "@/lib/geocoding";
 import { lookupSoil } from "@/lib/soil-data";
 import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -170,6 +170,9 @@ export default function MapViewPage() {
   const [sampleSearch, setSampleSearch] = useState("");
   const [addressLookupLoading, setAddressLookupLoading] = useState(false);
   const [addressLookupError, setAddressLookupError] = useState("");
+  const [addressSuggestions, setAddressSuggestions] = useState<GeocodeResult[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [mapFullScreen, setMapFullScreen] = useState(false);
   const [layerModalOpen, setLayerModalOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerColor, setNewLayerColor] = useState("#e63946");
@@ -219,6 +222,41 @@ export default function MapViewPage() {
         })
         .slice(0, 8)
     : [];
+
+  useEffect(() => {
+    const query = sampleSearch.trim();
+    if (query.length < 3) {
+      setAddressSuggestions([]);
+      setSuggestionsLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSuggestionsLoading(true);
+      try {
+        setAddressSuggestions(await geocodeAddressSuggestions(query, 6, controller.signal));
+      } catch (error: any) {
+        if (error?.name !== "AbortError") setAddressSuggestions([]);
+      } finally {
+        if (!controller.signal.aborted) setSuggestionsLoading(false);
+      }
+    }, 450);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [sampleSearch]);
+
+  useEffect(() => {
+    mapRef.current?.resize?.();
+    const timer = window.setTimeout(() => mapRef.current?.resize?.(), 100);
+    return () => window.clearTimeout(timer);
+  }, [mapFullScreen]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMapFullScreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Keep overlayLayerRef in sync with state
   useEffect(() => {
@@ -562,6 +600,20 @@ export default function MapViewPage() {
     });
   }
 
+  function focusAddress(result: GeocodeResult) {
+    setSelectedFolderId("all");
+    setSampleSearch("");
+    setAddressSuggestions([]);
+    setAddressLookupError("");
+    mapRef.current?.flyTo({
+      center: [result.lng, result.lat],
+      zoom: terrain ? 13.5 : 16,
+      pitch: terrain ? 64 : 0,
+      bearing: terrain ? -25 : 0,
+      essential: true,
+    });
+  }
+
   async function handleMapSearch(event?: React.FormEvent) {
     event?.preventDefault();
     const query = sampleSearch.trim();
@@ -583,15 +635,7 @@ export default function MapViewPage() {
         setAddressLookupError("Address not found.");
         return;
       }
-      setSelectedFolderId("all");
-      setSampleSearch("");
-      mapRef.current.flyTo({
-        center: [result.lng, result.lat],
-        zoom: terrain ? 13.5 : 16,
-        pitch: terrain ? 64 : 0,
-        bearing: terrain ? -25 : 0,
-        essential: true,
-      });
+      focusAddress(result);
     } catch {
       setAddressLookupError("Address lookup failed.");
     } finally {
@@ -632,8 +676,9 @@ export default function MapViewPage() {
               >
                 {addressLookupLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
               </button>
-              {searchMatches.length > 0 && (
+              {(searchMatches.length > 0 || addressSuggestions.length > 0 || suggestionsLoading) && (
                 <div className="absolute right-0 top-10 z-30 w-full sm:w-72 bg-card border border-border rounded-lg shadow-lg overflow-hidden">
+                  {searchMatches.length > 0 && <div className="bg-muted/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Samples</div>}
                   {searchMatches.map(({ sample, coords }) => (
                     <button
                       key={sample.id}
@@ -646,6 +691,14 @@ export default function MapViewPage() {
                         <span className="text-xs text-muted-foreground shrink-0">{formatCoord(coords![0])}, {formatCoord(coords![1])}</span>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{getSampleLabel(sample)}</p>
+                    </button>
+                  ))}
+                  {(addressSuggestions.length > 0 || suggestionsLoading) && <div className="bg-muted/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Address options</div>}
+                  {suggestionsLoading && <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Finding matching places…</div>}
+                  {!suggestionsLoading && addressSuggestions.map((result, index) => (
+                    <button key={`${result.lat}-${result.lng}-${index}`} type="button" onClick={() => focusAddress(result)} className="flex w-full items-start gap-2 border-b border-border/50 px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-muted">
+                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                      <span className="text-xs leading-4 text-foreground">{result.label}</span>
                     </button>
                   ))}
                 </div>
@@ -782,7 +835,7 @@ export default function MapViewPage() {
       </div>
 
       {/* Map + info panel */}
-      <div className="relative flex gap-4" style={{ height: "calc(100vh - 320px)", minHeight: "400px" }}>
+      <div className={mapFullScreen ? "fixed inset-0 z-[100] flex bg-background" : "relative flex gap-4"} style={{ height: mapFullScreen ? "100dvh" : "calc(100vh - 320px)", minHeight: "400px" }}>
         {geoInfo && (
           <div className="w-72 shrink-0 bg-card border border-border rounded-2xl shadow-lg overflow-y-auto p-5 space-y-3 z-10">
             <div className="flex items-center justify-between">
@@ -815,7 +868,11 @@ export default function MapViewPage() {
           </div>
         )}
         <div className="flex-1 relative">
-          <div ref={mapContainerRef} className="w-full h-full rounded-2xl overflow-hidden border border-border shadow-lg" />
+          <div ref={mapContainerRef} className={`h-full w-full overflow-hidden border border-border shadow-lg ${mapFullScreen ? "rounded-none" : "rounded-2xl"}`} />
+          <button type="button" onClick={() => { setGeoInfo(null); setMapFullScreen((value) => !value); }} className="absolute left-3 top-3 z-20 flex min-h-10 items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur transition-colors hover:bg-muted" title={mapFullScreen ? "Return to normal map size" : "Make map full screen"}>
+            {mapFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {mapFullScreen ? "Exit Full Screen" : "Full Screen"}
+          </button>
           {terrain && (
             <div className="pointer-events-none absolute bottom-7 left-3 right-3 mx-auto w-fit max-w-[calc(100%-1.5rem)] rounded-lg bg-black/65 px-3 py-1.5 text-center text-xs text-white shadow backdrop-blur-sm">
               Two-finger drag tilts · twist rotates · use the right-side arrows for precise tilt

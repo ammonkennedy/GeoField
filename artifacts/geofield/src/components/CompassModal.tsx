@@ -13,7 +13,9 @@ type SensorReading = {
 type Capture = {
   strikeDegrees: number; dipDegrees: number; dipDirectionDegrees: number;
   convention: "right-hand-rule"; northReference: "true" | "magnetic";
-  compassAccuracy?: number; orientationQuaternion?: { x: number; y: number; z: number; w: number };
+  compassAccuracy?: number; magneticHeading?: number; trueHeading?: number; magneticDeclination?: number;
+  referenceFrame: "true" | "magnetic"; rawMagneticStrikeDegrees?: number;
+  orientationQuaternion?: { x: number; y: number; z: number; w: number };
   planeNormal: Vector3; quality: "stable" | "unstable";
 };
 interface Props { open: boolean; onClose: () => void; onCapture: (capture: Capture) => void; }
@@ -25,6 +27,7 @@ interface GeologyMotionPlugin {
 const GeologyMotion = registerPlugin<GeologyMotionPlugin>("GeologyMotion");
 const STABILITY_WINDOW = 12, AZIMUTH_TOLERANCE = 3, DIP_TOLERANCE = 2;
 const fmt = (value: number | null) => value === null ? "—" : `${Math.round(normalizeAzimuth(value)).toString().padStart(3, "0")}°`;
+const signedAngle = (angle: number) => ((angle + 540) % 360) - 180;
 
 function PlaneCompass({ strike, dipDirection, dip }: { strike: number | null; dipDirection: number | null; dip: number }) {
   const ticks = Array.from({ length: 72 }, (_, index) => index * 5);
@@ -38,8 +41,7 @@ function PlaneCompass({ strike, dipDirection, dip }: { strike: number | null; di
     <circle cx="150" cy="150" r="136" fill="url(#geoFace)" stroke="#293548" strokeWidth="2" />
     <circle cx="150" cy="150" r="108" fill="none" stroke="#334155" strokeWidth="1" />
     {ticks.map((degree) => { const angle = (degree - 90) * Math.PI / 180; const major = degree % 30 === 0; const medium = degree % 10 === 0; const outer = 132; const inner = major ? 116 : medium ? 120 : 125; return <line key={degree} x1={150 + outer * Math.cos(angle)} y1={150 + outer * Math.sin(angle)} x2={150 + inner * Math.cos(angle)} y2={150 + inner * Math.sin(angle)} stroke={major ? "#e2e8f0" : medium ? "#94a3b8" : "#526176"} strokeWidth={major ? 2 : 1} />; })}
-    {labels.map((degree) => { const angle = (degree - 90) * Math.PI / 180; return <text key={degree} x={150 + 99 * Math.cos(angle)} y={150 + 99 * Math.sin(angle) + 4} textAnchor="middle" fill="#94a3b8" fontFamily="ui-monospace, SFMono-Regular" fontSize="9">{degree}</text>; })}
-    {[["N",150,34],["E",266,154],["S",150,274],["W",34,154]].map(([label,x,y]) => <text key={String(label)} x={Number(x)} y={Number(y)} textAnchor="middle" fill={label === "N" ? "#fb7185" : "#e2e8f0"} fontSize="14" fontWeight="800">{label}</text>)}
+    {labels.map((degree) => { const angle = (degree - 90) * Math.PI / 180; return <text key={degree} x={150 + 99 * Math.cos(angle)} y={150 + 99 * Math.sin(angle) + 4} textAnchor="middle" fill="#dbe4f0" fontFamily="ui-monospace, SFMono-Regular" fontSize="11" fontWeight="650">{degree}</text>; })}
     {strike !== null && <g transform={`rotate(${strike},150,150)`} filter="url(#geoGlow)"><line x1="150" y1="52" x2="150" y2="248" stroke="#60a5fa" strokeWidth="5" strokeLinecap="round" /><line x1="150" y1="56" x2="150" y2="244" stroke="#dbeafe" strokeWidth="1" /><path d="M150 44 L143 58 L157 58 Z" fill="#93c5fd" /><path d="M150 256 L143 242 L157 242 Z" fill="#93c5fd" /></g>}
     {dipDirection !== null && <g transform={`rotate(${dipDirection},150,150)`}><line x1="150" y1="150" x2="150" y2="83" stroke="#fbbf24" strokeWidth="3" strokeDasharray="5 4" /><path d="M150 72 L143 87 L157 87 Z" fill="#fbbf24" /></g>}
     <circle cx="150" cy="150" r="40" fill="#0a1019" stroke="#64748b" strokeWidth="2" />
@@ -55,6 +57,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const [status, setStatus] = useState<"starting" | "active" | "unavailable" | "error">("starting");
   const [error, setError] = useState("");
   const [reading, setReading] = useState<SensorReading | null>(null);
+  const [rawOrientation, setRawOrientation] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0 });
   const [filtered, setFiltered] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0 });
   const [stable, setStable] = useState(false);
   const [mockDip, setMockDip] = useState(30);
@@ -63,9 +66,16 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const native = Capacitor.isNativePlatform();
 
   const process = (raw: SensorReading) => {
+    if (raw.referenceFrame !== "true" && raw.referenceFrame !== "magnetic") {
+      setError("The device supplied a relative orientation frame, so an absolute strike cannot be calculated.");
+      setStatus("error");
+      return;
+    }
     let normal = { east: raw.normalEast, north: raw.normalNorth, up: raw.normalUp };
-    const hasTrue = typeof raw.trueHeading === "number" && typeof raw.magneticHeading === "number";
-    if (hasTrue) normal = rotateMagneticNormalToTrue(normal, raw.trueHeading! - raw.magneticHeading!);
+    const rawResult = planeOrientationFromNormal(normal);
+    setRawOrientation(rawResult);
+    const hasDeclination = raw.referenceFrame === "magnetic" && typeof raw.trueHeading === "number" && typeof raw.magneticHeading === "number";
+    if (hasDeclination) normal = rotateMagneticNormalToTrue(normal, signedAngle(raw.trueHeading! - raw.magneticHeading!));
     const result = planeOrientationFromNormal(normal);
     history.current = [...history.current.slice(-(STABILITY_WINDOW - 1)), result];
     const azimuths = history.current.map((item) => item.dipDirection).filter((value): value is number => value !== null);
@@ -92,19 +102,21 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     return () => { void listener?.remove(); void GeologyMotion.stop().catch(() => undefined); };
   }, [open, native]);
 
-  const northReference: "true" | "magnetic" = typeof reading?.trueHeading === "number" ? "true" : "magnetic";
+  const hasDeclination = reading?.referenceFrame === "magnetic" && typeof reading.trueHeading === "number" && typeof reading.magneticHeading === "number";
+  const northReference: "true" | "magnetic" = reading?.referenceFrame === "true" || hasDeclination ? "true" : "magnetic";
+  const declination = hasDeclination ? signedAngle(reading!.trueHeading! - reading!.magneticHeading!) : undefined;
   const accuracyLow = typeof reading?.headingAccuracy === "number" && reading.headingAccuracy > 20;
-  const diagnostic = useMemo(() => reading ? JSON.stringify({ quaternion: [reading.quaternionX, reading.quaternionY, reading.quaternionZ, reading.quaternionW], gravity: [reading.gravityX, reading.gravityY, reading.gravityZ], normalENU: [reading.normalEast, reading.normalNorth, reading.normalUp], heading: { magnetic: reading.magneticHeading, true: reading.trueHeading, accuracy: reading.headingAccuracy }, filtered, screenOrientation: screen.orientation?.type }, null, 2) : "No reading", [reading, filtered]);
+  const diagnostic = useMemo(() => reading ? JSON.stringify({ referenceFrame: reading.referenceFrame, northReference, rawOrientation, correctedOrientation: filtered, declination, heading: { magnetic: reading.magneticHeading, true: reading.trueHeading, accuracy: reading.headingAccuracy }, quaternion: [reading.quaternionX, reading.quaternionY, reading.quaternionZ, reading.quaternionW], gravity: [reading.gravityX, reading.gravityY, reading.gravityZ], normalENU: [reading.normalEast, reading.normalNorth, reading.normalUp], screenOrientation: screen.orientation?.type }, null, 2) : "No reading", [reading, rawOrientation, filtered, northReference, declination]);
   if (!open) return null;
 
   const useMock = () => {
     const normal = normalForDip(mockDip, mockDirection);
-    process({ normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, referenceFrame: "mock" });
-    history.current = Array(STABILITY_WINDOW).fill(planeOrientationFromNormal(normal)); process({ normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, referenceFrame: "mock" });
+    process({ normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, referenceFrame: "magnetic" });
+    history.current = Array(STABILITY_WINDOW).fill(planeOrientationFromNormal(normal)); process({ normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, referenceFrame: "magnetic" });
   };
   const capture = () => {
     if (filtered.strike === null || filtered.dipDirection === null || !reading) return;
-    onCapture({ strikeDegrees: Math.round(filtered.strike), dipDegrees: Number(filtered.dip.toFixed(1)), dipDirectionDegrees: Math.round(filtered.dipDirection), convention: "right-hand-rule", northReference, compassAccuracy: reading.headingAccuracy, orientationQuaternion: { x: reading.quaternionX, y: reading.quaternionY, z: reading.quaternionZ, w: reading.quaternionW }, planeNormal: { east: reading.normalEast, north: reading.normalNorth, up: reading.normalUp }, quality: stable ? "stable" : "unstable" }); onClose();
+    onCapture({ strikeDegrees: Math.round(filtered.strike), dipDegrees: Number(filtered.dip.toFixed(1)), dipDirectionDegrees: Math.round(filtered.dipDirection), convention: "right-hand-rule", northReference, compassAccuracy: reading.headingAccuracy, magneticHeading: reading.magneticHeading, trueHeading: reading.trueHeading, magneticDeclination: declination, referenceFrame: reading.referenceFrame as "true" | "magnetic", rawMagneticStrikeDegrees: reading.referenceFrame === "magnetic" && rawOrientation.strike !== null ? Math.round(rawOrientation.strike) : undefined, orientationQuaternion: { x: reading.quaternionX, y: reading.quaternionY, z: reading.quaternionZ, w: reading.quaternionW }, planeNormal: { east: reading.normalEast, north: reading.normalNorth, up: reading.normalUp }, quality: stable ? "stable" : "unstable" }); onClose();
   };
 
   return <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 p-3 backdrop-blur-sm"><div className="mx-auto my-2 max-w-md rounded-2xl border border-white/10 bg-[#0d1117] text-slate-100 shadow-2xl">
@@ -127,7 +139,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
         <Button className="w-full" disabled={!stable || filtered.strike === null} onClick={capture}>Capture Measurement</Button>
       </>}
       {(!native || (import.meta.env.DEV && status === "error")) && <div className="space-y-3 rounded-xl border border-dashed border-slate-600 p-3"><p className="text-xs text-amber-300">Simulator/manual sensor mode — not a real measurement.</p><label className="block text-xs">Dip {mockDip}°<input className="w-full" type="range" min="0" max="90" value={mockDip} onChange={(e) => setMockDip(Number(e.target.value))} /></label><label className="block text-xs">Dip direction {mockDirection}°<input className="w-full" type="range" min="0" max="359" value={mockDirection} onChange={(e) => setMockDirection(Number(e.target.value))} /></label><Button variant="outline" className="w-full" onClick={useMock}>Apply Mock Reading</Button></div>}
-      {import.meta.env.DEV && <details className="text-xs text-slate-400"><summary>Developer diagnostics</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2">{diagnostic}</pre></details>}
+      <details className="text-xs text-slate-400"><summary>Measurement diagnostics</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2">{diagnostic}</pre></details>
       <p className="text-center text-[10px] text-slate-500">Field aid only; not survey-grade. Horizontal planes below 1° have no defined strike or dip direction.</p>
     </div></div></div>;
 }

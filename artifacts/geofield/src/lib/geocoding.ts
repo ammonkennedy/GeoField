@@ -15,34 +15,36 @@ export function parseLatLngSearch(raw: string): GeocodeResult | null {
 }
 
 export async function geocodeAddress(query: string): Promise<GeocodeResult | null> {
+  const results = await geocodeAddressSuggestions(query, 1);
+  return results[0] ?? null;
+}
+
+export async function geocodeAddressSuggestions(query: string, limit = 6, signal?: AbortSignal): Promise<GeocodeResult[]> {
   const trimmed = query.trim();
-  if (!trimmed) return null;
+  if (!trimmed) return [];
 
   const coords = parseLatLngSearch(trimmed);
-  if (coords) return coords;
+  if (coords) return [coords];
 
   const params = new URLSearchParams({
     q: trimmed,
     format: "jsonv2",
-    limit: "1",
+    limit: String(limit),
     addressdetails: "1",
   });
   const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
     headers: { Accept: "application/json" },
+    signal,
   });
   if (!response.ok) throw new Error("Address lookup failed");
 
   const results = await response.json();
-  const first = Array.isArray(results) ? results[0] : null;
-  if (!first) return null;
-
-  const lat = Number(first.lat);
-  const lng = Number(first.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-  return {
-    label: first.display_name || trimmed,
-    lat,
-    lng,
-  };
+  if (!Array.isArray(results)) return [];
+  return results.flatMap((result: any) => {
+    const lat = Number(result.lat);
+    const lng = Number(result.lon);
+    return Number.isFinite(lat) && Number.isFinite(lng)
+      ? [{ label: result.display_name || trimmed, lat, lng }]
+      : [];
+  });
 }
