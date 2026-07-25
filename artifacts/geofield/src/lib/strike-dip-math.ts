@@ -14,7 +14,7 @@ export type ScreenVector = { right: number; up: number };
 export const HORIZONTAL_THRESHOLD_DEGREES = 1;
 export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
 export const rightHandStrikeFromDipDirection = (dipDirection: number) =>
-  normalizeAzimuth(dipDirection - 90);
+  normalizeAzimuth(dipDirection + 90);
 const radians = (degrees: number) => degrees * Math.PI / 180;
 const degrees = (value: number) => value * 180 / Math.PI;
 
@@ -98,8 +98,8 @@ export function planeOrientationFromNormal(input: Vector3, threshold = HORIZONTA
   const axes = horizontalPlaneAxesFromNormal(normal);
   if (!axes) return { dip: 0, dipDirection: null, strike: null };
   const dipDirection = normalizeAzimuth(degrees(Math.atan2(axes.downDip.east, axes.downDip.north)));
-  // Resolve the strike line's 180° ambiguity using standard geological RHR:
-  // dip direction is 90° clockwise from the reported strike azimuth.
+  // Resolve the strike line's 180° ambiguity using the opposite directed
+  // endpoint required by GeoField's phone/surface measurement convention.
   const strike = rightHandStrikeFromDipDirection(dipDirection);
   return { dip, dipDirection, strike };
 }
