@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { angularDistance, circularMean, horizontalPlaneAxesFromNormal, normalForDip, normalHemisphere, normalizeAzimuth, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
+import { angularDistance, circularMean, horizontalPlaneAxesFromNormal, normalForDip, normalHemisphere, normalizeAzimuth, perpendicularDownScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
 
@@ -26,6 +26,18 @@ test("phone hemisphere changes only after the plane normal crosses 90 degrees", 
   assert.equal(normalHemisphere(0), 1);
   assert.equal(normalHemisphere(-0.000001), -1);
   assert.equal(normalHemisphere(-1), -1);
+});
+test("rendered down-dip arrow stays downward and perpendicular to strike", () => {
+  for (const strike of [
+    { right: 1, up: 0 },
+    { right: Math.SQRT1_2, up: Math.SQRT1_2 },
+    { right: -Math.SQRT1_2, up: Math.SQRT1_2 },
+  ]) {
+    const arrow = perpendicularDownScreenVector(strike, { right: 0.2, up: -0.9 });
+    assert.ok(arrow);
+    close(strike.right * arrow.right + strike.up * arrow.up, 0);
+    assert.ok(arrow.up <= 0);
+  }
 });
 test("circular mean crosses north", () => { const result = circularMean([359, 0, 1]); assert.ok(result !== null && (result < 0.01 || result > 359.99)); });
 test("plane result is invariant to screen orientation because device back normal is unchanged", () => {

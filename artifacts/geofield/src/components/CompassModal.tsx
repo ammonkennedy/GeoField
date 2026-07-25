@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, normalHemisphere, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, normalHemisphere, perpendicularDownScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
@@ -153,11 +153,12 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
         ? projectEnuVectorToScreen(axes.strike, matrix, raw.interfaceOrientation)
         : { right: axes.strike.east, up: axes.strike.north }
       : null;
-    const screenDownDipVector = downSlope
+    const projectedDownSlope = downSlope
       ? matrix
         ? projectEnuVectorToScreen(downSlope, matrix, raw.interfaceOrientation)
         : { right: axes!.downDip.east, up: axes!.downDip.north }
       : null;
+    const screenDownDipVector = perpendicularDownScreenVector(screenStrikeVector, projectedDownSlope);
     const isStable = history.current.length >= STABILITY_WINDOW && history.current.every((item) => Math.abs(item.dip - meanOrientation.dip) <= DIP_TOLERANCE && (meanOrientation.dipDirection === null || item.dipDirection === null || angularDistance(item.dipDirection, meanOrientation.dipDirection) <= AZIMUTH_TOLERANCE));
     setReading({ ...raw, normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up });
     setFiltered({ ...meanOrientation, strikeVector: axes?.strike ?? null, downDipVector: axes?.downDip ?? null, screenStrikeVector, screenDownDipVector });

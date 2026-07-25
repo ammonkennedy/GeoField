@@ -16,6 +16,20 @@ export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
 export const rightHandStrikeFromDipDirection = (dipDirection: number) =>
   normalizeAzimuth(dipDirection + 90);
 export const normalHemisphere = (normalUp: number): 1 | -1 => normalUp < 0 ? -1 : 1;
+export function perpendicularDownScreenVector(
+  strike: ScreenVector | null,
+  preferredDirection: ScreenVector | null,
+): ScreenVector | null {
+  if (!strike) return null;
+  let perpendicular = { right: strike.up, up: -strike.right };
+  if (preferredDirection && perpendicular.right * preferredDirection.right + perpendicular.up * preferredDirection.up < 0) {
+    perpendicular = { right: -perpendicular.right, up: -perpendicular.up };
+  }
+  if (perpendicular.up > 0) {
+    perpendicular = { right: -perpendicular.right, up: -perpendicular.up };
+  }
+  return perpendicular;
+}
 const radians = (degrees: number) => degrees * Math.PI / 180;
 const degrees = (value: number) => value * 180 / Math.PI;
 
