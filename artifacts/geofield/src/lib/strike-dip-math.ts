@@ -1,5 +1,9 @@
 export type Vector3 = { east: number; north: number; up: number };
 export type PlaneOrientation = { dip: number; dipDirection: number | null; strike: number | null };
+export type HorizontalPlaneAxes = {
+  strike: { east: number; north: number };
+  downDip: { east: number; north: number };
+};
 
 export const HORIZONTAL_THRESHOLD_DEGREES = 1;
 export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
@@ -15,6 +19,25 @@ export function rotateMagneticNormalToTrue(normal: Vector3, declinationDegrees: 
   };
 }
 
+/**
+ * Project an upward-pointing plane normal into the horizontal earth plane.
+ * The downhill vector is opposite that projection. The strike vector is the
+ * horizontal line perpendicular to downhill, chosen to satisfy RHR:
+ * strike + 90° = dip direction.
+ */
+export function horizontalPlaneAxesFromNormal(normal: Vector3): HorizontalPlaneAxes | null {
+  const horizontalLength = Math.hypot(normal.east, normal.north);
+  if (!Number.isFinite(horizontalLength) || horizontalLength < 1e-9) return null;
+  const downDip = {
+    east: -normal.east / horizontalLength,
+    north: -normal.north / horizontalLength,
+  };
+  return {
+    downDip,
+    strike: { east: -downDip.north, north: downDip.east },
+  };
+}
+
 export function planeOrientationFromNormal(input: Vector3, threshold = HORIZONTAL_THRESHOLD_DEGREES): PlaneOrientation {
   const length = Math.hypot(input.east, input.north, input.up);
   if (!Number.isFinite(length) || length < 1e-9) return { dip: 0, dipDirection: null, strike: null };
@@ -22,8 +45,11 @@ export function planeOrientationFromNormal(input: Vector3, threshold = HORIZONTA
   const normal = { east: sign * input.east / length, north: sign * input.north / length, up: sign * input.up / length };
   const dip = Math.min(90, Math.max(0, degrees(Math.atan2(Math.hypot(normal.east, normal.north), normal.up))));
   if (dip < threshold) return { dip: 0, dipDirection: null, strike: null };
-  const dipDirection = normalizeAzimuth(degrees(Math.atan2(-normal.east, -normal.north)));
-  return { dip, dipDirection, strike: normalizeAzimuth(dipDirection - 90) };
+  const axes = horizontalPlaneAxesFromNormal(normal);
+  if (!axes) return { dip: 0, dipDirection: null, strike: null };
+  const dipDirection = normalizeAzimuth(degrees(Math.atan2(axes.downDip.east, axes.downDip.north)));
+  const strike = normalizeAzimuth(degrees(Math.atan2(axes.strike.east, axes.strike.north)));
+  return { dip, dipDirection, strike };
 }
 
 export function circularMean(values: number[]): number | null {

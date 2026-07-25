@@ -25,7 +25,6 @@ const SAMPLE_TYPES: { value: SampleType; label: string; icon: string; color: str
   { value: "water", label: "Water", icon: "droplet", color: "#2E86B0" },
   { value: "rock", label: "Rock", icon: "hexagon", color: "#8A6040" },
   { value: "soil_sand", label: "Soil / Sand", icon: "circle", color: "#A08030" },
-  { value: "air", label: "Air", icon: "wind", color: "#1F9D8A" },
   { value: "other", label: "Other", icon: "file-text", color: "#64748B" },
 ];
 
@@ -65,29 +64,15 @@ const SOIL_FIELDS = [
   { key: "depth", label: "Depth (cm)", placeholder: "e.g. 0–20", keyboardType: "default" as const },
 ];
 
-const AIR_FIELDS = [
-  { key: "pidReading", label: "PID Reading", placeholder: "e.g. 2.450", keyboardType: "decimal-pad" as const },
-  { key: "pidUnits", label: "PID Units", placeholder: "ppm, ppb, mg/m3", keyboardType: "default" as const },
-  { key: "targetCompound", label: "Target Compound / VOC", placeholder: "e.g. Benzene, total VOCs", keyboardType: "default" as const },
-  { key: "lampEnergy", label: "Lamp Energy", placeholder: "9.8, 10.6, or 11.7 eV", keyboardType: "default" as const },
-  { key: "calibrationGas", label: "Calibration Gas", placeholder: "e.g. Isobutylene", keyboardType: "default" as const },
-  { key: "alarmStatus", label: "Alarm Status", placeholder: "No Alarm, Low, High, STEL, TWA", keyboardType: "default" as const },
-  { key: "samplingMode", label: "Sampling Mode", placeholder: "Grab, continuous, headspace", keyboardType: "default" as const },
-  { key: "ambientTemperature", label: "Ambient Temp (°C)", placeholder: "e.g. 22.4", keyboardType: "decimal-pad" as const },
-  { key: "relativeHumidity", label: "Relative Humidity (%)", placeholder: "e.g. 55", keyboardType: "decimal-pad" as const },
-  { key: "odor", label: "Odor", placeholder: "None, solvent, petroleum", keyboardType: "default" as const },
-];
-
 function getFields(type: SampleType) {
   if (type === "water") return WATER_FIELDS;
   if (type === "rock") return ROCK_FIELDS;
-  if (type === "air") return AIR_FIELDS;
   if (type === "other") return [];
   return SOIL_FIELDS;
 }
 
 function generateSampleId(type: SampleType) {
-  const prefix = type === "water" ? "WS" : type === "rock" ? "RS" : type === "air" ? "AS" : type === "other" ? "OS" : "SS";
+  const prefix = type === "water" ? "WS" : type === "rock" ? "RS" : type === "other" ? "OS" : "SS";
   const ts = Date.now().toString().slice(-4);
   return `${prefix}-${ts}`;
 }

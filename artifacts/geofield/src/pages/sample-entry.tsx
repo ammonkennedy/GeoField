@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { enqueue, getQueue, updateQueuedSample } from "@/lib/offline-queue";
 import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-import { BaseFields, WaterFields, RockFields, SoilFields, AirFields } from "@/components/fields/SchemaForms";
+import { BaseFields, WaterFields, RockFields, SoilFields } from "@/components/fields/SchemaForms";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
@@ -31,7 +31,7 @@ const sampleTypes = [
 ] as const;
 
 const formSchema = z.object({
-  sampleType: z.enum(['water', 'rock', 'soil_sand', 'air', 'other']),
+  sampleType: z.enum(['water', 'rock', 'soil_sand', 'other']),
   sampleId: z.string().min(1, "Sample ID is required"),
   folderId: z.string().optional(),
   notes: z.string().optional(),
@@ -40,7 +40,7 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 type GpsStatus = "idle" | "loading" | "success" | "error" | "denied";
-type SampleTypeId = 'water' | 'rock' | 'soil_sand' | 'air' | 'other';
+type SampleTypeId = 'water' | 'rock' | 'soil_sand' | 'other';
 
 type MediaSlot = {
   type: "photo" | "video";
@@ -78,7 +78,6 @@ function getTypeLabel(type: string) {
   if (type === "water") return "Water";
   if (type === "rock") return "Rock";
   if (type === "soil_sand") return "Soil/Sediment";
-  if (type === "air") return "Air";
   if (type === "other") return "Other";
   return "Sample";
 }
@@ -563,9 +562,7 @@ export default function SampleEntry() {
       localStorage.getItem("geofield-demo-mode") === "true" ||
       isLocalDatasetId(folderId);
     const payload = {
-      // Air remains in the data model so historical records can be opened and
-      // edited, but it is no longer a valid choice for a newly created sample.
-      sampleType: !isEdit && data.sampleType === "air" ? "other" : data.sampleType,
+      sampleType: data.sampleType,
       sampleId: data.sampleId,
       folderId,
       notes: data.notes,
@@ -660,7 +657,7 @@ export default function SampleEntry() {
 
                 <div className="space-y-4">
                   <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>Parameters</h3>
-                  <AnimatePresence mode="wait"><motion.div key={currentType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>{currentType === "water" && <WaterFields register={register} />}{currentType === "rock" && <RockFields register={register} />}{currentType === "soil_sand" && <SoilFields register={register} />}{currentType === "air" && <AirFields register={register} />}</motion.div></AnimatePresence>
+                  <AnimatePresence mode="wait"><motion.div key={currentType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>{currentType === "water" && <WaterFields register={register} />}{currentType === "rock" && <RockFields register={register} />}{currentType === "soil_sand" && <SoilFields register={register} />}</motion.div></AnimatePresence>
                 </div>
               </>
             )}

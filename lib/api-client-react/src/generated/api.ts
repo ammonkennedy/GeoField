@@ -471,6 +471,12 @@ export async function deleteSample({ id }: { id: string | number }): Promise<voi
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
 
+export async function destroySample(id: string | number): Promise<void> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before deleting samples.");
+  const result = await client.models.Sample.delete({ id: String(id) });
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+}
+
 export async function getRecentlyDeletedSamples(): Promise<Array<Sample & { deletedAt: string }>> {
   if (!(await hasCurrentUser())) return [];
   const items: Array<Sample & { deletedAt: string }> = [];

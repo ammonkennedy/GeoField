@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-export type SampleType = "water" | "rock" | "soil_sand" | "air" | "other";
+export type SampleType = "water" | "rock" | "soil_sand" | "other";
 
 export interface GeoLocation {
   lat: number;
@@ -118,7 +118,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       load<StrikeDipMeasurement>(KEYS.measurements),
       load<StratColumn>(KEYS.columns),
     ]).then(([s, f, m, c]) => {
-      setSamples(s);
+      const retainedSamples = s.filter((sample) => (sample.sampleType as string) !== "air");
+      if (retainedSamples.length !== s.length) void save(KEYS.samples, retainedSamples);
+      setSamples(retainedSamples);
       setFolders(f);
       setMeasurements(m);
       setColumns(c);

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
-import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
+import { destroySample, useGetSamples, useGetFolders } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,6 @@ const typeStyles = {
   water: { label: "Water", variant: "water" as const },
   rock: { label: "Rock", variant: "rock" as const },
   soil_sand: { label: "Soil", variant: "soil" as const },
-  air: { label: "Air", variant: "air" as const },
   other: { label: "Other", variant: "secondary" as const },
 };
 
@@ -58,6 +57,17 @@ export default function Dashboard() {
 
   const { deleteSample } = useSamplesMutations();
   const { deleteFolder } = useFoldersMutations();
+  const purgedSampleIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    (samples || []).forEach((sample: any) => {
+      if (sample.sampleType !== "air" || purgedSampleIds.current.has(String(sample.id))) return;
+      purgedSampleIds.current.add(String(sample.id));
+      void destroySample(sample.id).catch(() => {
+        purgedSampleIds.current.delete(String(sample.id));
+      });
+    });
+  }, [samples]);
 
   useEffect(() => {
     const refreshQueue = () => setQueuedSamples(getQueue());
@@ -114,7 +124,7 @@ export default function Dashboard() {
     }));
 
   const cachedForView = cachedCloudSamples.filter((sample) => !activeFolderId || String(sample.folderId ?? "") === String(activeFolderId));
-  const serverSamples = isLocalFolder ? [] : (samples ?? cachedForView);
+  const serverSamples = (isLocalFolder ? [] : (samples ?? cachedForView)).filter((sample: any) => sample.sampleType !== "air");
   const allSamples = mergeCloudAndLocal(serverSamples as any[], localSamples as any[]);
 
   const filteredSamples = allSamples.filter((s: any) =>

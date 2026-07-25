@@ -42,7 +42,12 @@ function PlaneCompass({ strike, dipDirection, dip }: { strike: number | null; di
     <circle cx="150" cy="150" r="108" fill="none" stroke="#334155" strokeWidth="1" />
     {ticks.map((degree) => { const angle = (degree - 90) * Math.PI / 180; const major = degree % 30 === 0; const medium = degree % 10 === 0; const outer = 132; const inner = major ? 116 : medium ? 120 : 125; return <line key={degree} x1={150 + outer * Math.cos(angle)} y1={150 + outer * Math.sin(angle)} x2={150 + inner * Math.cos(angle)} y2={150 + inner * Math.sin(angle)} stroke={major ? "#e2e8f0" : medium ? "#94a3b8" : "#526176"} strokeWidth={major ? 2 : 1} />; })}
     {labels.map((degree) => { const angle = (degree - 90) * Math.PI / 180; return <text key={degree} x={150 + 99 * Math.cos(angle)} y={150 + 99 * Math.sin(angle) + 4} textAnchor="middle" fill="#dbe4f0" fontFamily="ui-monospace, SFMono-Regular" fontSize="11" fontWeight="650">{degree}</text>; })}
-    {strike !== null && <g transform={`rotate(${strike},150,150)`} filter="url(#geoGlow)"><line x1="150" y1="52" x2="150" y2="248" stroke="#60a5fa" strokeWidth="5" strokeLinecap="round" /><line x1="150" y1="56" x2="150" y2="244" stroke="#dbeafe" strokeWidth="1" /><path d="M150 44 L143 58 L157 58 Z" fill="#93c5fd" /><path d="M150 256 L143 242 L157 242 Z" fill="#93c5fd" /></g>}
+    {strike !== null && <g transform={`rotate(${strike},150,150)`} filter="url(#geoGlow)">
+      <line x1="150" y1="48" x2="150" y2="252" stroke="#60a5fa" strokeWidth="6" strokeLinecap="round" />
+      <line x1="150" y1="52" x2="150" y2="248" stroke="#dbeafe" strokeWidth="1.5" />
+      <line x1="141" y1="62" x2="159" y2="62" stroke="#93c5fd" strokeWidth="3" strokeLinecap="round" />
+      <line x1="141" y1="238" x2="159" y2="238" stroke="#93c5fd" strokeWidth="3" strokeLinecap="round" />
+    </g>}
     {dipDirection !== null && <g transform={`rotate(${dipDirection},150,150)`}><line x1="150" y1="150" x2="150" y2="83" stroke="#fbbf24" strokeWidth="3" strokeDasharray="5 4" /><path d="M150 72 L143 87 L157 87 Z" fill="#fbbf24" /></g>}
     <circle cx="150" cy="150" r="40" fill="#0a1019" stroke="#64748b" strokeWidth="2" />
     <circle cx="150" cy="150" r="29" fill="none" stroke="#334155" />
@@ -132,7 +137,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">Dip</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(filtered.dip)}°</p><p className="text-[10px] text-amber-200/70">plane slope</p></div>
           </div>
           <PlaneCompass strike={filtered.strike} dipDirection={filtered.dipDirection} dip={filtered.dip} />
-          <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Strike</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Down-dip indicator</span></div>
+          <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Water-flow direction</span></div>
         </div>
         <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${stable ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{stable ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{stable ? "Stable — ready to capture" : "Hold steady to capture"}</div>
         {accuracyLow && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-300">Compass accuracy is low. Move iPhone in a figure-eight and keep it away from magnets or metal objects.</p>}

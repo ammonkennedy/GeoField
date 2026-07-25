@@ -63,7 +63,7 @@ export interface PlannedSite {
   id: string;
   name: string;
   description: string;
-  sampleType?: "water" | "rock" | "soil_sand" | "air" | "other";
+  sampleType?: "water" | "rock" | "soil_sand" | "other";
   lat: number;
   lng: number;
   addedAt: string;
@@ -117,7 +117,6 @@ function plannedSiteTitle(site: PlannedSite) {
   if (sampleType === "water") return "Water";
   if (sampleType === "rock") return "Rock";
   if (sampleType === "soil_sand") return "Soil / Sediment";
-  if (sampleType === "air") return "Air";
   return site.name;
 }
 
@@ -126,7 +125,6 @@ function plannedSiteSampleTypeLabel(site: PlannedSite) {
   if (sampleType === "water") return "Water";
   if (sampleType === "rock") return "Rock";
   if (sampleType === "soil_sand") return "Soil / Sediment";
-  if (sampleType === "air") return "Air";
   return "Other";
 }
 
@@ -150,8 +148,6 @@ function normalizeSampleType(value: string): PlannedSite["sampleType"] {
   const normalized = normalizeHeader(value);
   if (normalized.includes("water")) return "water";
   if (normalized.includes("soil") || normalized.includes("sediment") || normalized.includes("sand")) return "soil_sand";
-  // Legacy Air sites remain readable, but new imports should not create them.
-  if (normalized.includes("air") || normalized.includes("pid") || normalized.includes("voc")) return "other";
   if (normalized.includes("other")) return "other";
   return "rock";
 }
@@ -726,7 +722,7 @@ export default function TripPlannerPage() {
   function addSiteMarker(L: any, map: any, site: PlannedSite) {
     const el = document.createElement("div");
     const collected = Boolean(site.collectedAt);
-    const sampleColors: Record<string, string> = { water: "#0284c7", rock: "#92400e", soil_sand: "#a16207", air: "#64748b", other: "#6b7280" };
+    const sampleColors: Record<string, string> = { water: "#0284c7", rock: "#92400e", soil_sand: "#a16207", other: "#6b7280" };
     const collectedColor = sampleColors[site.sampleType ?? "other"];
     el.style.cssText = collected
       ? `display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:${collectedColor};border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:12px;font-weight:700;color:white;cursor:pointer;`

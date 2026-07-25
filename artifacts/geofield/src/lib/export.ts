@@ -23,7 +23,6 @@ export const SAMPLE_TYPE_SHEETS = [
   { key: "rock", label: "Rock" },
   { key: "water", label: "Water" },
   { key: "soil_sand", label: "Soil" },
-  { key: "air", label: "Air" },
   { key: "other", label: "Other" },
 ] as const;
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { circularMean, normalForDip, normalizeAzimuth, planeOrientationFromNormal } from "./strike-dip-math.ts";
+import { angularDistance, circularMean, horizontalPlaneAxesFromNormal, normalForDip, normalizeAzimuth, planeOrientationFromNormal } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
 
@@ -15,4 +15,16 @@ test("normalizes azimuths", () => { assert.equal(normalizeAzimuth(-10), 350); as
 test("circular mean crosses north", () => { const result = circularMean([359, 0, 1]); assert.ok(result !== null && (result < 0.01 || result > 359.99)); });
 test("plane result is invariant to screen orientation because device back normal is unchanged", () => {
   const normal = normalForDip(45, 125); const portrait = planeOrientationFromNormal(normal); const landscape = planeOrientationFromNormal(normal); assert.deepEqual(portrait, landscape);
+});
+test("strike is the horizontal intersection and down-dip is perpendicular", () => {
+  for (const dipDirection of [0, 37, 90, 183, 270, 359]) {
+    const normal = normalForDip(52, dipDirection);
+    const axes = horizontalPlaneAxesFromNormal(normal);
+    assert.ok(axes);
+    const dot = axes.strike.east * axes.downDip.east + axes.strike.north * axes.downDip.north;
+    close(dot, 0);
+    const result = planeOrientationFromNormal(normal);
+    assert.ok(result.strike !== null && result.dipDirection !== null);
+    close(angularDistance(result.dipDirection, normalizeAzimuth(result.strike + 90)), 0);
+  }
 });
