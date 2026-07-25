@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { angularDistance, circularMean, deviceVectorToScreen, horizontalPlaneAxesFromNormal, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
+import { angularDistance, circularMean, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirrorTrueAzimuthAroundMagnetic, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
 
@@ -12,6 +12,11 @@ for (const [name, direction, strike] of [["north", 0, 270], ["east", 90, 0], ["s
   });
 }
 test("normalizes azimuths", () => { assert.equal(normalizeAzimuth(-10), 350); assert.equal(normalizeAzimuth(360), 0); assert.equal(normalizeAzimuth(370), 10); });
+test("true-north correction is mirrored around magnetic north", () => {
+  assert.equal(mirrorTrueAzimuthAroundMagnetic(110, 10), 90);
+  assert.equal(mirrorTrueAzimuthAroundMagnetic(350, -10), 10);
+  assert.equal(mirrorTrueAzimuthAroundMagnetic(5, 10), 345);
+});
 test("reports the right-hand strike branch", () => {
   assert.equal(rightHandStrikeFromDipDirection(90), 0);
   assert.equal(rightHandStrikeFromDipDirection(180), 90);

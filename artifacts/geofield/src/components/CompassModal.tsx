@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, deviceVectorToScreen, horizontalPlaneAxesFromNormal, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirrorTrueAzimuthAroundMagnetic, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
@@ -134,12 +134,23 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       return;
     }
     setActiveNorthReference(raw.northReference);
+    const liveDeclination = typeof raw.trueHeading === "number" && typeof raw.magneticHeading === "number"
+      ? signedAngle(raw.trueHeading - raw.magneticHeading)
+      : null;
+    const correctTrueOrientation = (orientation: PlaneOrientation): PlaneOrientation =>
+      raw.northReference === "true" && liveDeclination !== null
+        ? {
+            ...orientation,
+            strike: orientation.strike === null ? null : mirrorTrueAzimuthAroundMagnetic(orientation.strike, liveDeclination),
+            dipDirection: orientation.dipDirection === null ? null : mirrorTrueAzimuthAroundMagnetic(orientation.dipDirection, liveDeclination),
+          }
+        : orientation;
     const normal = { east: raw.normalEast, north: raw.normalNorth, up: raw.normalUp };
-    const rawResult = planeOrientationFromNormal(normal);
+    const rawResult = correctTrueOrientation(planeOrientationFromNormal(normal));
     setRawOrientation(rawResult);
     const unitNormal = upwardUnitNormal(normal);
     if (!unitNormal) return;
-    const result = planeOrientationFromNormal(normal);
+    const result = correctTrueOrientation(planeOrientationFromNormal(normal));
     history.current = [...history.current.slice(-(STABILITY_WINDOW - 1)), { ...result, normal: unitNormal }];
     const meanNormal = upwardUnitNormal(history.current.reduce((sum, item) => ({
       east: sum.east + item.normal.east,
@@ -147,7 +158,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       up: sum.up + item.normal.up,
     }), { east: 0, north: 0, up: 0 }));
     if (!meanNormal) return;
-    const meanOrientation = planeOrientationFromNormal(meanNormal);
+    const meanOrientation = correctTrueOrientation(planeOrientationFromNormal(meanNormal));
     const axes = horizontalPlaneAxesFromNormal(meanNormal);
     const matrixKeys: Array<keyof SensorReading> = ["matrixM11", "matrixM12", "matrixM13", "matrixM21", "matrixM22", "matrixM23", "matrixM31", "matrixM32", "matrixM33"];
     const hasMatrix = matrixKeys.every((key) => typeof raw[key] === "number");
@@ -176,12 +187,15 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     // the endpoint of an exact perpendicular derived from the blue strike line.
     const screenGravity = deviceVectorToScreen(raw.gravityX, raw.gravityY, raw.interfaceOrientation);
     const screenDownDipVector = perpendicularScreenVector(screenStrikeVector, screenGravity ?? projectedDownSlope);
-    const heading = raw.northReference === "true" ? raw.trueHeading : raw.magneticHeading;
+    const heading = raw.northReference === "true" && liveDeclination !== null && typeof raw.trueHeading === "number"
+      ? mirrorTrueAzimuthAroundMagnetic(raw.trueHeading, liveDeclination)
+      : raw.northReference === "true" ? raw.trueHeading : raw.magneticHeading;
     const headingRadians = typeof heading === "number" ? heading * Math.PI / 180 : null;
     const headingNorthVector = headingRadians === null ? null : { right: -Math.sin(headingRadians), up: Math.cos(headingRadians) };
-    const screenNorthVector = (matrix
+    const projectedNorthVector = (matrix
       ? projectEnuVectorToScreen({ east: 0, north: 1, up: 0 }, matrix, raw.interfaceOrientation)
-      : null) ?? headingNorthVector;
+      : null);
+    const screenNorthVector = (raw.northReference === "true" ? headingNorthVector : projectedNorthVector) ?? headingNorthVector ?? projectedNorthVector;
     const isStable = history.current.length >= STABILITY_WINDOW && history.current.every((item) => Math.abs(item.dip - meanOrientation.dip) <= DIP_TOLERANCE && (meanOrientation.dipDirection === null || item.dipDirection === null || angularDistance(item.dipDirection, meanOrientation.dipDirection) <= AZIMUTH_TOLERANCE));
     setReading({ ...raw, normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up });
     setFiltered({ ...meanOrientation, strikeVector: axes?.strike ?? null, downDipVector: axes?.downDip ?? null, screenStrikeVector, screenDownDipVector, screenNorthVector });
@@ -220,7 +234,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     };
   }, [open, native, selectedNorthReference]);
 
-  const hasDeclination = reading?.referenceFrame === "magnetic" && typeof reading.trueHeading === "number" && typeof reading.magneticHeading === "number";
+  const hasDeclination = typeof reading?.trueHeading === "number" && typeof reading?.magneticHeading === "number";
   const northReference = activeNorthReference ?? selectedNorthReference;
   const declination = hasDeclination ? signedAngle(reading!.trueHeading! - reading!.magneticHeading!) : undefined;
   const accuracyLow = typeof reading?.headingAccuracy === "number" && reading.headingAccuracy > 20;
