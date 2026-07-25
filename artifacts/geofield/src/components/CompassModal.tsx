@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, deviceVectorToScreen, horizontalPlaneAxesFromNormal, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
@@ -36,7 +36,7 @@ interface GeologyMotionPlugin {
 const GeologyMotion = registerPlugin<GeologyMotionPlugin>("GeologyMotion");
 const STABILITY_WINDOW = 12, AZIMUTH_TOLERANCE = 3, DIP_TOLERANCE = 2;
 const NORTH_REFERENCE_KEY = "geofield_north_reference";
-const emptyFiltered = () => ({ strike: null as number | null, dipDirection: null as number | null, dip: 0, strikeVector: null as Vector3 | null, downDipVector: null as Vector3 | null, screenStrikeVector: null as ScreenVector | null, screenDownDipVector: null as ScreenVector | null });
+const emptyFiltered = () => ({ strike: null as number | null, dipDirection: null as number | null, dip: 0, strikeVector: null as Vector3 | null, downDipVector: null as Vector3 | null, screenStrikeVector: null as ScreenVector | null, screenDownDipVector: null as ScreenVector | null, screenNorthVector: null as ScreenVector | null });
 const loadNorthReference = (): NorthReferencePreference =>
   localStorage.getItem(NORTH_REFERENCE_KEY) === "magnetic" ? "magnetic" : "true";
 const fmt = (value: number | null) => value === null ? "—" : `${Math.round(normalizeAzimuth(value)).toString().padStart(3, "0")}°`;
@@ -91,6 +91,26 @@ function PlaneCompass({ strikeVector, downDipVector, dip }: { strikeVector: Scre
   </svg>;
 }
 
+function NorthCompass({ northVector, reference }: { northVector: ScreenVector | null; reference: NorthReferencePreference }) {
+  const vector = northVector ?? { right: 0, up: 1 };
+  const tip = { x: 100 + vector.right * 66, y: 100 - vector.up * 66 };
+  const tail = { x: 100 - vector.right * 42, y: 100 + vector.up * 42 };
+  const left = { x: 100 - vector.up * 11, y: 100 - vector.right * 11 };
+  const right = { x: 100 + vector.up * 11, y: 100 + vector.right * 11 };
+  const ticks = Array.from({ length: 24 }, (_, index) => index * 15);
+  return <svg viewBox="0 0 200 200" className="h-full w-full drop-shadow-xl" aria-label={`${reference === "true" ? "True" : "Magnetic"} north compass`}>
+    <defs><radialGradient id="northFace" cx="40%" cy="35%"><stop offset="0" stopColor="#253247" /><stop offset="1" stopColor="#080d14" /></radialGradient></defs>
+    <circle cx="100" cy="100" r="94" fill="#05080d" stroke="#64748b" strokeWidth="3" />
+    <circle cx="100" cy="100" r="87" fill="url(#northFace)" stroke="#293548" strokeWidth="2" />
+    {ticks.map((degree) => { const angle = (degree - 90) * Math.PI / 180; const major = degree % 90 === 0; return <line key={degree} x1={100 + 80 * Math.cos(angle)} y1={100 + 80 * Math.sin(angle)} x2={100 + (major ? 68 : 73) * Math.cos(angle)} y2={100 + (major ? 68 : 73) * Math.sin(angle)} stroke={major ? "#e2e8f0" : "#64748b"} strokeWidth={major ? 3 : 1.5} />; })}
+    <path d={`M ${tip.x} ${tip.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z`} fill="#ef4444" />
+    <path d={`M ${tail.x} ${tail.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z`} fill="#e2e8f0" />
+    <circle cx="100" cy="100" r="8" fill="#0f172a" stroke="#f8fafc" strokeWidth="3" />
+    <text x="100" y="35" textAnchor="middle" fill="#fca5a5" fontSize="16" fontWeight="800">N</text>
+    <text x="100" y="177" textAnchor="middle" fill="#94a3b8" fontSize="8" fontWeight="700" letterSpacing="1.2">{reference === "true" ? "TRUE NORTH" : "MAGNETIC NORTH"}</text>
+  </svg>;
+}
+
 export function CompassModal({ open, onClose, onCapture }: Props) {
   const [status, setStatus] = useState<"starting" | "active" | "unavailable" | "error">("starting");
   const [error, setError] = useState("");
@@ -101,6 +121,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const [rawOrientation, setRawOrientation] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0 });
   const [filtered, setFiltered] = useState(emptyFiltered);
   const [stable, setStable] = useState(false);
+  const [primaryInstrument, setPrimaryInstrument] = useState<"strike-dip" | "north">("strike-dip");
   const [mockDip, setMockDip] = useState(30);
   const [mockDirection, setMockDirection] = useState(90);
   const history = useRef<Array<{ strike: number | null; dipDirection: number | null; dip: number; normal: Vector3 }>>([]);
@@ -146,14 +167,24 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
         ? projectEnuVectorToScreen(axes.strike, matrix, raw.interfaceOrientation)
         : { right: axes.strike.east, up: axes.strike.north }
       : null;
-    const screenDownDipVector = downSlope
+    const projectedDownSlope = downSlope
       ? matrix
         ? projectEnuVectorToScreen(downSlope, matrix, raw.interfaceOrientation)
         : { right: axes!.downDip.east, up: axes!.downDip.north }
       : null;
+    // Gravity points at the physical ground in device coordinates. It chooses
+    // the endpoint of an exact perpendicular derived from the blue strike line.
+    const screenGravity = deviceVectorToScreen(raw.gravityX, raw.gravityY, raw.interfaceOrientation);
+    const screenDownDipVector = perpendicularScreenVector(screenStrikeVector, screenGravity ?? projectedDownSlope);
+    const heading = raw.northReference === "true" ? raw.trueHeading : raw.magneticHeading;
+    const headingRadians = typeof heading === "number" ? heading * Math.PI / 180 : null;
+    const headingNorthVector = headingRadians === null ? null : { right: -Math.sin(headingRadians), up: Math.cos(headingRadians) };
+    const screenNorthVector = (matrix
+      ? projectEnuVectorToScreen({ east: 0, north: 1, up: 0 }, matrix, raw.interfaceOrientation)
+      : null) ?? headingNorthVector;
     const isStable = history.current.length >= STABILITY_WINDOW && history.current.every((item) => Math.abs(item.dip - meanOrientation.dip) <= DIP_TOLERANCE && (meanOrientation.dipDirection === null || item.dipDirection === null || angularDistance(item.dipDirection, meanOrientation.dipDirection) <= AZIMUTH_TOLERANCE));
     setReading({ ...raw, normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up });
-    setFiltered({ ...meanOrientation, strikeVector: axes?.strike ?? null, downDipVector: axes?.downDip ?? null, screenStrikeVector, screenDownDipVector });
+    setFiltered({ ...meanOrientation, strikeVector: axes?.strike ?? null, downDipVector: axes?.downDip ?? null, screenStrikeVector, screenDownDipVector, screenNorthVector });
     setStable(isStable); setStatus("active");
   };
 
@@ -251,7 +282,16 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">Dip</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(filtered.dip)}°</p><p className="text-[10px] text-amber-200/70">plane slope</p></div>
           </div>
           <p className="mb-1 text-center text-[10px] font-medium uppercase tracking-wider text-slate-400">Referenced to {northReference === "true" ? "True North" : "Magnetic North"}</p>
-          <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} />
+          <div className="relative mx-auto aspect-square w-full max-w-[330px]">
+            {primaryInstrument === "strike-dip"
+              ? <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} />
+              : <NorthCompass northVector={filtered.screenNorthVector} reference={northReference} />}
+            <button type="button" onClick={() => setPrimaryInstrument((current) => current === "strike-dip" ? "north" : "strike-dip")} className="absolute right-1 top-1 h-24 w-24 overflow-hidden rounded-full border-2 border-white/30 bg-[#080d14] p-0.5 shadow-2xl transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400" aria-label={primaryInstrument === "strike-dip" ? `Open ${northReference} north compass` : "Open strike and dip compass"}>
+              {primaryInstrument === "strike-dip"
+                ? <NorthCompass northVector={filtered.screenNorthVector} reference={northReference} />
+                : <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} />}
+            </button>
+          </div>
           <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Water-flow direction</span></div>
         </div>
         <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${stable ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{stable ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{stable ? "Stable — ready to capture" : "Hold steady to capture"}</div>

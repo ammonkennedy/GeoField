@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { angularDistance, circularMean, horizontalPlaneAxesFromNormal, normalForDip, normalizeAzimuth, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
+import { angularDistance, circularMean, deviceVectorToScreen, horizontalPlaneAxesFromNormal, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
 
@@ -19,6 +19,29 @@ test("reports the right-hand strike branch", () => {
   assert.equal(rightHandStrikeFromDipDirection(0), 270);
   assert.equal(rightHandStrikeFromDipDirection(5), 275);
   assert.equal(rightHandStrikeFromDipDirection(355), 265);
+});
+test("yellow arrow is perpendicular to strike and selects the gravity-facing endpoint", () => {
+  const strike = { right: 1, up: 0 };
+  const towardScreenBottom = perpendicularScreenVector(strike, { right: 0, up: -1 });
+  const towardScreenTop = perpendicularScreenVector(strike, { right: 0, up: 1 });
+  assert.deepEqual(towardScreenBottom, { right: 0, up: -1 });
+  assert.ok(towardScreenTop);
+  close(towardScreenTop.right, 0);
+  close(towardScreenTop.up, 1);
+  assert.ok(towardScreenBottom && strike.right * towardScreenBottom.right + strike.up * towardScreenBottom.up === 0);
+  assert.ok(towardScreenTop && strike.right * towardScreenTop.right + strike.up * towardScreenTop.up === 0);
+});
+test("device gravity follows the active interface orientation", () => {
+  assert.deepEqual(deviceVectorToScreen(0, -1, "portrait"), { right: 0, up: -1 });
+  const upsideDown = deviceVectorToScreen(0, -1, "portrait-upside-down");
+  assert.ok(upsideDown);
+  close(upsideDown.right, 0);
+  close(upsideDown.up, 1);
+  const landscapeLeft = deviceVectorToScreen(0, -1, "landscape-left");
+  const landscapeRight = deviceVectorToScreen(0, -1, "landscape-right");
+  assert.ok(landscapeLeft && landscapeRight);
+  close(landscapeLeft.right, -1); close(landscapeLeft.up, 0);
+  close(landscapeRight.right, 1); close(landscapeRight.up, 0);
 });
 test("circular mean crosses north", () => { const result = circularMean([359, 0, 1]); assert.ok(result !== null && (result < 0.01 || result > 359.99)); });
 test("plane result is invariant to screen orientation because device back normal is unchanged", () => {
