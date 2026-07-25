@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
+export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
   normalEast: number; normalNorth: number; normalUp: number;
   gravityX: number; gravityY: number; gravityZ: number;
@@ -13,7 +14,9 @@ type SensorReading = {
   matrixM31?: number; matrixM32?: number; matrixM33?: number;
   interfaceOrientation?: string;
   quaternionX: number; quaternionY: number; quaternionZ: number; quaternionW: number;
-  magneticHeading?: number; trueHeading?: number; headingAccuracy?: number; referenceFrame: string;
+  magneticHeading?: number; trueHeading?: number; headingAccuracy?: number;
+  northReference: NorthReferencePreference;
+  referenceFrame?: NorthReferencePreference;
 };
 type Capture = {
   strikeDegrees: number; dipDegrees: number; dipDirectionDegrees: number;
@@ -26,11 +29,16 @@ type Capture = {
 interface Props { open: boolean; onClose: () => void; onCapture: (capture: Capture) => void; }
 interface GeologyMotionPlugin {
   available(): Promise<{ available: boolean }>;
-  start(): Promise<void>; stop(): Promise<void>;
+  start(options: { northReference: NorthReferencePreference }): Promise<{ northReference: NorthReferencePreference }>;
+  stop(): Promise<void>;
   addListener(eventName: "orientation", listener: (reading: SensorReading) => void): Promise<PluginListenerHandle>;
 }
 const GeologyMotion = registerPlugin<GeologyMotionPlugin>("GeologyMotion");
 const STABILITY_WINDOW = 12, AZIMUTH_TOLERANCE = 3, DIP_TOLERANCE = 2;
+const NORTH_REFERENCE_KEY = "geofield_north_reference";
+const emptyFiltered = () => ({ strike: null as number | null, dipDirection: null as number | null, dip: 0, strikeVector: null as Vector3 | null, downDipVector: null as Vector3 | null, screenStrikeVector: null as ScreenVector | null, screenDownDipVector: null as ScreenVector | null });
+const loadNorthReference = (): NorthReferencePreference =>
+  localStorage.getItem(NORTH_REFERENCE_KEY) === "magnetic" ? "magnetic" : "true";
 const fmt = (value: number | null) => value === null ? "—" : `${Math.round(normalizeAzimuth(value)).toString().padStart(3, "0")}°`;
 const signedAngle = (angle: number) => ((angle + 540) % 360) - 180;
 const degrees = (radians: number) => radians * 180 / Math.PI;
@@ -86,9 +94,12 @@ function PlaneCompass({ strikeVector, downDipVector, dip }: { strikeVector: Scre
 export function CompassModal({ open, onClose, onCapture }: Props) {
   const [status, setStatus] = useState<"starting" | "active" | "unavailable" | "error">("starting");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [selectedNorthReference, setSelectedNorthReference] = useState<NorthReferencePreference>(loadNorthReference);
+  const [activeNorthReference, setActiveNorthReference] = useState<NorthReferencePreference | null>(null);
   const [reading, setReading] = useState<SensorReading | null>(null);
   const [rawOrientation, setRawOrientation] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0 });
-  const [filtered, setFiltered] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0, strikeVector: null as Vector3 | null, downDipVector: null as Vector3 | null, screenStrikeVector: null as ScreenVector | null, screenDownDipVector: null as ScreenVector | null });
+  const [filtered, setFiltered] = useState(emptyFiltered);
   const [stable, setStable] = useState(false);
   const [mockDip, setMockDip] = useState(30);
   const [mockDirection, setMockDirection] = useState(90);
@@ -96,11 +107,12 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const native = Capacitor.isNativePlatform();
 
   const process = (raw: SensorReading) => {
-    if (raw.referenceFrame !== "magnetic") {
-      setError("The device did not supply a magnetic-north orientation frame, so an absolute magnetic strike cannot be calculated.");
+    if (raw.northReference !== "true" && raw.northReference !== "magnetic") {
+      setError("The device supplied an unsupported north reference.");
       setStatus("error");
       return;
     }
+    setActiveNorthReference(raw.northReference);
     const normal = { east: raw.normalEast, north: raw.normalNorth, up: raw.normalUp };
     const rawResult = planeOrientationFromNormal(normal);
     setRawOrientation(rawResult);
@@ -147,21 +159,38 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    history.current = []; setStatus("starting"); setError(""); setStable(false);
+    history.current = [];
+    setStatus("starting"); setError(""); setStable(false); setReading(null);
+    setRawOrientation({ strike: null, dipDirection: null, dip: 0 });
+    setFiltered(emptyFiltered());
+    setActiveNorthReference(null);
     let listener: PluginListenerHandle | undefined;
+    let cancelled = false;
     if (!native) { setStatus("unavailable"); return; }
     void (async () => {
       try {
         if (!(await GeologyMotion.available()).available) throw new Error("Compass or full device motion is unavailable.");
-        listener = await GeologyMotion.addListener("orientation", process);
-        await GeologyMotion.start();
+        await GeologyMotion.stop();
+        listener = await GeologyMotion.addListener("orientation", (raw) => { if (!cancelled) process(raw); });
+        const started = await GeologyMotion.start({ northReference: selectedNorthReference });
+        if (cancelled) return;
+        setActiveNorthReference(started.northReference);
+        if (selectedNorthReference === "true" && started.northReference === "magnetic") {
+          setNotice("True north is unavailable. Using magnetic north.");
+          localStorage.setItem(NORTH_REFERENCE_KEY, "magnetic");
+          setSelectedNorthReference("magnetic");
+        }
       } catch (cause: any) { setError(cause?.message || "Could not start geological compass."); setStatus("error"); }
     })();
-    return () => { void listener?.remove(); void GeologyMotion.stop().catch(() => undefined); };
-  }, [open, native]);
+    return () => {
+      cancelled = true;
+      void listener?.remove();
+      void GeologyMotion.stop().catch(() => undefined);
+    };
+  }, [open, native, selectedNorthReference]);
 
   const hasDeclination = reading?.referenceFrame === "magnetic" && typeof reading.trueHeading === "number" && typeof reading.magneticHeading === "number";
-  const northReference: "magnetic" = "magnetic";
+  const northReference = activeNorthReference ?? selectedNorthReference;
   const declination = hasDeclination ? signedAngle(reading!.trueHeading! - reading!.magneticHeading!) : undefined;
   const accuracyLow = typeof reading?.headingAccuracy === "number" && reading.headingAccuracy > 20;
   const renderingAngle = filtered.screenStrikeVector ? normalizeAzimuth(degrees(Math.atan2(filtered.screenStrikeVector.right, filtered.screenStrikeVector.up))) : null;
@@ -190,19 +219,30 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
 
   const useMock = () => {
     const normal = normalForDip(mockDip, mockDirection);
-    process({ normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, referenceFrame: "magnetic" });
-    history.current = Array(STABILITY_WINDOW).fill({ ...planeOrientationFromNormal(normal), normal }); process({ normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, referenceFrame: "magnetic" });
+    const mockReading = { normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, northReference: selectedNorthReference };
+    process(mockReading);
+    history.current = Array(STABILITY_WINDOW).fill({ ...planeOrientationFromNormal(normal), normal }); process(mockReading);
   };
   const capture = () => {
     if (filtered.strike === null || filtered.dipDirection === null || !reading) return;
-    onCapture({ strikeDegrees: Math.round(filtered.strike), dipDegrees: Number(filtered.dip.toFixed(1)), dipDirectionDegrees: Math.round(filtered.dipDirection), convention: "right-hand-rule", northReference, compassAccuracy: reading.headingAccuracy, magneticHeading: reading.magneticHeading, trueHeading: reading.trueHeading, magneticDeclination: declination, referenceFrame: reading.referenceFrame as "true" | "magnetic", rawMagneticStrikeDegrees: reading.referenceFrame === "magnetic" && rawOrientation.strike !== null ? Math.round(rawOrientation.strike) : undefined, orientationQuaternion: { x: reading.quaternionX, y: reading.quaternionY, z: reading.quaternionZ, w: reading.quaternionW }, planeNormal: { east: reading.normalEast, north: reading.normalNorth, up: reading.normalUp }, quality: stable ? "stable" : "unstable" }); onClose();
+    onCapture({ strikeDegrees: Math.round(filtered.strike), dipDegrees: Number(filtered.dip.toFixed(1)), dipDirectionDegrees: Math.round(filtered.dipDirection), convention: "right-hand-rule", northReference, compassAccuracy: reading.headingAccuracy, magneticHeading: reading.magneticHeading, trueHeading: reading.trueHeading, magneticDeclination: declination, referenceFrame: northReference, rawMagneticStrikeDegrees: northReference === "magnetic" && rawOrientation.strike !== null ? Math.round(rawOrientation.strike) : undefined, orientationQuaternion: { x: reading.quaternionX, y: reading.quaternionY, z: reading.quaternionZ, w: reading.quaternionW }, planeNormal: { east: reading.normalEast, north: reading.normalNorth, up: reading.normalUp }, quality: stable ? "stable" : "unstable" }); onClose();
+  };
+  const selectNorthReference = (value: NorthReferencePreference) => {
+    if (value === selectedNorthReference) return;
+    localStorage.setItem(NORTH_REFERENCE_KEY, value);
+    setNotice("");
+    setSelectedNorthReference(value);
   };
 
   return <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 p-3 backdrop-blur-sm"><div className="mx-auto my-2 max-w-md rounded-2xl border border-white/10 bg-[#0d1117] text-slate-100 shadow-2xl">
     <div className="flex items-center justify-between px-5 py-4"><div><h2 className="font-semibold">Geological Compass</h2><p className="text-xs text-slate-400">Right-hand-rule · {northReference} north</p></div><button onClick={onClose} className="rounded-full p-3 hover:bg-white/10"><X className="h-4 w-4" /></button></div>
     <div className="space-y-4 px-5 pb-6">
       <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Phone orientation does not matter.</span></div>
-      {status === "starting" && <p className="py-8 text-center text-sm text-slate-400">Getting full 3D orientation and compass…</p>}
+      <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="North reference">
+        {(["true", "magnetic"] as const).map((value) => <button key={value} type="button" aria-label={`Use ${value} north`} aria-pressed={selectedNorthReference === value} onClick={() => selectNorthReference(value)} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedNorthReference === value ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>{value === "true" ? "True North" : "Magnetic North"}</button>)}
+      </div>
+      {notice && <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300">{notice}</p>}
+      {status === "starting" && <p className="py-8 text-center text-sm text-slate-400">Updating compass…</p>}
       {status === "error" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>}
       {(status === "active" || reading) && <>
         <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#121a27] to-[#080d14] px-3 pb-5 pt-5 shadow-inner">
@@ -210,6 +250,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
             <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">Strike · RHR</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{fmt(filtered.strike)}</p></div>
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">Dip</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(filtered.dip)}°</p><p className="text-[10px] text-amber-200/70">plane slope</p></div>
           </div>
+          <p className="mb-1 text-center text-[10px] font-medium uppercase tracking-wider text-slate-400">Referenced to {northReference === "true" ? "True North" : "Magnetic North"}</p>
           <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} />
           <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Water-flow direction</span></div>
         </div>

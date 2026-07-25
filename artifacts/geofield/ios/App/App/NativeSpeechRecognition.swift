@@ -139,6 +139,7 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
 
     @objc func start(_ call: CAPPluginCall) {
         guard motion.isDeviceMotionAvailable else { call.reject("Core Motion orientation is unavailable."); return }
+        motion.stopDeviceMotionUpdates()
         if location.authorizationStatus == .notDetermined { location.requestWhenInUseAuthorization() }
         if let interfaceOrientation = bridge?.viewController?.view.window?.windowScene?.interfaceOrientation {
             switch interfaceOrientation {
@@ -151,14 +152,32 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
         if CLLocationManager.headingAvailable() { location.startUpdatingHeading() }
         motion.deviceMotionUpdateInterval = 1.0 / 15.0
         let frames = CMMotionManager.availableAttitudeReferenceFrames()
-        // Geological measurements in GeoField are referenced to magnetic north.
-        // Do not silently substitute true north or a relative attitude frame.
-        guard frames.contains(.xMagneticNorthZVertical) else {
-            call.reject("A magnetic-north Core Motion frame is unavailable.")
+        let requestedReference = call.getString("northReference") ?? "true"
+        let frame: CMAttitudeReferenceFrame
+        let activeNorthReference: String
+        switch requestedReference {
+        case "true":
+            if frames.contains(.xTrueNorthZVertical) {
+                frame = .xTrueNorthZVertical
+                activeNorthReference = "true"
+            } else if frames.contains(.xMagneticNorthZVertical) {
+                frame = .xMagneticNorthZVertical
+                activeNorthReference = "magnetic"
+            } else {
+                call.reject("A north-aligned Core Motion reference frame is unavailable.")
+                return
+            }
+        case "magnetic":
+            guard frames.contains(.xMagneticNorthZVertical) else {
+                call.reject("A magnetic-north Core Motion reference frame is unavailable.")
+                return
+            }
+            frame = .xMagneticNorthZVertical
+            activeNorthReference = "magnetic"
+        default:
+            call.reject("Unsupported north reference: \(requestedReference)")
             return
         }
-        let frame: CMAttitudeReferenceFrame = .xMagneticNorthZVertical
-        let referenceFrame = "magnetic"
         motion.startDeviceMotionUpdates(using: frame, to: OperationQueue.main) { [weak self] data, _ in
             guard let self, let data else { return }
             let r = data.attitude.rotationMatrix
@@ -182,14 +201,15 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
                 "interfaceOrientation": interfaceOrientation,
                 "quaternionX": data.attitude.quaternion.x, "quaternionY": data.attitude.quaternion.y,
                 "quaternionZ": data.attitude.quaternion.z, "quaternionW": data.attitude.quaternion.w,
-                "referenceFrame": referenceFrame
+                "northReference": activeNorthReference,
+                "referenceFrame": activeNorthReference
             ]
             if let value = self.magneticHeading { payload["magneticHeading"] = value }
             if let value = self.trueHeading { payload["trueHeading"] = value }
             if let value = self.headingAccuracy { payload["headingAccuracy"] = value }
             self.notifyListeners("orientation", data: payload)
         }
-        call.resolve()
+        call.resolve(["northReference": activeNorthReference])
     }
 
     @objc func stop(_ call: CAPPluginCall) { motion.stopDeviceMotionUpdates(); location.stopUpdatingHeading(); call.resolve() }

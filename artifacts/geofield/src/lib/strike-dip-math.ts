@@ -14,18 +14,9 @@ export type ScreenVector = { right: number; up: number };
 export const HORIZONTAL_THRESHOLD_DEGREES = 1;
 export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
 export const rightHandStrikeFromDipDirection = (dipDirection: number) =>
-  normalizeAzimuth(dipDirection + 90);
+  normalizeAzimuth(dipDirection - 90);
 const radians = (degrees: number) => degrees * Math.PI / 180;
 const degrees = (value: number) => value * 180 / Math.PI;
-
-export function rotateMagneticNormalToTrue(normal: Vector3, declinationDegrees: number): Vector3 {
-  const angle = radians(declinationDegrees);
-  return {
-    east: normal.east * Math.cos(angle) + normal.north * Math.sin(angle),
-    north: -normal.east * Math.sin(angle) + normal.north * Math.cos(angle),
-    up: normal.up,
-  };
-}
 
 /**
  * Project an upward-pointing plane normal into the horizontal earth plane.
@@ -107,9 +98,8 @@ export function planeOrientationFromNormal(input: Vector3, threshold = HORIZONTA
   const axes = horizontalPlaneAxesFromNormal(normal);
   if (!axes) return { dip: 0, dipDirection: null, strike: null };
   const dipDirection = normalizeAzimuth(degrees(Math.atan2(axes.downDip.east, axes.downDip.north)));
-  // Resolve the strike line's 180° ambiguity using the directed endpoint that
-  // places the rendered down-dip arrow on the right-hand side in this app's
-  // device/world coordinate convention.
+  // Resolve the strike line's 180° ambiguity using standard geological RHR:
+  // dip direction is 90° clockwise from the reported strike azimuth.
   const strike = rightHandStrikeFromDipDirection(dipDirection);
   return { dip, dipDirection, strike };
 }
