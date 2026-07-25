@@ -124,7 +124,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const [primaryInstrument, setPrimaryInstrument] = useState<"strike-dip" | "north">("strike-dip");
   const [mockDip, setMockDip] = useState(30);
   const [mockDirection, setMockDirection] = useState(90);
-  const history = useRef<Array<{ strike: number | null; dipDirection: number | null; dip: number; normal: Vector3 }>>([]);
+  const history = useRef<Array<{ strike: number | null; dipDirection: number | null; dip: number; normal: Vector3; gravityX: number; gravityY: number }>>([]);
   const native = Capacitor.isNativePlatform();
 
   const process = (raw: SensorReading) => {
@@ -151,13 +151,22 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     const unitNormal = upwardUnitNormal(normal);
     if (!unitNormal) return;
     const result = correctTrueOrientation(planeOrientationFromNormal(normal));
-    history.current = [...history.current.slice(-(STABILITY_WINDOW - 1)), { ...result, normal: unitNormal }];
+    history.current = [...history.current.slice(-(STABILITY_WINDOW - 1)), {
+      ...result,
+      normal: unitNormal,
+      gravityX: raw.gravityX,
+      gravityY: raw.gravityY,
+    }];
     const meanNormal = upwardUnitNormal(history.current.reduce((sum, item) => ({
       east: sum.east + item.normal.east,
       north: sum.north + item.normal.north,
       up: sum.up + item.normal.up,
     }), { east: 0, north: 0, up: 0 }));
     if (!meanNormal) return;
+    const meanGravity = history.current.reduce((sum, item) => ({
+      x: sum.x + item.gravityX,
+      y: sum.y + item.gravityY,
+    }), { x: 0, y: 0 });
     const meanOrientation = correctTrueOrientation(planeOrientationFromNormal(meanNormal));
     const axes = horizontalPlaneAxesFromNormal(meanNormal);
     const matrixKeys: Array<keyof SensorReading> = ["matrixM11", "matrixM12", "matrixM13", "matrixM21", "matrixM22", "matrixM23", "matrixM31", "matrixM32", "matrixM33"];
@@ -183,9 +192,9 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
         ? projectEnuVectorToScreen(downSlope, matrix, raw.interfaceOrientation)
         : { right: axes!.downDip.east, up: axes!.downDip.north }
       : null;
-    // Gravity points at the physical ground in device coordinates. It chooses
-    // the endpoint of an exact perpendicular derived from the blue strike line.
-    const screenGravity = deviceVectorToScreen(raw.gravityX, raw.gravityY, raw.interfaceOrientation);
+    // Use the same sample window for gravity and the plane normal so the
+    // ground-facing arrow and strike line cross their endpoint boundary together.
+    const screenGravity = deviceVectorToScreen(meanGravity.x, meanGravity.y, raw.interfaceOrientation);
     const screenDownDipVector = perpendicularScreenVector(screenStrikeVector, screenGravity ?? projectedDownSlope);
     const heading = raw.northReference === "true" && liveDeclination !== null && typeof raw.trueHeading === "number"
       ? mirroredTrueNorthHeading(raw.trueHeading, liveDeclination)
@@ -266,7 +275,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     const normal = normalForDip(mockDip, mockDirection);
     const mockReading = { normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, northReference: selectedNorthReference };
     process(mockReading);
-    history.current = Array(STABILITY_WINDOW).fill({ ...planeOrientationFromNormal(normal), normal }); process(mockReading);
+    history.current = Array(STABILITY_WINDOW).fill({ ...planeOrientationFromNormal(normal), normal, gravityX: mockReading.gravityX, gravityY: mockReading.gravityY }); process(mockReading);
   };
   const capture = () => {
     if (filtered.strike === null || filtered.dipDirection === null || !reading) return;

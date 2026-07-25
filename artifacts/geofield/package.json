@@ -9,6 +9,7 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
     ,"test:strike-dip": "node --test src/lib/strike-dip-math.test.ts"
+    ,"test:macrostrat": "node --test src/lib/macrostrat.test.ts"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",

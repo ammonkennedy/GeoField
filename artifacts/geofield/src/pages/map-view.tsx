@@ -19,6 +19,11 @@ import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { geocodeAddress, geocodeAddressSuggestions, type GeocodeResult } from "@/lib/geocoding";
 import { lookupSoil } from "@/lib/soil-data";
+import { MacrostratGeologyInfo } from "@/components/MacrostratGeologyInfo";
+import { ensureMacrostratLayer, setMacrostratOpacity, setMacrostratVisibility } from "@/lib/macrostrat-layer";
+import { MACROSTRAT_DEFAULT_OPACITY } from "@/lib/macrostrat-config";
+import { queryMacrostratGeology } from "@/lib/macrostrat-service";
+import type { MacrostratSelection } from "@/lib/macrostrat-types";
 import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -52,7 +57,6 @@ type OverlayLayer = "none" | "geology" | "soil" | "trails";
 
 const USGS_IMAGERY_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}";
 const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
-const GEO_TILES    = "https://tiles.macrostrat.org/carto/{z}/{x}/{y}.png";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
 const SOIL_WMS =
   "https://SDMDataAccess.sc.egov.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=TRUE&LAYERS=mapunitpoly&STYLES=default&WIDTH=256&HEIGHT=256&SRS=EPSG%3A3857&BBOX={bbox-epsg-3857}";
@@ -120,19 +124,19 @@ const INITIAL_STYLE: any = {
 };
 
 function safeRemoveOverlays(map: any) {
-  for (const id of ["geology-overlay", "soil-overlay", "trails-overlay"]) {
+  setMacrostratVisibility(map, false);
+  for (const id of ["soil-overlay", "trails-overlay"]) {
     try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
   }
-  for (const id of ["geology", "soil", "trails-src"]) {
+  for (const id of ["soil", "trails-src"]) {
     try { if (map.getSource(id)) map.removeSource(id); } catch {}
   }
 }
 
-function safeAddOverlay(map: any, overlay: OverlayLayer) {
+function safeAddOverlay(map: any, overlay: OverlayLayer, geologyOpacity = MACROSTRAT_DEFAULT_OPACITY) {
   try {
     if (overlay === "geology") {
-      map.addSource("geology", { type: "raster", tiles: [GEO_TILES], tileSize: 256, attribution: "© Macrostrat" });
-      map.addLayer({ id: "geology-overlay", type: "raster", source: "geology", paint: { "raster-opacity": 0.65 } });
+      ensureMacrostratLayer(map, geologyOpacity);
     } else if (overlay === "soil") {
       map.addSource("soil", { type: "raster", tiles: [SOIL_WMS], tileSize: 256, minzoom: 4, maxzoom: 18, attribution: "USDA NRCS SSURGO via Soil Data Access" });
       map.addLayer({ id: "soil-overlay", type: "raster", source: "soil", paint: { "raster-opacity": 0.65 } });
@@ -154,12 +158,14 @@ interface GeoInfo {
   data?: Record<string, string> | null;
   error?: string;
   lngLat?: [number, number];
+  macrostrat?: MacrostratSelection | null;
 }
 
 export default function MapViewPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<number | string | "all">("all");
   const [baseLayer, setBaseLayer] = useState<BaseLayer>("satellite");
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
+  const [geologyOpacity, setGeologyOpacity] = useState(MACROSTRAT_DEFAULT_OPACITY);
   const [terrain, setTerrain] = useState(false);
   const [geoInfo, setGeoInfo] = useState<GeoInfo | null>(null);
   const [customLayers, setCustomLayers] = useState<CustomMapLayer[]>(loadCustomLayers);
@@ -202,6 +208,9 @@ export default function MapViewPage() {
   const overlayLayerRef = useRef<OverlayLayer>("none");
   const terrainRef = useRef(false);
   const mapLoadedRef = useRef(false);
+  const geologyOpacityRef = useRef(MACROSTRAT_DEFAULT_OPACITY);
+  const geologyRequestRef = useRef<AbortController | null>(null);
+  const geologyRequestIdRef = useRef(0);
 
   const filteredSamples = (allSamples || []).filter((s) =>
     selectedFolderId === "all" ? true : String(s.folderId ?? "") === String(selectedFolderId)
@@ -259,7 +268,16 @@ export default function MapViewPage() {
   // Keep overlayLayerRef in sync with state
   useEffect(() => {
     overlayLayerRef.current = overlayLayer;
+    if (overlayLayer !== "geology") {
+      geologyRequestRef.current?.abort();
+      geologyRequestRef.current = null;
+    }
   }, [overlayLayer]);
+
+  useEffect(() => {
+    geologyOpacityRef.current = geologyOpacity;
+    if (mapRef.current && mapLoadedRef.current) setMacrostratOpacity(mapRef.current, geologyOpacity);
+  }, [geologyOpacity]);
 
   useEffect(() => {
     terrainRef.current = terrain;
@@ -380,7 +398,7 @@ export default function MapViewPage() {
         mapLoadedRef.current = true;
         if (terrainRef.current) map.setTerrain({ source: "terrain", exaggeration: 1.5 });
         if (overlayLayerRef.current !== "none") {
-          safeAddOverlay(map, overlayLayerRef.current);
+          safeAddOverlay(map, overlayLayerRef.current, geologyOpacityRef.current);
         }
         // Add any saved custom layers
         customLayersRef.current.forEach((layer) => safeAddCustomLayer(map, layer));
@@ -396,29 +414,17 @@ export default function MapViewPage() {
         setGeoInfo({ loading: true, lngLat: [lng, lat] });
 
         if (over === "geology") {
+          geologyRequestRef.current?.abort();
+          const controller = new AbortController();
+          geologyRequestRef.current = controller;
+          const requestId = ++geologyRequestIdRef.current;
           try {
-            const r = await fetch(
-              `https://macrostrat.org/api/v2/geologic_units/burwell?lat=${lat}&lng=${lng}&response=short`
-            );
-            const d = await r.json();
-            const unit = d?.success?.data?.[0];
-            if (unit) {
-              setGeoInfo({
-                loading: false,
-                lngLat: [lng, lat],
-                data: {
-                  Formation: unit.strat_name_long || unit.map_unit_name || "Unknown",
-                  Age: [unit.t_int_name, unit.b_int_name].filter(Boolean).join(" – ") || "—",
-                  Era: unit.era || "—",
-                  Lithology: unit.lith || "—",
-                  Description: unit.descrip || "—",
-                },
-              });
-            } else {
-              setGeoInfo({ loading: false, lngLat: [lng, lat], data: { Note: "No formation data at this location." } });
-            }
-          } catch {
-            setGeoInfo({ loading: false, lngLat: [lng, lat], error: "Failed to load geological data." });
+            const macrostrat = await queryMacrostratGeology(lat, lng, controller.signal);
+            if (controller.signal.aborted || requestId !== geologyRequestIdRef.current) return;
+            setGeoInfo({ loading: false, lngLat: [lng, lat], macrostrat });
+          } catch (error) {
+            if (controller.signal.aborted || requestId !== geologyRequestIdRef.current) return;
+            setGeoInfo({ loading: false, lngLat: [lng, lat], error: "Geologic unit information is temporarily unavailable." });
           }
         }
 
@@ -447,6 +453,7 @@ export default function MapViewPage() {
     });
 
     return () => {
+      geologyRequestRef.current?.abort();
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
       if (popupRef.current) { try { popupRef.current.remove(); } catch {} popupRef.current = null; }
@@ -495,7 +502,7 @@ export default function MapViewPage() {
     const map = mapRef.current;
     safeRemoveOverlays(map);
     if (overlayLayer !== "none") {
-      safeAddOverlay(map, overlayLayer);
+      safeAddOverlay(map, overlayLayer, geologyOpacityRef.current);
     }
   }, [overlayLayer]);
 
@@ -767,6 +774,13 @@ export default function MapViewPage() {
             </select>
             <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           </div>
+          {overlayLayer === "geology" && (
+            <label className="flex min-w-36 items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
+              Geology opacity
+              <input aria-label="Geology opacity" type="range" min="0" max="1" step="0.05" value={geologyOpacity} onChange={(event) => setGeologyOpacity(Number(event.target.value))} className="w-20 accent-primary" />
+              <span className="w-8 tabular-nums">{Math.round(geologyOpacity * 100)}%</span>
+            </label>
+          )}
 
           {/* Insert Map Layer */}
           <Button
@@ -857,7 +871,10 @@ export default function MapViewPage() {
               <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="h-4 bg-muted animate-pulse rounded" />)}</div>
             )}
             {geoInfo.error && <p className="text-sm text-destructive">{geoInfo.error}</p>}
-            {geoInfo.data && !geoInfo.loading && (
+            {overlayLayer === "geology" && !geoInfo.loading && !geoInfo.error && (
+              <MacrostratGeologyInfo selection={geoInfo.macrostrat ?? null} />
+            )}
+            {overlayLayer !== "geology" && geoInfo.data && !geoInfo.loading && (
               <div className="space-y-2.5">
                 {Object.entries(geoInfo.data).map(([k, v]) => (
                   <div key={k}>
@@ -866,7 +883,7 @@ export default function MapViewPage() {
                   </div>
                 ))}
                 <p className="text-xs text-muted-foreground pt-2 border-t border-border">
-                  {overlayLayer === "geology" ? "Source: Macrostrat" : "Source: USDA SSURGO"}
+                  Source: USDA SSURGO
                 </p>
               </div>
             )}
