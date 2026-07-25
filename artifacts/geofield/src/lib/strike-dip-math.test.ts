@@ -23,8 +23,30 @@ test("strike is the horizontal intersection and down-dip is perpendicular", () =
     assert.ok(axes);
     const dot = axes.strike.east * axes.downDip.east + axes.strike.north * axes.downDip.north;
     close(dot, 0);
+    close(axes.strike.up, 0);
+    close(axes.strike.east * normal.east + axes.strike.north * normal.north + axes.strike.up * normal.up, 0);
     const result = planeOrientationFromNormal(normal);
     assert.ok(result.strike !== null && result.dipDirection !== null);
     close(angularDistance(result.dipDirection, normalizeAzimuth(result.strike + 90)), 0);
   }
+});
+test("forward/back and left/right tilts produce the expected horizontal strike", () => {
+  const cases = [
+    { normal: normalForDip(45, 0), strike: 270 },
+    { normal: normalForDip(45, 180), strike: 90 },
+    { normal: normalForDip(45, 90), strike: 0 },
+    { normal: normalForDip(45, 270), strike: 180 },
+  ];
+  for (const item of cases) {
+    const result = planeOrientationFromNormal(item.normal);
+    close(result.strike, item.strike);
+    const axes = horizontalPlaneAxesFromNormal(item.normal);
+    assert.ok(axes && axes.strike.up === 0);
+  }
+});
+test("reversing the measured normal does not reverse strike or down-dip", () => {
+  const normal = normalForDip(38, 142);
+  const reversed = { east: -normal.east, north: -normal.north, up: -normal.up };
+  assert.deepEqual(planeOrientationFromNormal(normal), planeOrientationFromNormal(reversed));
+  assert.deepEqual(horizontalPlaneAxesFromNormal(normal), horizontalPlaneAxesFromNormal(reversed));
 });

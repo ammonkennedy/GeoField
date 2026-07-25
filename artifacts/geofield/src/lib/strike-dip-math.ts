@@ -1,8 +1,8 @@
 export type Vector3 = { east: number; north: number; up: number };
 export type PlaneOrientation = { dip: number; dipDirection: number | null; strike: number | null };
 export type HorizontalPlaneAxes = {
-  strike: { east: number; north: number };
-  downDip: { east: number; north: number };
+  strike: Vector3;
+  downDip: Vector3;
 };
 
 export const HORIZONTAL_THRESHOLD_DEGREES = 1;
@@ -26,15 +26,36 @@ export function rotateMagneticNormalToTrue(normal: Vector3, declinationDegrees: 
  * strike + 90° = dip direction.
  */
 export function horizontalPlaneAxesFromNormal(normal: Vector3): HorizontalPlaneAxes | null {
-  const horizontalLength = Math.hypot(normal.east, normal.north);
-  if (!Number.isFinite(horizontalLength) || horizontalLength < 1e-9) return null;
+  const normalLength = Math.hypot(normal.east, normal.north, normal.up);
+  if (!Number.isFinite(normalLength) || normalLength < 1e-9) return null;
+  const sign = normal.up < 0 ? -1 : 1;
+  const upward = {
+    east: sign * normal.east / normalLength,
+    north: sign * normal.north / normalLength,
+    up: sign * normal.up / normalLength,
+  };
+
+  // The intersection of the measured plane and true horizontal is n × up.
+  // This construction guarantees both dot(strike, n) = 0 and strike.up = 0.
+  const strikeEast = upward.north;
+  const strikeNorth = -upward.east;
+  const strikeLength = Math.hypot(strikeEast, strikeNorth);
+  if (strikeLength < 1e-9) return null;
+  const strike = {
+    east: strikeEast / strikeLength,
+    north: strikeNorth / strikeLength,
+    up: 0,
+  };
+
+  // The horizontal projection of -n is the direction of steepest descent.
   const downDip = {
-    east: -normal.east / horizontalLength,
-    north: -normal.north / horizontalLength,
+    east: -upward.east / strikeLength,
+    north: -upward.north / strikeLength,
+    up: 0,
   };
   return {
     downDip,
-    strike: { east: -downDip.north, north: downDip.east },
+    strike,
   };
 }
 

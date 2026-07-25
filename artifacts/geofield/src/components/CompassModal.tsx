@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, circularMean, normalizeAzimuth, planeOrientationFromNormal, rotateMagneticNormalToTrue, normalForDip, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, planeOrientationFromNormal, rotateMagneticNormalToTrue, normalForDip, type Vector3 } from "@/lib/strike-dip-math";
 
 type SensorReading = {
   normalEast: number; normalNorth: number; normalUp: number;
   gravityX: number; gravityY: number; gravityZ: number;
+  roll?: number; pitch?: number; yaw?: number;
   quaternionX: number; quaternionY: number; quaternionZ: number; quaternionW: number;
   magneticHeading?: number; trueHeading?: number; headingAccuracy?: number; referenceFrame: string;
 };
@@ -28,10 +29,31 @@ const GeologyMotion = registerPlugin<GeologyMotionPlugin>("GeologyMotion");
 const STABILITY_WINDOW = 12, AZIMUTH_TOLERANCE = 3, DIP_TOLERANCE = 2;
 const fmt = (value: number | null) => value === null ? "—" : `${Math.round(normalizeAzimuth(value)).toString().padStart(3, "0")}°`;
 const signedAngle = (angle: number) => ((angle + 540) % 360) - 180;
+const degrees = (radians: number) => radians * 180 / Math.PI;
+const upwardUnitNormal = (normal: Vector3): Vector3 | null => {
+  const length = Math.hypot(normal.east, normal.north, normal.up);
+  if (!Number.isFinite(length) || length < 1e-9) return null;
+  const sign = normal.up < 0 ? -1 : 1;
+  return { east: sign * normal.east / length, north: sign * normal.north / length, up: sign * normal.up / length };
+};
 
-function PlaneCompass({ strike, dipDirection, dip }: { strike: number | null; dipDirection: number | null; dip: number }) {
+function PlaneCompass({ strikeVector, downDipVector, dip }: { strikeVector: Vector3 | null; downDipVector: Vector3 | null; dip: number }) {
   const ticks = Array.from({ length: 72 }, (_, index) => index * 5);
   const labels = Array.from({ length: 12 }, (_, index) => index * 30);
+  const point = (vector: Vector3, radius: number) => ({ x: 150 + vector.east * radius, y: 150 - vector.north * radius });
+  const strikeStart = strikeVector ? point(strikeVector, -102) : null;
+  const strikeEnd = strikeVector ? point(strikeVector, 102) : null;
+  const strikeLevelStart = strikeVector ? point(strikeVector, -88) : null;
+  const strikeLevelEnd = strikeVector ? point(strikeVector, 88) : null;
+  const downDipEnd = downDipVector ? point(downDipVector, 78) : null;
+  const downDipArrowLeft = downDipVector ? {
+    x: downDipEnd!.x - downDipVector.east * 12 - downDipVector.north * 7,
+    y: downDipEnd!.y + downDipVector.north * 12 - downDipVector.east * 7,
+  } : null;
+  const downDipArrowRight = downDipVector ? {
+    x: downDipEnd!.x - downDipVector.east * 12 + downDipVector.north * 7,
+    y: downDipEnd!.y + downDipVector.north * 12 + downDipVector.east * 7,
+  } : null;
   return <svg viewBox="0 0 300 300" className="mx-auto w-full max-w-[310px] drop-shadow-2xl" aria-label="Geological strike and dip instrument">
     <defs>
       <radialGradient id="geoFace" cx="42%" cy="35%"><stop offset="0" stopColor="#202a3a" /><stop offset="0.68" stopColor="#101722" /><stop offset="1" stopColor="#080d14" /></radialGradient>
@@ -42,13 +64,12 @@ function PlaneCompass({ strike, dipDirection, dip }: { strike: number | null; di
     <circle cx="150" cy="150" r="108" fill="none" stroke="#334155" strokeWidth="1" />
     {ticks.map((degree) => { const angle = (degree - 90) * Math.PI / 180; const major = degree % 30 === 0; const medium = degree % 10 === 0; const outer = 132; const inner = major ? 116 : medium ? 120 : 125; return <line key={degree} x1={150 + outer * Math.cos(angle)} y1={150 + outer * Math.sin(angle)} x2={150 + inner * Math.cos(angle)} y2={150 + inner * Math.sin(angle)} stroke={major ? "#e2e8f0" : medium ? "#94a3b8" : "#526176"} strokeWidth={major ? 2 : 1} />; })}
     {labels.map((degree) => { const angle = (degree - 90) * Math.PI / 180; return <text key={degree} x={150 + 99 * Math.cos(angle)} y={150 + 99 * Math.sin(angle) + 4} textAnchor="middle" fill="#dbe4f0" fontFamily="ui-monospace, SFMono-Regular" fontSize="11" fontWeight="650">{degree}</text>; })}
-    {strike !== null && <g transform={`rotate(${strike},150,150)`} filter="url(#geoGlow)">
-      <line x1="150" y1="48" x2="150" y2="252" stroke="#60a5fa" strokeWidth="6" strokeLinecap="round" />
-      <line x1="150" y1="52" x2="150" y2="248" stroke="#dbeafe" strokeWidth="1.5" />
-      <line x1="141" y1="62" x2="159" y2="62" stroke="#93c5fd" strokeWidth="3" strokeLinecap="round" />
-      <line x1="141" y1="238" x2="159" y2="238" stroke="#93c5fd" strokeWidth="3" strokeLinecap="round" />
+    {strikeStart && strikeEnd && strikeLevelStart && strikeLevelEnd && strikeVector && <g filter="url(#geoGlow)">
+      <line x1={strikeStart.x} y1={strikeStart.y} x2={strikeEnd.x} y2={strikeEnd.y} stroke="#60a5fa" strokeWidth="6" strokeLinecap="round" />
+      <line x1={strikeStart.x} y1={strikeStart.y} x2={strikeEnd.x} y2={strikeEnd.y} stroke="#dbeafe" strokeWidth="1.5" />
+      {[strikeLevelStart, strikeLevelEnd].map((center, index) => <line key={index} x1={center.x - strikeVector.north * 9} y1={center.y - strikeVector.east * 9} x2={center.x + strikeVector.north * 9} y2={center.y + strikeVector.east * 9} stroke="#93c5fd" strokeWidth="3" strokeLinecap="round" />)}
     </g>}
-    {dipDirection !== null && <g transform={`rotate(${dipDirection},150,150)`}><line x1="150" y1="150" x2="150" y2="83" stroke="#fbbf24" strokeWidth="3" strokeDasharray="5 4" /><path d="M150 72 L143 87 L157 87 Z" fill="#fbbf24" /></g>}
+    {downDipEnd && downDipArrowLeft && downDipArrowRight && <g><line x1="150" y1="150" x2={downDipEnd.x} y2={downDipEnd.y} stroke="#fbbf24" strokeWidth="3" strokeDasharray="5 4" /><path d={`M ${downDipEnd.x} ${downDipEnd.y} L ${downDipArrowLeft.x} ${downDipArrowLeft.y} L ${downDipArrowRight.x} ${downDipArrowRight.y} Z`} fill="#fbbf24" /></g>}
     <circle cx="150" cy="150" r="40" fill="#0a1019" stroke="#64748b" strokeWidth="2" />
     <circle cx="150" cy="150" r="29" fill="none" stroke="#334155" />
     <line x1="137" y1="150" x2="163" y2="150" stroke="#64748b" /><line x1="150" y1="137" x2="150" y2="163" stroke="#64748b" />
@@ -63,11 +84,11 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const [error, setError] = useState("");
   const [reading, setReading] = useState<SensorReading | null>(null);
   const [rawOrientation, setRawOrientation] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0 });
-  const [filtered, setFiltered] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0 });
+  const [filtered, setFiltered] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0, strikeVector: null as Vector3 | null, downDipVector: null as Vector3 | null });
   const [stable, setStable] = useState(false);
   const [mockDip, setMockDip] = useState(30);
   const [mockDirection, setMockDirection] = useState(90);
-  const history = useRef<Array<{ strike: number | null; dipDirection: number | null; dip: number }>>([]);
+  const history = useRef<Array<{ strike: number | null; dipDirection: number | null; dip: number; normal: Vector3 }>>([]);
   const native = Capacitor.isNativePlatform();
 
   const process = (raw: SensorReading) => {
@@ -81,14 +102,21 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     setRawOrientation(rawResult);
     const hasDeclination = raw.referenceFrame === "magnetic" && typeof raw.trueHeading === "number" && typeof raw.magneticHeading === "number";
     if (hasDeclination) normal = rotateMagneticNormalToTrue(normal, signedAngle(raw.trueHeading! - raw.magneticHeading!));
+    const unitNormal = upwardUnitNormal(normal);
+    if (!unitNormal) return;
     const result = planeOrientationFromNormal(normal);
-    history.current = [...history.current.slice(-(STABILITY_WINDOW - 1)), result];
-    const azimuths = history.current.map((item) => item.dipDirection).filter((value): value is number => value !== null);
-    const meanDirection = circularMean(azimuths);
-    const meanDip = history.current.reduce((sum, item) => sum + item.dip, 0) / history.current.length;
-    const isStable = history.current.length >= STABILITY_WINDOW && history.current.every((item) => Math.abs(item.dip - meanDip) <= DIP_TOLERANCE && (meanDirection === null || item.dipDirection === null || angularDistance(item.dipDirection, meanDirection) <= AZIMUTH_TOLERANCE));
+    history.current = [...history.current.slice(-(STABILITY_WINDOW - 1)), { ...result, normal: unitNormal }];
+    const meanNormal = upwardUnitNormal(history.current.reduce((sum, item) => ({
+      east: sum.east + item.normal.east,
+      north: sum.north + item.normal.north,
+      up: sum.up + item.normal.up,
+    }), { east: 0, north: 0, up: 0 }));
+    if (!meanNormal) return;
+    const meanOrientation = planeOrientationFromNormal(meanNormal);
+    const axes = horizontalPlaneAxesFromNormal(meanNormal);
+    const isStable = history.current.length >= STABILITY_WINDOW && history.current.every((item) => Math.abs(item.dip - meanOrientation.dip) <= DIP_TOLERANCE && (meanOrientation.dipDirection === null || item.dipDirection === null || angularDistance(item.dipDirection, meanOrientation.dipDirection) <= AZIMUTH_TOLERANCE));
     setReading({ ...raw, normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up });
-    setFiltered({ dip: meanDip, dipDirection: meanDirection, strike: meanDirection === null ? null : normalizeAzimuth(meanDirection - 90) });
+    setFiltered({ ...meanOrientation, strikeVector: axes?.strike ?? null, downDipVector: axes?.downDip ?? null });
     setStable(isStable); setStatus("active");
   };
 
@@ -111,13 +139,33 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const northReference: "true" | "magnetic" = reading?.referenceFrame === "true" || hasDeclination ? "true" : "magnetic";
   const declination = hasDeclination ? signedAngle(reading!.trueHeading! - reading!.magneticHeading!) : undefined;
   const accuracyLow = typeof reading?.headingAccuracy === "number" && reading.headingAccuracy > 20;
-  const diagnostic = useMemo(() => reading ? JSON.stringify({ referenceFrame: reading.referenceFrame, northReference, rawOrientation, correctedOrientation: filtered, declination, heading: { magnetic: reading.magneticHeading, true: reading.trueHeading, accuracy: reading.headingAccuracy }, quaternion: [reading.quaternionX, reading.quaternionY, reading.quaternionZ, reading.quaternionW], gravity: [reading.gravityX, reading.gravityY, reading.gravityZ], normalENU: [reading.normalEast, reading.normalNorth, reading.normalUp], screenOrientation: screen.orientation?.type }, null, 2) : "No reading", [reading, rawOrientation, filtered, northReference, declination]);
+  const renderingAngle = filtered.strikeVector ? normalizeAzimuth(degrees(Math.atan2(filtered.strikeVector.east, filtered.strikeVector.north))) : null;
+  const diagnostic = useMemo(() => reading ? JSON.stringify({
+    attitudeDegrees: {
+      roll: typeof reading.roll === "number" ? degrees(reading.roll) : null,
+      pitch: typeof reading.pitch === "number" ? degrees(reading.pitch) : null,
+      yaw: typeof reading.yaw === "number" ? degrees(reading.yaw) : null,
+    },
+    surfaceNormalENU: { east: reading.normalEast, north: reading.normalNorth, up: reading.normalUp },
+    horizontalStrikeVectorENU: filtered.strikeVector,
+    calculatedStrikeAzimuth: filtered.strike,
+    screenRenderingAngle: renderingAngle,
+    downDipVectorENU: filtered.downDipVector,
+    referenceFrame: reading.referenceFrame,
+    northReference,
+    rawOrientation,
+    declination,
+    heading: { magnetic: reading.magneticHeading, true: reading.trueHeading, accuracy: reading.headingAccuracy },
+    quaternion: [reading.quaternionX, reading.quaternionY, reading.quaternionZ, reading.quaternionW],
+    gravity: [reading.gravityX, reading.gravityY, reading.gravityZ],
+    screenOrientation: screen.orientation?.type,
+  }, null, 2) : "No reading", [reading, rawOrientation, filtered, northReference, declination, renderingAngle]);
   if (!open) return null;
 
   const useMock = () => {
     const normal = normalForDip(mockDip, mockDirection);
     process({ normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, referenceFrame: "magnetic" });
-    history.current = Array(STABILITY_WINDOW).fill(planeOrientationFromNormal(normal)); process({ normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, referenceFrame: "magnetic" });
+    history.current = Array(STABILITY_WINDOW).fill({ ...planeOrientationFromNormal(normal), normal }); process({ normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, referenceFrame: "magnetic" });
   };
   const capture = () => {
     if (filtered.strike === null || filtered.dipDirection === null || !reading) return;
@@ -136,7 +184,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
             <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">Strike · RHR</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{fmt(filtered.strike)}</p></div>
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">Dip</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(filtered.dip)}°</p><p className="text-[10px] text-amber-200/70">plane slope</p></div>
           </div>
-          <PlaneCompass strike={filtered.strike} dipDirection={filtered.dipDirection} dip={filtered.dip} />
+          <PlaneCompass strikeVector={filtered.strikeVector} downDipVector={filtered.downDipVector} dip={filtered.dip} />
           <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Water-flow direction</span></div>
         </div>
         <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${stable ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{stable ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{stable ? "Stable — ready to capture" : "Hold steady to capture"}</div>

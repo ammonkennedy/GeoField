@@ -175,6 +175,7 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
             var payload: JSObject = [
                 "normalEast": -r.m32, "normalNorth": r.m31, "normalUp": r.m33,
                 "gravityX": data.gravity.x, "gravityY": data.gravity.y, "gravityZ": data.gravity.z,
+                "roll": data.attitude.roll, "pitch": data.attitude.pitch, "yaw": data.attitude.yaw,
                 "quaternionX": data.attitude.quaternion.x, "quaternionY": data.attitude.quaternion.y,
                 "quaternionZ": data.attitude.quaternion.z, "quaternionW": data.attitude.quaternion.w,
                 "referenceFrame": referenceFrame
