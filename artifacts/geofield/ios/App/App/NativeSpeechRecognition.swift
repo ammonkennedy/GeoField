@@ -169,6 +169,13 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
         motion.startDeviceMotionUpdates(using: frame, to: OperationQueue.main) { [weak self] data, _ in
             guard let self, let data else { return }
             let r = data.attitude.rotationMatrix
+            let interfaceOrientation: String
+            switch self.bridge?.viewController?.view.window?.windowScene?.interfaceOrientation {
+            case .landscapeLeft: interfaceOrientation = "landscape-left"
+            case .landscapeRight: interfaceOrientation = "landscape-right"
+            case .portraitUpsideDown: interfaceOrientation = "portrait-upside-down"
+            default: interfaceOrientation = "portrait"
+            }
             // Both north-vertical frames are x=north, y=west, z=up. Transposing
             // attitude maps the phone-plane +Z normal into earth ENU. Its sign
             // is immaterial because the geological math always points it upward.
@@ -176,6 +183,10 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
                 "normalEast": -r.m32, "normalNorth": r.m31, "normalUp": r.m33,
                 "gravityX": data.gravity.x, "gravityY": data.gravity.y, "gravityZ": data.gravity.z,
                 "roll": data.attitude.roll, "pitch": data.attitude.pitch, "yaw": data.attitude.yaw,
+                "matrixM11": r.m11, "matrixM12": r.m12, "matrixM13": r.m13,
+                "matrixM21": r.m21, "matrixM22": r.m22, "matrixM23": r.m23,
+                "matrixM31": r.m31, "matrixM32": r.m32, "matrixM33": r.m33,
+                "interfaceOrientation": interfaceOrientation,
                 "quaternionX": data.attitude.quaternion.x, "quaternionY": data.attitude.quaternion.y,
                 "quaternionZ": data.attitude.quaternion.z, "quaternionW": data.attitude.quaternion.w,
                 "referenceFrame": referenceFrame

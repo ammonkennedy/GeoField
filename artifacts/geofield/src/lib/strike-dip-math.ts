@@ -4,6 +4,12 @@ export type HorizontalPlaneAxes = {
   strike: Vector3;
   downDip: Vector3;
 };
+export type RotationMatrix3 = {
+  m11: number; m12: number; m13: number;
+  m21: number; m22: number; m23: number;
+  m31: number; m32: number; m33: number;
+};
+export type ScreenVector = { right: number; up: number };
 
 export const HORIZONTAL_THRESHOLD_DEGREES = 1;
 export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
@@ -57,6 +63,36 @@ export function horizontalPlaneAxesFromNormal(normal: Vector3): HorizontalPlaneA
     downDip,
     strike,
   };
+}
+
+/**
+ * Core Motion's north-vertical reference uses x=north, y=west, z=up, and its
+ * attitude matrix maps reference-frame vectors into device coordinates.
+ * Convert ENU to that reference frame, then rotate into the current UI screen.
+ */
+export function projectEnuVectorToScreen(
+  vector: Vector3,
+  matrix: RotationMatrix3,
+  orientation = "portrait",
+): ScreenVector | null {
+  const referenceX = vector.north;
+  const referenceY = -vector.east;
+  const referenceZ = vector.up;
+  const deviceX = matrix.m11 * referenceX + matrix.m12 * referenceY + matrix.m13 * referenceZ;
+  const deviceY = matrix.m21 * referenceX + matrix.m22 * referenceY + matrix.m23 * referenceZ;
+
+  let right = deviceX;
+  let up = deviceY;
+  if (orientation === "portrait-upside-down") {
+    right = -deviceX; up = -deviceY;
+  } else if (orientation === "landscape-left") {
+    right = deviceY; up = -deviceX;
+  } else if (orientation === "landscape-right") {
+    right = -deviceY; up = deviceX;
+  }
+  const length = Math.hypot(right, up);
+  if (!Number.isFinite(length) || length < 1e-9) return null;
+  return { right: right / length, up: up / length };
 }
 
 export function planeOrientationFromNormal(input: Vector3, threshold = HORIZONTAL_THRESHOLD_DEGREES): PlaneOrientation {

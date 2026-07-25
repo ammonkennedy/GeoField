@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { angularDistance, circularMean, horizontalPlaneAxesFromNormal, normalForDip, normalizeAzimuth, planeOrientationFromNormal } from "./strike-dip-math.ts";
+import { angularDistance, circularMean, horizontalPlaneAxesFromNormal, normalForDip, normalizeAzimuth, planeOrientationFromNormal, projectEnuVectorToScreen, type RotationMatrix3 } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
 
@@ -49,4 +49,40 @@ test("reversing the measured normal does not reverse strike or down-dip", () => 
   const reversed = { east: -normal.east, north: -normal.north, up: -normal.up };
   assert.deepEqual(planeOrientationFromNormal(normal), planeOrientationFromNormal(reversed));
   assert.deepEqual(horizontalPlaneAxesFromNormal(normal), horizontalPlaneAxesFromNormal(reversed));
+});
+test("an upright phone renders the world-horizontal strike across the screen at every yaw", () => {
+  const uprightFacingNorth: RotationMatrix3 = {
+    m11: 0, m12: -1, m13: 0,
+    m21: 0, m22: 0, m23: 1,
+    m31: -1, m32: 0, m33: 0,
+  };
+  const strikeWest = { east: -1, north: 0, up: 0 };
+  const northScreen = projectEnuVectorToScreen(strikeWest, uprightFacingNorth);
+  assert.ok(northScreen);
+  close(Math.abs(northScreen.right), 1);
+  close(northScreen.up, 0);
+
+  const root = Math.SQRT1_2;
+  const uprightAtFortyFiveDegrees: RotationMatrix3 = {
+    m11: root, m12: -root, m13: 0,
+    m21: 0, m22: 0, m23: 1,
+    m31: -root, m32: -root, m33: 0,
+  };
+  const strikeSouthwest = { east: -root, north: -root, up: 0 };
+  const turnedScreen = projectEnuVectorToScreen(strikeSouthwest, uprightAtFortyFiveDegrees);
+  assert.ok(turnedScreen);
+  close(Math.abs(turnedScreen.right), 1);
+  close(turnedScreen.up, 0);
+});
+test("rolling the phone rotates the screen line oppositely so it remains level in the world", () => {
+  const angle = 30 * Math.PI / 180;
+  const rolled: RotationMatrix3 = {
+    m11: 0, m12: -Math.cos(angle), m13: Math.sin(angle),
+    m21: 0, m22: Math.sin(angle), m23: Math.cos(angle),
+    m31: -1, m32: 0, m33: 0,
+  };
+  const screen = projectEnuVectorToScreen({ east: -1, north: 0, up: 0 }, rolled);
+  assert.ok(screen);
+  close(screen.right, -Math.cos(angle));
+  close(screen.up, Math.sin(angle));
 });
