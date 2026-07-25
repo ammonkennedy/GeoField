@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, orientScreenVectorDown, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
@@ -148,8 +148,8 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       : null;
     const screenDownDipVector = downSlope
       ? matrix
-        ? projectEnuVectorToScreen(downSlope, matrix, raw.interfaceOrientation)
-        : { right: axes!.downDip.east, up: axes!.downDip.north }
+        ? orientScreenVectorDown(projectEnuVectorToScreen(downSlope, matrix, raw.interfaceOrientation))
+        : orientScreenVectorDown({ right: axes!.downDip.east, up: axes!.downDip.north })
       : null;
     const isStable = history.current.length >= STABILITY_WINDOW && history.current.every((item) => Math.abs(item.dip - meanOrientation.dip) <= DIP_TOLERANCE && (meanOrientation.dipDirection === null || item.dipDirection === null || angularDistance(item.dipDirection, meanOrientation.dipDirection) <= AZIMUTH_TOLERANCE));
     setReading({ ...raw, normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up });

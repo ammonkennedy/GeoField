@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { angularDistance, circularMean, horizontalPlaneAxesFromNormal, normalForDip, normalizeAzimuth, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
+import { angularDistance, circularMean, horizontalPlaneAxesFromNormal, normalForDip, normalizeAzimuth, orientScreenVectorDown, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
 
@@ -19,6 +19,12 @@ test("reports the right-hand strike branch", () => {
   assert.equal(rightHandStrikeFromDipDirection(0), 90);
   assert.equal(rightHandStrikeFromDipDirection(5), 95);
   assert.equal(rightHandStrikeFromDipDirection(355), 85);
+});
+test("the rendered down-dip arrow always uses the downward screen endpoint", () => {
+  assert.deepEqual(orientScreenVectorDown({ right: 0.6, up: -0.8 }), { right: 0.6, up: -0.8 });
+  assert.deepEqual(orientScreenVectorDown({ right: 0.6, up: 0.8 }), { right: -0.6, up: -0.8 });
+  assert.deepEqual(orientScreenVectorDown({ right: -1, up: 0 }), { right: -1, up: 0 });
+  assert.equal(orientScreenVectorDown(null), null);
 });
 test("circular mean crosses north", () => { const result = circularMean([359, 0, 1]); assert.ok(result !== null && (result < 0.01 || result > 359.99)); });
 test("plane result is invariant to screen orientation because device back normal is unchanged", () => {
