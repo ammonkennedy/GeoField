@@ -15,8 +15,7 @@ export const HORIZONTAL_THRESHOLD_DEGREES = 1;
 export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
 export const rightHandStrikeFromDipDirection = (dipDirection: number) =>
   normalizeAzimuth(dipDirection + 90);
-export const orientScreenVectorDown = (vector: ScreenVector | null): ScreenVector | null =>
-  vector && vector.up > 0 ? { right: -vector.right, up: -vector.up } : vector;
+export const normalHemisphere = (normalUp: number): 1 | -1 => normalUp < 0 ? -1 : 1;
 const radians = (degrees: number) => degrees * Math.PI / 180;
 const degrees = (value: number) => value * 180 / Math.PI;
 

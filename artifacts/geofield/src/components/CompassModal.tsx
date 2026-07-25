@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, orientScreenVectorDown, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, normalHemisphere, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
@@ -104,6 +104,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const [mockDip, setMockDip] = useState(30);
   const [mockDirection, setMockDirection] = useState(90);
   const history = useRef<Array<{ strike: number | null; dipDirection: number | null; dip: number; normal: Vector3 }>>([]);
+  const phoneHemisphere = useRef<1 | -1 | null>(null);
   const native = Capacitor.isNativePlatform();
 
   const process = (raw: SensorReading) => {
@@ -113,6 +114,12 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       return;
     }
     setActiveNorthReference(raw.northReference);
+    const nextHemisphere = normalHemisphere(raw.normalUp);
+    if (phoneHemisphere.current !== null && phoneHemisphere.current !== nextHemisphere) {
+      history.current = [];
+      setStable(false);
+    }
+    phoneHemisphere.current = nextHemisphere;
     const normal = { east: raw.normalEast, north: raw.normalNorth, up: raw.normalUp };
     const rawResult = planeOrientationFromNormal(normal);
     setRawOrientation(rawResult);
@@ -148,8 +155,8 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       : null;
     const screenDownDipVector = downSlope
       ? matrix
-        ? orientScreenVectorDown(projectEnuVectorToScreen(downSlope, matrix, raw.interfaceOrientation))
-        : orientScreenVectorDown({ right: axes!.downDip.east, up: axes!.downDip.north })
+        ? projectEnuVectorToScreen(downSlope, matrix, raw.interfaceOrientation)
+        : { right: axes!.downDip.east, up: axes!.downDip.north }
       : null;
     const isStable = history.current.length >= STABILITY_WINDOW && history.current.every((item) => Math.abs(item.dip - meanOrientation.dip) <= DIP_TOLERANCE && (meanOrientation.dipDirection === null || item.dipDirection === null || angularDistance(item.dipDirection, meanOrientation.dipDirection) <= AZIMUTH_TOLERANCE));
     setReading({ ...raw, normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up });
@@ -160,6 +167,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   useEffect(() => {
     if (!open) return;
     history.current = [];
+    phoneHemisphere.current = null;
     setStatus("starting"); setError(""); setStable(false); setReading(null);
     setRawOrientation({ strike: null, dipDirection: null, dip: 0 });
     setFiltered(emptyFiltered());
