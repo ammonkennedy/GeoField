@@ -14,7 +14,7 @@ export type ScreenVector = { right: number; up: number };
 export const HORIZONTAL_THRESHOLD_DEGREES = 1;
 export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
 export const rightHandStrikeFromDipDirection = (dipDirection: number) =>
-  normalizeAzimuth(dipDirection - 90);
+  normalizeAzimuth(dipDirection + 90);
 const radians = (degrees: number) => degrees * Math.PI / 180;
 const degrees = (value: number) => value * 180 / Math.PI;
 
@@ -107,8 +107,9 @@ export function planeOrientationFromNormal(input: Vector3, threshold = HORIZONTA
   const axes = horizontalPlaneAxesFromNormal(normal);
   if (!axes) return { dip: 0, dipDirection: null, strike: null };
   const dipDirection = normalizeAzimuth(degrees(Math.atan2(axes.downDip.east, axes.downDip.north)));
-  // Resolve the strike line's 180° ambiguity explicitly using RHR: the plane
-  // dips 90° clockwise (to the right) from the reported strike azimuth.
+  // Resolve the strike line's 180° ambiguity using the directed endpoint that
+  // places the rendered down-dip arrow on the right-hand side in this app's
+  // device/world coordinate convention.
   const strike = rightHandStrikeFromDipDirection(dipDirection);
   return { dip, dipDirection, strike };
 }
