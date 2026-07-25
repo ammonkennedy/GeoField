@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, planeOrientationFromNormal, projectEnuVectorToScreen, rotateMagneticNormalToTrue, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, horizontalPlaneAxesFromNormal, normalizeAzimuth, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 type SensorReading = {
   normalEast: number; normalNorth: number; normalUp: number;
@@ -96,16 +96,14 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const native = Capacitor.isNativePlatform();
 
   const process = (raw: SensorReading) => {
-    if (raw.referenceFrame !== "true" && raw.referenceFrame !== "magnetic") {
-      setError("The device supplied a relative orientation frame, so an absolute strike cannot be calculated.");
+    if (raw.referenceFrame !== "magnetic") {
+      setError("The device did not supply a magnetic-north orientation frame, so an absolute magnetic strike cannot be calculated.");
       setStatus("error");
       return;
     }
-    let normal = { east: raw.normalEast, north: raw.normalNorth, up: raw.normalUp };
+    const normal = { east: raw.normalEast, north: raw.normalNorth, up: raw.normalUp };
     const rawResult = planeOrientationFromNormal(normal);
     setRawOrientation(rawResult);
-    const hasDeclination = raw.referenceFrame === "magnetic" && typeof raw.trueHeading === "number" && typeof raw.magneticHeading === "number";
-    if (hasDeclination) normal = rotateMagneticNormalToTrue(normal, signedAngle(raw.trueHeading! - raw.magneticHeading!));
     const unitNormal = upwardUnitNormal(normal);
     if (!unitNormal) return;
     const result = planeOrientationFromNormal(normal);
@@ -163,7 +161,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   }, [open, native]);
 
   const hasDeclination = reading?.referenceFrame === "magnetic" && typeof reading.trueHeading === "number" && typeof reading.magneticHeading === "number";
-  const northReference: "true" | "magnetic" = reading?.referenceFrame === "true" || hasDeclination ? "true" : "magnetic";
+  const northReference: "magnetic" = "magnetic";
   const declination = hasDeclination ? signedAngle(reading!.trueHeading! - reading!.magneticHeading!) : undefined;
   const accuracyLow = typeof reading?.headingAccuracy === "number" && reading.headingAccuracy > 20;
   const renderingAngle = filtered.screenStrikeVector ? normalizeAzimuth(degrees(Math.atan2(filtered.screenStrikeVector.right, filtered.screenStrikeVector.up))) : null;

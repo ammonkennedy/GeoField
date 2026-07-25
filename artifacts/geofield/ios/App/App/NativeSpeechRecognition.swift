@@ -151,21 +151,14 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
         if CLLocationManager.headingAvailable() { location.startUpdatingHeading() }
         motion.deviceMotionUpdateInterval = 1.0 / 15.0
         let frames = CMMotionManager.availableAttitudeReferenceFrames()
-        // Prefer Core Motion's true-north frame so strike is produced in one
-        // authoritative earth frame. Magnetic north remains a valid fallback,
-        // but a relative frame must never be presented as an absolute azimuth.
-        let frame: CMAttitudeReferenceFrame
-        let referenceFrame: String
-        if frames.contains(.xTrueNorthZVertical) {
-            frame = .xTrueNorthZVertical
-            referenceFrame = "true"
-        } else if frames.contains(.xMagneticNorthZVertical) {
-            frame = .xMagneticNorthZVertical
-            referenceFrame = "magnetic"
-        } else {
-            call.reject("A north-referenced Core Motion frame is unavailable.")
+        // Geological measurements in GeoField are referenced to magnetic north.
+        // Do not silently substitute true north or a relative attitude frame.
+        guard frames.contains(.xMagneticNorthZVertical) else {
+            call.reject("A magnetic-north Core Motion frame is unavailable.")
             return
         }
+        let frame: CMAttitudeReferenceFrame = .xMagneticNorthZVertical
+        let referenceFrame = "magnetic"
         motion.startDeviceMotionUpdates(using: frame, to: OperationQueue.main) { [weak self] data, _ in
             guard let self, let data else { return }
             let r = data.attitude.rotationMatrix
