@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirrorTrueAzimuthAroundMagnetic, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, bearingInMirroredTrueNorthFrame, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
@@ -141,8 +141,8 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       raw.northReference === "true" && liveDeclination !== null
         ? {
             ...orientation,
-            strike: orientation.strike === null ? null : mirrorTrueAzimuthAroundMagnetic(orientation.strike, liveDeclination),
-            dipDirection: orientation.dipDirection === null ? null : mirrorTrueAzimuthAroundMagnetic(orientation.dipDirection, liveDeclination),
+            strike: orientation.strike === null ? null : bearingInMirroredTrueNorthFrame(orientation.strike, liveDeclination),
+            dipDirection: orientation.dipDirection === null ? null : bearingInMirroredTrueNorthFrame(orientation.dipDirection, liveDeclination),
           }
         : orientation;
     const normal = { east: raw.normalEast, north: raw.normalNorth, up: raw.normalUp };
@@ -188,7 +188,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     const screenGravity = deviceVectorToScreen(raw.gravityX, raw.gravityY, raw.interfaceOrientation);
     const screenDownDipVector = perpendicularScreenVector(screenStrikeVector, screenGravity ?? projectedDownSlope);
     const heading = raw.northReference === "true" && liveDeclination !== null && typeof raw.trueHeading === "number"
-      ? mirrorTrueAzimuthAroundMagnetic(raw.trueHeading, liveDeclination)
+      ? mirroredTrueNorthHeading(raw.trueHeading, liveDeclination)
       : raw.northReference === "true" ? raw.trueHeading : raw.magneticHeading;
     const headingRadians = typeof heading === "number" ? heading * Math.PI / 180 : null;
     const headingNorthVector = headingRadians === null ? null : { right: -Math.sin(headingRadians), up: Math.cos(headingRadians) };

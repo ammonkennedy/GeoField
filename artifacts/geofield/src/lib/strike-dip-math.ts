@@ -15,8 +15,10 @@ export const HORIZONTAL_THRESHOLD_DEGREES = 1;
 export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
 export const rightHandStrikeFromDipDirection = (dipDirection: number) =>
   normalizeAzimuth(dipDirection + 90);
-export const mirrorTrueAzimuthAroundMagnetic = (trueAzimuth: number, declination: number) =>
-  normalizeAzimuth(trueAzimuth - 2 * declination);
+export const mirroredTrueNorthHeading = (trueHeading: number, declination: number) =>
+  normalizeAzimuth(trueHeading - 2 * declination);
+export const bearingInMirroredTrueNorthFrame = (trueBearing: number, declination: number) =>
+  normalizeAzimuth(trueBearing + 2 * declination);
 const radians = (degrees: number) => degrees * Math.PI / 180;
 const degrees = (value: number) => value * 180 / Math.PI;
 
