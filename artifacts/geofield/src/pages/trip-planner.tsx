@@ -726,8 +726,9 @@ export default function TripPlannerPage() {
     const collectedColor = sampleColors[site.sampleType ?? "other"];
     el.style.cssText = collected
       ? `display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:${collectedColor};border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:12px;font-weight:700;color:white;cursor:pointer;`
-      : "display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:#f59e0b;border-radius:50%;border:3px dashed white;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:15px;cursor:pointer;";
-    el.innerHTML = collected ? `<span style="transform:rotate(45deg)">${plannedSiteSampleTypeLabel(site).charAt(0)}</span>` : "☆";
+      : "width:20px;height:20px;background:#f59e0b;border-radius:50%;border:3px solid white;box-shadow:0 2px 7px rgba(0,0,0,0.4);cursor:pointer;";
+    el.setAttribute("aria-label", collected ? site.name : "Future sample site");
+    el.innerHTML = collected ? `<span style="transform:rotate(45deg)">${plannedSiteSampleTypeLabel(site).charAt(0)}</span>` : "";
 
     const popup = new L.Popup({ closeButton: false, offset: [0, -18] }).setHTML(
       `<div style="font-family:system-ui,sans-serif;"><strong>${collected ? site.name : "Future Sample Site"}</strong>${
