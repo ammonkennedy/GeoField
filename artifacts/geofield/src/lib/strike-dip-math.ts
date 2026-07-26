@@ -19,6 +19,8 @@ export const mirroredTrueNorthHeading = (trueHeading: number, declination: numbe
   normalizeAzimuth(trueHeading - 2 * declination);
 export const bearingInMirroredTrueNorthFrame = (trueBearing: number, declination: number) =>
   normalizeAzimuth(trueBearing + 2 * declination);
+export const calibratedStrike = (strike: number | null, offsetDegrees = 10) =>
+  strike === null ? null : normalizeAzimuth(strike + offsetDegrees);
 const radians = (degrees: number) => degrees * Math.PI / 180;
 const degrees = (value: number) => value * 180 / Math.PI;
 

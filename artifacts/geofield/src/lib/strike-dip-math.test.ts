@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { angularDistance, bearingInMirroredTrueNorthFrame, circularMean, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirroredTrueNorthHeading, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
+import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, circularMean, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirroredTrueNorthHeading, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
 
@@ -21,6 +21,12 @@ test("bearings rotate opposite the displayed north axis", () => {
   assert.equal(bearingInMirroredTrueNorthFrame(90, 10), 110);
   assert.equal(bearingInMirroredTrueNorthFrame(10, -10), 350);
   assert.equal(bearingInMirroredTrueNorthFrame(350, 10), 10);
+});
+test("live strike calibration adds ten degrees and wraps at north", () => {
+  assert.equal(calibratedStrike(100), 110);
+  assert.equal(calibratedStrike(355), 5);
+  assert.equal(calibratedStrike(0), 10);
+  assert.equal(calibratedStrike(null), null);
 });
 test("reports the right-hand strike branch", () => {
   assert.equal(rightHandStrikeFromDipDirection(90), 180);

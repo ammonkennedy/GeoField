@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, bearingInMirroredTrueNorthFrame, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
@@ -137,14 +137,16 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     const liveDeclination = typeof raw.trueHeading === "number" && typeof raw.magneticHeading === "number"
       ? signedAngle(raw.trueHeading - raw.magneticHeading)
       : null;
-    const correctTrueOrientation = (orientation: PlaneOrientation): PlaneOrientation =>
-      raw.northReference === "true" && liveDeclination !== null
+    const correctTrueOrientation = (orientation: PlaneOrientation): PlaneOrientation => {
+      const referenced = raw.northReference === "true" && liveDeclination !== null
         ? {
             ...orientation,
             strike: orientation.strike === null ? null : bearingInMirroredTrueNorthFrame(orientation.strike, liveDeclination),
             dipDirection: orientation.dipDirection === null ? null : bearingInMirroredTrueNorthFrame(orientation.dipDirection, liveDeclination),
           }
         : orientation;
+      return { ...referenced, strike: calibratedStrike(referenced.strike) };
+    };
     const normal = { east: raw.normalEast, north: raw.normalNorth, up: raw.normalUp };
     const rawResult = correctTrueOrientation(planeOrientationFromNormal(normal));
     setRawOrientation(rawResult);
