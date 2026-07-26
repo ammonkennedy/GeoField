@@ -15,10 +15,7 @@ const QUEUE_KEY = "geofield_offline_queue";
 export const QUEUE_UPDATED_EVENT = "offline-queue-updated";
 
 export function getQueue(): QueuedSample[] {
-  const queue = readDurableArray<QueuedSample>(QUEUE_KEY);
-  const retained = queue.filter((item) => item.payload?.sampleType !== "air");
-  if (retained.length !== queue.length) writeDurableArray(QUEUE_KEY, retained);
-  return retained;
+  return readDurableArray<QueuedSample>(QUEUE_KEY);
 }
 
 export function setQueue(queue: QueuedSample[]) {

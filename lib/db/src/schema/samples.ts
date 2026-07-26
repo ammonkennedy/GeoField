@@ -12,7 +12,8 @@ export const foldersTable = pgTable("folders", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
-export const sampleTypeEnum = ["water", "rock", "soil_sand", "other"] as const;
+// "air" is retained for legacy records. New air samples are rejected by the API.
+export const sampleTypeEnum = ["water", "rock", "soil_sand", "air", "other"] as const;
 
 export const samplesTable = pgTable("samples", {
   id: serial("id").primaryKey(),

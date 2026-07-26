@@ -31,12 +31,14 @@ const TYPE_COLORS: Record<string, string> = {
   water: "#2d7dd2",
   rock: "#8b5e3c",
   soil_sand: "#c49a3c",
+  air: "#64748b",
   other: "#64748b",
 };
 const TYPE_LABELS: Record<string, string> = {
   water: "Water",
   rock: "Rock",
   soil_sand: "Soil/Sediment",
+  air: "Air",
   other: "Other",
 };
 
@@ -195,6 +197,7 @@ export default function MapViewPage() {
     queuedAt: item.queuedAt,
   })), [queuedSamples]);
   const allSamples = useMemo(() => mergeCloudAndLocal((serverSamples ?? cachedCloudSamples) as any[], offlineSamples as any[]), [serverSamples, cachedCloudSamples, offlineSamples]);
+  const hasLegacyAirSamples = allSamples.some((sample: any) => sample.sampleType === "air");
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
@@ -529,7 +532,7 @@ export default function MapViewPage() {
       const isFutureSite = (sample.fields as any)?.collectionStatus === "planned";
       const color = isFutureSite ? "#f59e0b" : TYPE_COLORS[sample.sampleType] || "#666";
       const label = getSampleLabel(sample);
-      const letter = sample.sampleType === "water" ? "W" : sample.sampleType === "rock" ? "R" : sample.sampleType === "other" ? String(label).charAt(0).toUpperCase() || "O" : "S";
+      const letter = sample.sampleType === "water" ? "W" : sample.sampleType === "rock" ? "R" : sample.sampleType === "air" ? "A" : sample.sampleType === "other" ? String(label).charAt(0).toUpperCase() || "O" : "S";
       const dateStr = (sample.fields as any)?.collectionDate
         ? new Date((sample.fields as any).collectionDate).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
         : "";
@@ -799,7 +802,9 @@ export default function MapViewPage() {
 
           {/* Legend */}
           <div className="flex gap-3 ml-auto flex-wrap">
-            {Object.entries(TYPE_COLORS).map(([type, color]) => (
+            {Object.entries(TYPE_COLORS)
+              .filter(([type]) => type !== "air" || hasLegacyAirSamples)
+              .map(([type, color]) => (
               <div key={type} className="flex items-center gap-1.5 text-sm">
                 <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
                 <span className="text-muted-foreground">{TYPE_LABELS[type]}</span>

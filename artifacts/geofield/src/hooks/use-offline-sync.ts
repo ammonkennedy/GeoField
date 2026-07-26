@@ -26,7 +26,8 @@ function isLocalDatasetId(value: unknown) {
 
 function getSyncableQueue() {
   return getQueue().filter((item) =>
-    item.payload.fields?.collectionStatus !== "planned"
+    item.payload.fields?.collectionStatus !== "planned" &&
+    item.payload.sampleType !== "air"
   );
 }
 
