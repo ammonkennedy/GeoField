@@ -61,6 +61,43 @@ export function Layout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [logoOpen]);
 
+  useEffect(() => {
+    if (!sidebarOpen || !window.matchMedia("(max-width: 767px)").matches) return;
+
+    const scrollY = window.scrollY;
+    const previousBodyStyles = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+      overscrollBehavior: document.body.style.overscrollBehavior,
+    };
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    document.body.style.overscrollBehavior = "none";
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape);
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyStyles.overflow;
+      document.body.style.position = previousBodyStyles.position;
+      document.body.style.top = previousBodyStyles.top;
+      document.body.style.width = previousBodyStyles.width;
+      document.body.style.overscrollBehavior = previousBodyStyles.overscrollBehavior;
+      window.scrollTo(0, scrollY);
+    };
+  }, [sidebarOpen]);
+
   // Keep locally-created datasets in sync
   useEffect(() => {
     const refresh = () => setLocalDatasets(getLocalDatasets());
@@ -75,7 +112,10 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen min-h-[100dvh] bg-background flex flex-col md:flex-row">
       {/* Mobile Header */}
-      <header className="sticky top-0 isolate z-50 flex shrink-0 items-center justify-between border-b bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden">
+      <header className={cn(
+        "sticky top-0 isolate z-[60] flex shrink-0 items-center justify-between border-b bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden",
+        sidebarOpen && "pointer-events-none"
+      )}>
         <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
           <button type="button" className="touch-manipulation rounded-[22%] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="View GeoField logo full screen" onClick={() => setLogoOpen(true)}>
             <GeoFieldLogo className="h-9 w-9 shadow-sm" />
@@ -86,7 +126,7 @@ export function Layout({ children }: { children: ReactNode }) {
           type="button"
           variant="ghost"
           size="icon"
-          className="relative z-10 min-h-11 min-w-11 touch-manipulation rounded-full"
+          className="pointer-events-auto relative z-10 min-h-11 min-w-11 touch-manipulation rounded-full"
           aria-label={sidebarOpen ? "Close navigation menu" : "Open navigation menu"}
           aria-expanded={sidebarOpen}
           aria-controls="mobile-navigation"
@@ -101,7 +141,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <aside
         id="mobile-navigation"
         className={cn(
-          "fixed left-0 top-0 z-40 flex h-screen h-[100dvh] w-[280px] flex-col border-r bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-[12px_0_40px_rgba(15,23,42,0.04)] transition-transform duration-300 ease-in-out md:sticky md:pointer-events-auto md:pt-0",
+          "fixed left-0 top-0 z-50 flex h-screen h-[100dvh] w-[280px] overscroll-contain flex-col border-r bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-[12px_0_40px_rgba(15,23,42,0.04)] transition-transform duration-300 ease-in-out md:sticky md:pointer-events-auto md:pt-0",
           sidebarOpen
             ? "translate-x-0 pointer-events-auto"
             : "-translate-x-full pointer-events-none md:translate-x-0"
@@ -390,7 +430,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-40 touch-none bg-black/50 backdrop-blur-sm md:hidden"
           aria-hidden="true"
           onClick={() => setSidebarOpen(false)}
         />
