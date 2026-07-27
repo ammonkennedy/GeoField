@@ -1,9 +1,8 @@
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Capacitor } from "@capacitor/core";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { isAuthConfigured, useGetCurrentAuthUser } from "@workspace/api-client-react";
+import { useGetCurrentAuthUser } from "@workspace/api-client-react";
 
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -18,20 +17,18 @@ import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
 
-// A configured native build is account-first. Clear the fallback left by older
-// unconfigured simulator builds so every user reaches Cognito login again.
-if (Capacitor.isNativePlatform() && isAuthConfigured()) {
-  localStorage.removeItem("geofield-demo-mode");
-}
+// Remove the guest-mode flag left by older versions. Application routes now
+// always require an authenticated account.
+localStorage.removeItem("geofield-demo-mode");
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { data, isLoading } = useGetCurrentAuthUser();
 
-  if (isLoading && localStorage.getItem("geofield-demo-mode") !== "true") {
+  if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
-  if (!data?.user && localStorage.getItem("geofield-demo-mode") !== "true") {
+  if (!data?.user) {
     return <Redirect to="/login" />;
   }
 

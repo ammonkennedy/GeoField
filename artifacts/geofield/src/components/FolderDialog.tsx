@@ -29,7 +29,7 @@ export function FolderDialog({
   }, [folder, open]);
 
   const isPending = createFolder.isPending || updateFolder.isPending;
-  const useLocalDatasets = localStorage.getItem("geofield-demo-mode") === "true" || !navigator.onLine;
+  const useLocalDatasets = !navigator.onLine;
 
   const finish = () => {
     setName("");

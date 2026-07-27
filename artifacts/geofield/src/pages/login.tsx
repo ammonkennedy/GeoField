@@ -43,7 +43,6 @@ export default function Login() {
         setMessage("Email confirmed. You can sign in now.");
       } else {
         await signInUser({ email, password });
-        localStorage.removeItem("geofield-demo-mode");
         queryClient.clear();
         await refetch();
         setLocation("/");
@@ -119,19 +118,8 @@ export default function Login() {
               <Button variant="outline" className="w-full" onClick={() => setMode("signin")}>Back to sign in</Button>
             ))}
 
-            <Button
-              variant={cloudAuthConfigured ? "ghost" : "default"}
-              className="w-full"
-              onClick={() => {
-                localStorage.setItem("geofield-demo-mode", "true");
-                window.location.href = "/";
-              }}
-            >
-              {cloudAuthConfigured ? "Continue without Login" : "Use GeoField on This Device"}
-            </Button>
-
             <p className="text-xs text-muted-foreground text-center">
-              Sign in to sync your field data to your account across devices.
+              Create an account or sign in to use GeoField and sync your field data across devices.
             </p>
           </div>
 

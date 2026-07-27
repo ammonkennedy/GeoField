@@ -32,7 +32,6 @@ function getSyncableQueue() {
 }
 
 function getPendingSyncCount() {
-  if (localStorage.getItem("geofield-demo-mode") === "true") return 0;
   return getPendingLocalDatasets().length + getSyncableQueue().length;
 }
 
@@ -83,7 +82,6 @@ export function useOfflineSync() {
 
   const runSync = useCallback(async (rebuild: boolean) => {
     if (syncingRef.current) return;
-    if (localStorage.getItem("geofield-demo-mode") === "true") return;
     const pendingDatasets = getPendingLocalDatasets();
     syncingRef.current = true;
     setIsSyncing(true);

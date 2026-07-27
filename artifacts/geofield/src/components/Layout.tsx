@@ -34,7 +34,6 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     await signOutUser();
-    localStorage.removeItem("geofield-demo-mode");
     clearCachedCloudSamples();
     queryClient.clear();
     setSidebarOpen(false);

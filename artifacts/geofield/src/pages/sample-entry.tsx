@@ -560,7 +560,6 @@ export default function SampleEntry() {
     const folderId = syncedLocalDataset?.cloudId ?? selectedFolderId;
     const shouldSaveOffline =
       !navigator.onLine ||
-      localStorage.getItem("geofield-demo-mode") === "true" ||
       isLocalDatasetId(folderId);
     const payload = {
       sampleType: data.sampleType,
