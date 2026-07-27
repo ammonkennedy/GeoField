@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect } from "react";
+import { ReactNode, useState, useEffect, useLayoutEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { isAuthConfigured, signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
@@ -61,7 +61,7 @@ export function Layout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [logoOpen]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!sidebarOpen || !window.matchMedia("(max-width: 767px)").matches) return;
 
     const scrollY = window.scrollY;
@@ -84,18 +84,42 @@ export function Layout({ children }: { children: ReactNode }) {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setSidebarOpen(false);
     };
-    const preventBackgroundScroll = (event: TouchEvent | WheelEvent) => {
-      const sidebar = document.getElementById("mobile-navigation");
-      if (!sidebar?.contains(event.target as Node)) event.preventDefault();
+    let touchStartY = 0;
+    const rememberTouchStart = (event: TouchEvent) => {
+      touchStartY = event.touches[0]?.clientY ?? 0;
+    };
+    const preventBackgroundTouchScroll = (event: TouchEvent) => {
+      const scrollRegion = document.getElementById("mobile-navigation-scroll");
+      const target = event.target as Node;
+      if (!scrollRegion?.contains(target)) {
+        event.preventDefault();
+        return;
+      }
+
+      const currentY = event.touches[0]?.clientY ?? touchStartY;
+      const movingDown = currentY > touchStartY;
+      touchStartY = currentY;
+      const atTop = scrollRegion.scrollTop <= 0;
+      const atBottom = scrollRegion.scrollTop + scrollRegion.clientHeight >= scrollRegion.scrollHeight - 1;
+      const cannotScroll = scrollRegion.scrollHeight <= scrollRegion.clientHeight;
+      if (cannotScroll || (atTop && movingDown) || (atBottom && !movingDown)) {
+        event.preventDefault();
+      }
+    };
+    const preventBackgroundWheel = (event: WheelEvent) => {
+      const scrollRegion = document.getElementById("mobile-navigation-scroll");
+      if (!scrollRegion?.contains(event.target as Node)) event.preventDefault();
     };
     window.addEventListener("keydown", closeOnEscape);
-    document.addEventListener("touchmove", preventBackgroundScroll, { passive: false });
-    document.addEventListener("wheel", preventBackgroundScroll, { passive: false });
+    document.addEventListener("touchstart", rememberTouchStart, { passive: true });
+    document.addEventListener("touchmove", preventBackgroundTouchScroll, { passive: false });
+    document.addEventListener("wheel", preventBackgroundWheel, { passive: false });
 
     return () => {
       window.removeEventListener("keydown", closeOnEscape);
-      document.removeEventListener("touchmove", preventBackgroundScroll);
-      document.removeEventListener("wheel", preventBackgroundScroll);
+      document.removeEventListener("touchstart", rememberTouchStart);
+      document.removeEventListener("touchmove", preventBackgroundTouchScroll);
+      document.removeEventListener("wheel", preventBackgroundWheel);
       document.documentElement.style.overflow = previousHtmlOverflow;
       document.body.style.overflow = previousBodyStyles.overflow;
       document.body.style.position = previousBodyStyles.position;
@@ -118,7 +142,10 @@ export function Layout({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-background flex flex-col md:flex-row">
+    <div className={cn(
+      "min-h-screen min-h-[100dvh] bg-background flex flex-col md:flex-row",
+      sidebarOpen && "fixed inset-0 h-[100dvh] w-full overflow-hidden md:static md:h-auto md:w-auto md:overflow-visible"
+    )}>
       {/* Mobile Header */}
       <header className={cn(
         "sticky top-0 isolate z-[120] flex shrink-0 items-center justify-between border-b bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden",
@@ -176,7 +203,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col gap-6 overflow-y-auto pb-5 pt-8 md:py-5">
+        <div id="mobile-navigation-scroll" className="flex min-h-0 flex-1 touch-pan-y flex-col gap-6 overflow-y-auto overscroll-y-contain pb-5 pt-8 md:py-5">
           {/* Main Nav */}
           <div className="px-4">
             <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.18em] mb-3 px-2">Views</h3>
@@ -306,7 +333,6 @@ export function Layout({ children }: { children: ReactNode }) {
               )}
             </nav>
           </div>
-        </div>
 
         {/* Offline queue indicator */}
         {queueCount > 0 && (
@@ -361,7 +387,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
 
         {/* User footer */}
-        <div className="p-4 border-t border-border/50 bg-card mt-auto">
+        <div className="shrink-0 border-t border-border/50 bg-card p-4">
           {user ? (
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-accent text-accent-foreground flex items-center justify-center font-bold font-display shadow-inner">
@@ -384,6 +410,7 @@ export function Layout({ children }: { children: ReactNode }) {
               On-device mode
             </div>
           )}
+        </div>
         </div>
       </aside>
 
