@@ -63,6 +63,57 @@ export const WaterFields = ({ register }: any) => (
   </div>
 );
 
+export const AirFields = ({ register }: any) => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="space-y-2"><Label>PID Reading</Label><ParameterInput register={register} name="fields.pidReading" placeholder="e.g. 2.450 or ND" /></div>
+    <div className="space-y-2">
+      <Label>PID Units</Label>
+      <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.pidUnits")}>
+        <option value="">Select units...</option>
+        <option value="ppm">ppm</option>
+        <option value="ppb">ppb</option>
+        <option value="mg/m3">mg/m3</option>
+        <option value="ug/m3">ug/m3</option>
+      </select>
+    </div>
+    <div className="space-y-2"><Label>Target Compound / VOC</Label><Input {...register("fields.targetCompound")} placeholder="e.g. Benzene, total VOCs" /></div>
+    <div className="space-y-2">
+      <Label>Lamp Energy</Label>
+      <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.lampEnergy")}>
+        <option value="">Select lamp...</option>
+        <option value="9.8 eV">9.8 eV</option>
+        <option value="10.6 eV">10.6 eV</option>
+        <option value="11.7 eV">11.7 eV</option>
+      </select>
+    </div>
+    <div className="space-y-2"><Label>Calibration Gas</Label><Input {...register("fields.calibrationGas")} placeholder="e.g. Isobutylene" /></div>
+    <div className="space-y-2">
+      <Label>Alarm Status</Label>
+      <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.alarmStatus")}>
+        <option value="">Select status...</option>
+        <option value="No Alarm">No Alarm</option>
+        <option value="Low Alarm">Low Alarm</option>
+        <option value="High Alarm">High Alarm</option>
+        <option value="STEL Alarm">STEL Alarm</option>
+        <option value="TWA Alarm">TWA Alarm</option>
+      </select>
+    </div>
+    <div className="space-y-2">
+      <Label>Sampling Mode</Label>
+      <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.samplingMode")}>
+        <option value="">Select mode...</option>
+        <option value="Grab">Grab</option>
+        <option value="Continuous">Continuous</option>
+        <option value="Headspace">Headspace</option>
+        <option value="Breathing Zone">Breathing Zone</option>
+      </select>
+    </div>
+    <div className="space-y-2"><Label>Ambient Temp (°C)</Label><ParameterInput register={register} name="fields.ambientTemperature" /></div>
+    <div className="space-y-2"><Label>Relative Humidity (%)</Label><ParameterInput register={register} name="fields.relativeHumidity" /></div>
+    <div className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, solvent, petroleum" /></div>
+  </div>
+);
+
 export const RockFields = ({ register }: { register: any }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
     <div className="space-y-2">

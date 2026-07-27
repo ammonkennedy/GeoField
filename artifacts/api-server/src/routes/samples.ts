@@ -5,7 +5,7 @@ import { eq, and, isNull, isNotNull, lt } from "drizzle-orm";
 const RETENTION_DAYS = 20;
 
 const router: IRouter = Router();
-const validSampleTypes = new Set<string>(sampleTypeEnum);
+const creatableSampleTypes = new Set<string>(sampleTypeEnum.filter((type) => type !== "air"));
 
 function parseRequiredId(value: string | undefined): number | null {
   if (!value) return null;
@@ -72,7 +72,7 @@ router.post("/samples", async (req, res) => {
   const userId = req.user!.id;
   const { sampleType, sampleId, folderId, notes, fields } = req.body;
 
-  if (!sampleType || !validSampleTypes.has(sampleType)) {
+  if (!sampleType || !creatableSampleTypes.has(sampleType)) {
     res.status(400).json({ error: "Invalid sampleType" });
     return;
   }

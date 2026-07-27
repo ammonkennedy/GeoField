@@ -126,7 +126,7 @@ export const GetSamplesQueryParams = zod.object({
 
 export const GetSamplesResponseItem = zod.object({
   id: zod.number(),
-  sampleType: zod.enum(["water", "rock", "soil_sand", "other"]),
+  sampleType: zod.enum(["water", "rock", "soil_sand", "air", "other"]),
   sampleId: zod.string(),
   userId: zod.string(),
   folderId: zod.number().nullish(),
@@ -161,7 +161,7 @@ export const GetSampleParams = zod.object({
 
 export const GetSampleResponse = zod.object({
   id: zod.number(),
-  sampleType: zod.enum(["water", "rock", "soil_sand", "other"]),
+  sampleType: zod.enum(["water", "rock", "soil_sand", "air", "other"]),
   sampleId: zod.string(),
   userId: zod.string(),
   folderId: zod.number().nullish(),
@@ -190,7 +190,7 @@ export const UpdateSampleBody = zod.object({
 
 export const UpdateSampleResponse = zod.object({
   id: zod.number(),
-  sampleType: zod.enum(["water", "rock", "soil_sand", "other"]),
+  sampleType: zod.enum(["water", "rock", "soil_sand", "air", "other"]),
   sampleId: zod.string(),
   userId: zod.string(),
   folderId: zod.number().nullish(),
@@ -223,7 +223,7 @@ export const MoveSampleBody = zod.object({
 
 export const MoveSampleResponse = zod.object({
   id: zod.number(),
-  sampleType: zod.enum(["water", "rock", "soil_sand", "other"]),
+  sampleType: zod.enum(["water", "rock", "soil_sand", "air", "other"]),
   sampleId: zod.string(),
   userId: zod.string(),
   folderId: zod.number().nullish(),

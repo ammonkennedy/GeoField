@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { angularDistance, circularMean, horizontalPlaneAxesFromNormal, normalForDip, normalHemisphere, normalizeAzimuth, perpendicularDownScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
+import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, circularMean, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirroredTrueNorthHeading, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
 
@@ -12,6 +12,22 @@ for (const [name, direction, strike] of [["north", 0, 90], ["east", 90, 180], ["
   });
 }
 test("normalizes azimuths", () => { assert.equal(normalizeAzimuth(-10), 350); assert.equal(normalizeAzimuth(360), 0); assert.equal(normalizeAzimuth(370), 10); });
+test("true-north correction is mirrored around magnetic north", () => {
+  assert.equal(mirroredTrueNorthHeading(110, 10), 90);
+  assert.equal(mirroredTrueNorthHeading(350, -10), 10);
+  assert.equal(mirroredTrueNorthHeading(5, 10), 345);
+});
+test("bearings rotate opposite the displayed north axis", () => {
+  assert.equal(bearingInMirroredTrueNorthFrame(90, 10), 110);
+  assert.equal(bearingInMirroredTrueNorthFrame(10, -10), 350);
+  assert.equal(bearingInMirroredTrueNorthFrame(350, 10), 10);
+});
+test("live strike calibration adds ten degrees and wraps at north", () => {
+  assert.equal(calibratedStrike(100), 110);
+  assert.equal(calibratedStrike(355), 5);
+  assert.equal(calibratedStrike(0), 10);
+  assert.equal(calibratedStrike(null), null);
+});
 test("reports the right-hand strike branch", () => {
   assert.equal(rightHandStrikeFromDipDirection(90), 180);
   assert.equal(rightHandStrikeFromDipDirection(180), 270);
@@ -20,24 +36,28 @@ test("reports the right-hand strike branch", () => {
   assert.equal(rightHandStrikeFromDipDirection(5), 95);
   assert.equal(rightHandStrikeFromDipDirection(355), 85);
 });
-test("phone hemisphere changes only after the plane normal crosses 90 degrees", () => {
-  assert.equal(normalHemisphere(1), 1);
-  assert.equal(normalHemisphere(0.000001), 1);
-  assert.equal(normalHemisphere(0), 1);
-  assert.equal(normalHemisphere(-0.000001), -1);
-  assert.equal(normalHemisphere(-1), -1);
+test("yellow arrow is perpendicular to strike and selects the gravity-facing endpoint", () => {
+  const strike = { right: 1, up: 0 };
+  const towardScreenBottom = perpendicularScreenVector(strike, { right: 0, up: -1 });
+  const towardScreenTop = perpendicularScreenVector(strike, { right: 0, up: 1 });
+  assert.deepEqual(towardScreenBottom, { right: 0, up: -1 });
+  assert.ok(towardScreenTop);
+  close(towardScreenTop.right, 0);
+  close(towardScreenTop.up, 1);
+  assert.ok(towardScreenBottom && strike.right * towardScreenBottom.right + strike.up * towardScreenBottom.up === 0);
+  assert.ok(towardScreenTop && strike.right * towardScreenTop.right + strike.up * towardScreenTop.up === 0);
 });
-test("rendered down-dip arrow stays downward and perpendicular to strike", () => {
-  for (const strike of [
-    { right: 1, up: 0 },
-    { right: Math.SQRT1_2, up: Math.SQRT1_2 },
-    { right: -Math.SQRT1_2, up: Math.SQRT1_2 },
-  ]) {
-    const arrow = perpendicularDownScreenVector(strike, { right: 0.2, up: -0.9 });
-    assert.ok(arrow);
-    close(strike.right * arrow.right + strike.up * arrow.up, 0);
-    assert.ok(arrow.up <= 0);
-  }
+test("device gravity follows the active interface orientation", () => {
+  assert.deepEqual(deviceVectorToScreen(0, -1, "portrait"), { right: 0, up: -1 });
+  const upsideDown = deviceVectorToScreen(0, -1, "portrait-upside-down");
+  assert.ok(upsideDown);
+  close(upsideDown.right, 0);
+  close(upsideDown.up, 1);
+  const landscapeLeft = deviceVectorToScreen(0, -1, "landscape-left");
+  const landscapeRight = deviceVectorToScreen(0, -1, "landscape-right");
+  assert.ok(landscapeLeft && landscapeRight);
+  close(landscapeLeft.right, -1); close(landscapeLeft.up, 0);
+  close(landscapeRight.right, 1); close(landscapeRight.up, 0);
 });
 test("circular mean crosses north", () => { const result = circularMean([359, 0, 1]); assert.ok(result !== null && (result < 0.01 || result > 359.99)); });
 test("plane result is invariant to screen orientation because device back normal is unchanged", () => {

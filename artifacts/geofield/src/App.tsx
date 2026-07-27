@@ -13,6 +13,7 @@ import TripPlannerPage from "@/pages/trip-planner";
 import StrikeDipPage from "@/pages/strike-dip";
 import AccountSettingsPage from "@/pages/account-settings";
 import FiguresPage from "@/pages/figures";
+import SupportPage from "@/pages/support";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -41,6 +42,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/support" component={SupportPage} />
       <Route path="/">
         <ProtectedRoute component={Dashboard} />
       </Route>

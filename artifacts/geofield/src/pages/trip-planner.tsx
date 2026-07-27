@@ -63,7 +63,7 @@ export interface PlannedSite {
   id: string;
   name: string;
   description: string;
-  sampleType?: "water" | "rock" | "soil_sand" | "other";
+  sampleType?: "water" | "rock" | "soil_sand" | "air" | "other";
   lat: number;
   lng: number;
   addedAt: string;
@@ -117,6 +117,7 @@ function plannedSiteTitle(site: PlannedSite) {
   if (sampleType === "water") return "Water";
   if (sampleType === "rock") return "Rock";
   if (sampleType === "soil_sand") return "Soil / Sediment";
+  if (sampleType === "air") return "Air";
   return site.name;
 }
 
@@ -125,6 +126,7 @@ function plannedSiteSampleTypeLabel(site: PlannedSite) {
   if (sampleType === "water") return "Water";
   if (sampleType === "rock") return "Rock";
   if (sampleType === "soil_sand") return "Soil / Sediment";
+  if (sampleType === "air") return "Air";
   return "Other";
 }
 
@@ -722,12 +724,13 @@ export default function TripPlannerPage() {
   function addSiteMarker(L: any, map: any, site: PlannedSite) {
     const el = document.createElement("div");
     const collected = Boolean(site.collectedAt);
-    const sampleColors: Record<string, string> = { water: "#0284c7", rock: "#92400e", soil_sand: "#a16207", other: "#6b7280" };
+    const sampleColors: Record<string, string> = { water: "#0284c7", rock: "#92400e", soil_sand: "#a16207", air: "#64748b", other: "#6b7280" };
     const collectedColor = sampleColors[site.sampleType ?? "other"];
     el.style.cssText = collected
       ? `display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:${collectedColor};border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:12px;font-weight:700;color:white;cursor:pointer;`
-      : "display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:#f59e0b;border-radius:50%;border:3px dashed white;box-shadow:0 2px 8px rgba(0,0,0,0.4);font-size:15px;cursor:pointer;";
-    el.innerHTML = collected ? `<span style="transform:rotate(45deg)">${plannedSiteSampleTypeLabel(site).charAt(0)}</span>` : "☆";
+      : "width:20px;height:20px;background:#f59e0b;border-radius:50%;border:3px solid white;box-shadow:0 2px 7px rgba(0,0,0,0.4);cursor:pointer;";
+    el.setAttribute("aria-label", collected ? site.name : "Future sample site");
+    el.innerHTML = collected ? `<span style="transform:rotate(45deg)">${plannedSiteSampleTypeLabel(site).charAt(0)}</span>` : "";
 
     const popup = new L.Popup({ closeButton: false, offset: [0, -18] }).setHTML(
       `<div style="font-family:system-ui,sans-serif;"><strong>${collected ? site.name : "Future Sample Site"}</strong>${
@@ -931,6 +934,7 @@ export default function TripPlannerPage() {
                               <option value="rock">Rock</option>
                               <option value="water">Water</option>
                               <option value="soil_sand">Soil / Sediment</option>
+                              {site.sampleType === "air" && <option value="air">Air (legacy)</option>}
                               <option value="other">Other</option>
                             </select>
                           </div>

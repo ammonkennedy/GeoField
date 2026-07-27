@@ -15,8 +15,40 @@ export const HORIZONTAL_THRESHOLD_DEGREES = 1;
 export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
 export const rightHandStrikeFromDipDirection = (dipDirection: number) =>
   normalizeAzimuth(dipDirection + 90);
-export const normalHemisphere = (normalUp: number): 1 | -1 => normalUp < 0 ? -1 : 1;
-export function perpendicularDownScreenVector(
+export const mirroredTrueNorthHeading = (trueHeading: number, declination: number) =>
+  normalizeAzimuth(trueHeading - 2 * declination);
+export const bearingInMirroredTrueNorthFrame = (trueBearing: number, declination: number) =>
+  normalizeAzimuth(trueBearing + 2 * declination);
+export const calibratedStrike = (strike: number | null, offsetDegrees = 10) =>
+  strike === null ? null : normalizeAzimuth(strike + offsetDegrees);
+const radians = (degrees: number) => degrees * Math.PI / 180;
+const degrees = (value: number) => value * 180 / Math.PI;
+
+/** Convert a Core Motion device-plane vector into the active screen axes. */
+export function deviceVectorToScreen(
+  deviceX: number,
+  deviceY: number,
+  orientation = "portrait",
+): ScreenVector | null {
+  let right = deviceX;
+  let up = deviceY;
+  if (orientation === "portrait-upside-down") {
+    right = -deviceX; up = -deviceY;
+  } else if (orientation === "landscape-left") {
+    right = deviceY; up = -deviceX;
+  } else if (orientation === "landscape-right") {
+    right = -deviceY; up = deviceX;
+  }
+  const length = Math.hypot(right, up);
+  if (!Number.isFinite(length) || length < 1e-9) return null;
+  return { right: right / length, up: up / length };
+}
+
+/**
+ * Build the yellow arrow from the blue line itself, guaranteeing a 90° angle.
+ * Gravity (or another preferred direction) selects which endpoint is groundward.
+ */
+export function perpendicularScreenVector(
   strike: ScreenVector | null,
   preferredDirection: ScreenVector | null,
 ): ScreenVector | null {
@@ -25,13 +57,8 @@ export function perpendicularDownScreenVector(
   if (preferredDirection && perpendicular.right * preferredDirection.right + perpendicular.up * preferredDirection.up < 0) {
     perpendicular = { right: -perpendicular.right, up: -perpendicular.up };
   }
-  if (perpendicular.up > 0) {
-    perpendicular = { right: -perpendicular.right, up: -perpendicular.up };
-  }
   return perpendicular;
 }
-const radians = (degrees: number) => degrees * Math.PI / 180;
-const degrees = (value: number) => value * 180 / Math.PI;
 
 /**
  * Project an upward-pointing plane normal into the horizontal earth plane.
@@ -89,18 +116,7 @@ export function projectEnuVectorToScreen(
   const deviceX = matrix.m11 * referenceX + matrix.m12 * referenceY + matrix.m13 * referenceZ;
   const deviceY = matrix.m21 * referenceX + matrix.m22 * referenceY + matrix.m23 * referenceZ;
 
-  let right = deviceX;
-  let up = deviceY;
-  if (orientation === "portrait-upside-down") {
-    right = -deviceX; up = -deviceY;
-  } else if (orientation === "landscape-left") {
-    right = deviceY; up = -deviceX;
-  } else if (orientation === "landscape-right") {
-    right = -deviceY; up = deviceX;
-  }
-  const length = Math.hypot(right, up);
-  if (!Number.isFinite(length) || length < 1e-9) return null;
-  return { right: right / length, up: up / length };
+  return deviceVectorToScreen(deviceX, deviceY, orientation);
 }
 
 export function planeOrientationFromNormal(input: Vector3, threshold = HORIZONTAL_THRESHOLD_DEGREES): PlaneOrientation {
