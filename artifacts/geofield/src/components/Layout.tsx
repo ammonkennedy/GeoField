@@ -84,10 +84,18 @@ export function Layout({ children }: { children: ReactNode }) {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setSidebarOpen(false);
     };
+    const preventBackgroundScroll = (event: TouchEvent | WheelEvent) => {
+      const sidebar = document.getElementById("mobile-navigation");
+      if (!sidebar?.contains(event.target as Node)) event.preventDefault();
+    };
     window.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("touchmove", preventBackgroundScroll, { passive: false });
+    document.addEventListener("wheel", preventBackgroundScroll, { passive: false });
 
     return () => {
       window.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("touchmove", preventBackgroundScroll);
+      document.removeEventListener("wheel", preventBackgroundScroll);
       document.documentElement.style.overflow = previousHtmlOverflow;
       document.body.style.overflow = previousBodyStyles.overflow;
       document.body.style.position = previousBodyStyles.position;
@@ -113,7 +121,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen min-h-[100dvh] bg-background flex flex-col md:flex-row">
       {/* Mobile Header */}
       <header className={cn(
-        "sticky top-0 isolate z-[60] flex shrink-0 items-center justify-between border-b bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden",
+        "sticky top-0 isolate z-[120] flex shrink-0 items-center justify-between border-b bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden",
         sidebarOpen && "pointer-events-none"
       )}>
         <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
@@ -141,7 +149,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <aside
         id="mobile-navigation"
         className={cn(
-          "fixed left-0 top-0 z-50 flex h-screen h-[100dvh] w-[280px] overscroll-contain flex-col border-r bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-[12px_0_40px_rgba(15,23,42,0.04)] transition-transform duration-300 ease-in-out md:sticky md:pointer-events-auto md:pt-0",
+          "fixed left-0 top-0 z-[110] flex h-screen h-[100dvh] w-[280px] overscroll-contain flex-col border-r bg-sidebar pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] shadow-[12px_0_40px_rgba(15,23,42,0.04)] transition-transform duration-300 ease-in-out md:sticky md:pointer-events-auto md:pt-0",
           sidebarOpen
             ? "translate-x-0 pointer-events-auto"
             : "-translate-x-full pointer-events-none md:translate-x-0"
@@ -380,7 +388,14 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className="relative flex min-h-0 flex-1 flex-col max-w-full overflow-hidden md:min-h-screen">
+      <main
+        className={cn(
+          "relative flex min-h-0 flex-1 flex-col max-w-full overflow-hidden md:min-h-screen",
+          sidebarOpen && "pointer-events-none touch-none select-none md:pointer-events-auto md:touch-auto md:select-auto"
+        )}
+        inert={sidebarOpen ? true : undefined}
+        aria-hidden={sidebarOpen ? true : undefined}
+      >
         {/* Offline / sync banners */}
         {!isOnline && (
           <div className="flex items-center gap-2.5 px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm sticky top-0 z-20">
@@ -430,7 +445,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 touch-none bg-black/50 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-[100] touch-none bg-black/50 backdrop-blur-sm md:hidden"
           aria-hidden="true"
           onClick={() => setSidebarOpen(false)}
         />
