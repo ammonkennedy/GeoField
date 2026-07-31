@@ -122,12 +122,46 @@ export const SAMPLE_FIXED_COLUMNS: ExportColumn[] = [
   { key: "_createdAt",  label: "Record Created", enabled: true, defaultWidth: 18 },
 ];
 
+type StoredCustomParameter = {
+  label: string;
+  value: unknown;
+};
+
+function getCustomParameters(fields: Record<string, any>): StoredCustomParameter[] {
+  if (!Array.isArray(fields.customParams)) return [];
+  return fields.customParams.flatMap((parameter: unknown) => {
+    if (!parameter || typeof parameter !== "object") return [];
+    const label = String((parameter as Record<string, unknown>).label ?? "").trim();
+    if (!label) return [];
+    return [{ label, value: (parameter as Record<string, unknown>).value }];
+  });
+}
+
+function customParameterKey(label: string, occurrence: number) {
+  return `_customParameter:${label}:${occurrence}`;
+}
+
 export function getSampleColumns(samples: Sample[]): ExportColumn[] {
   const fieldKeys = new Set<string>();
+  const customParameterColumns = new Map<string, ExportColumn>();
   samples.forEach((s) => {
     const fields = (s.fields as Record<string, any>) || {};
     Object.keys(fields).forEach((k) => {
-      if (k !== "photo" && !k.startsWith("media")) fieldKeys.add(k);
+      if (k !== "customParams" && k !== "photo" && !k.startsWith("media")) fieldKeys.add(k);
+    });
+    const occurrences = new Map<string, number>();
+    getCustomParameters(fields).forEach(({ label }) => {
+      const occurrence = occurrences.get(label) ?? 0;
+      occurrences.set(label, occurrence + 1);
+      const key = customParameterKey(label, occurrence);
+      if (!customParameterColumns.has(key)) {
+        customParameterColumns.set(key, {
+          key,
+          label,
+          enabled: true,
+          defaultWidth: Math.max(18, Math.min(40, label.length + 4)),
+        });
+      }
     });
   });
   const dynamic: ExportColumn[] = [...fieldKeys].map((key) => ({
@@ -136,7 +170,7 @@ export function getSampleColumns(samples: Sample[]): ExportColumn[] {
     enabled: true,
     defaultWidth: 18,
   }));
-  return [...SAMPLE_FIXED_COLUMNS, ...dynamic];
+  return [...SAMPLE_FIXED_COLUMNS, ...dynamic, ...customParameterColumns.values()];
 }
 
 export function sampleToDataRow(sample: Sample, folderName: string): Record<string, any> {
@@ -154,8 +188,14 @@ export function sampleToDataRow(sample: Sample, folderName: string): Record<stri
     _createdAt: format(new Date(sample.createdAt), "yyyy-MM-dd HH:mm"),
   };
   Object.entries(fields).forEach(([key, value]) => {
-    if (key === "photo" || key.startsWith("media")) return;
+    if (key === "customParams" || key === "photo" || key.startsWith("media")) return;
     row[`field_${key}`] = value !== undefined && value !== null ? String(value) : "";
+  });
+  const occurrences = new Map<string, number>();
+  getCustomParameters(fields).forEach(({ label, value }) => {
+    const occurrence = occurrences.get(label) ?? 0;
+    occurrences.set(label, occurrence + 1);
+    row[customParameterKey(label, occurrence)] = value !== undefined && value !== null ? value : "";
   });
   return row;
 }

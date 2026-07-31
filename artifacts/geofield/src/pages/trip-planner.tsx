@@ -18,11 +18,12 @@ import { lookupSoil } from "@/lib/soil-data";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-type BaseLayer    = "street" | "satellite";
+type BaseLayer    = "street" | "satellite" | "topographic";
 type OverlayLayer = "none" | "geology" | "soil" | "trails";
 
 const USGS_IMAGERY_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}";
 const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
+const ESRI_STREET_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 const GEO_TILES    = "https://tiles.macrostrat.org/carto/{z}/{x}/{y}.png";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
 const SOIL_WMS     =
@@ -182,6 +183,13 @@ const TRIP_MAP_STYLE: any = {
     },
     street: {
       type: "raster",
+      tiles: [ESRI_STREET_TILES],
+      tileSize: 256,
+      attribution: "© Esri",
+      maxzoom: 19,
+    },
+    topographic: {
+      type: "raster",
       tiles: [USGS_TOPO_TILES],
       tileSize: 256,
       attribution: "USGS The National Map",
@@ -205,6 +213,7 @@ const TRIP_MAP_STYLE: any = {
   layers: [
     { id: "satellite-layer", type: "raster", source: "satellite", layout: { visibility: "visible" } },
     { id: "street-layer",    type: "raster", source: "street",    layout: { visibility: "none"    } },
+    { id: "topographic-layer", type: "raster", source: "topographic", layout: { visibility: "none" } },
     // overlays inserted dynamically before "labels"
     { id: "labels",          type: "raster", source: "labels",    layout: { visibility: "visible" } },
   ],
@@ -573,6 +582,7 @@ export default function TripPlannerPage() {
             try {
               map.setLayoutProperty("satellite-layer", "visibility", baseLayer === "satellite" ? "visible" : "none");
               map.setLayoutProperty("street-layer",    "visibility", baseLayer === "street"    ? "visible" : "none");
+              map.setLayoutProperty("topographic-layer", "visibility", baseLayer === "topographic" ? "visible" : "none");
               map.setLayoutProperty("labels",          "visibility", baseLayer === "satellite" ? "visible" : "none");
             } catch {}
 
@@ -676,6 +686,7 @@ export default function TripPlannerPage() {
     try {
       mapInstanceRef.current.setLayoutProperty("satellite-layer", "visibility", baseLayer === "satellite" ? "visible" : "none");
       mapInstanceRef.current.setLayoutProperty("street-layer",    "visibility", baseLayer === "street"    ? "visible" : "none");
+      mapInstanceRef.current.setLayoutProperty("topographic-layer", "visibility", baseLayer === "topographic" ? "visible" : "none");
       // Esri reference labels only make sense over satellite; OSM street tiles include their own labels
       mapInstanceRef.current.setLayoutProperty("labels",          "visibility", baseLayer === "satellite" ? "visible" : "none");
     } catch {}
@@ -1034,14 +1045,14 @@ export default function TripPlannerPage() {
             <div className="grid shrink-0 grid-cols-2 items-center gap-2 border-b border-border bg-muted/30 px-3 py-2.5 sm:flex sm:flex-wrap sm:px-4">
               {/* Base layer toggle */}
               <div className="col-span-2 flex w-full items-center gap-0.5 rounded-lg border border-border bg-card p-1 shadow-sm sm:w-auto">
-                {(["satellite", "street"] as const).map((bl) => (
+                {(["satellite", "street", "topographic"] as const).map((bl) => (
                   <button
                     key={bl}
                     onClick={() => setBaseLayer(bl)}
                     className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all sm:flex-none ${baseLayer === bl ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
                   >
-                    {bl === "satellite" ? <Satellite className="w-3.5 h-3.5" /> : <Map className="w-3.5 h-3.5" />}
-                    {bl.charAt(0).toUpperCase() + bl.slice(1)}
+                    {bl === "satellite" ? <Satellite className="w-3.5 h-3.5" /> : bl === "topographic" ? <Mountain className="w-3.5 h-3.5" /> : <Map className="w-3.5 h-3.5" />}
+                    {bl === "topographic" ? "USGS Topo" : bl.charAt(0).toUpperCase() + bl.slice(1)}
                   </button>
                 ))}
               </div>

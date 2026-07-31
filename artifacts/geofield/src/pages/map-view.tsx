@@ -54,11 +54,12 @@ function getSampleLabel(sample: any) {
   return TYPE_LABELS[sample.sampleType] || sample.sampleType || "Sample";
 }
 
-type BaseLayer = "street" | "satellite";
+type BaseLayer = "street" | "satellite" | "topographic";
 type OverlayLayer = "none" | "geology" | "soil" | "trails";
 
 const USGS_IMAGERY_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}";
 const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
+const ESRI_STREET_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
 const SOIL_WMS =
   "https://SDMDataAccess.sc.egov.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=TRUE&LAYERS=mapunitpoly&STYLES=default&WIDTH=256&HEIGHT=256&SRS=EPSG%3A3857&BBOX={bbox-epsg-3857}";
@@ -97,6 +98,13 @@ const INITIAL_STYLE: any = {
     },
     street: {
       type: "raster",
+      tiles: [ESRI_STREET_TILES],
+      tileSize: 256,
+      attribution: "© Esri",
+      maxzoom: 19,
+    },
+    topographic: {
+      type: "raster",
       tiles: [USGS_TOPO_TILES],
       tileSize: 256,
       attribution: "USGS The National Map",
@@ -114,6 +122,7 @@ const INITIAL_STYLE: any = {
   layers: [
     { id: "satellite-layer", type: "raster", source: "satellite", layout: { visibility: "visible" } },
     { id: "street-layer", type: "raster", source: "street", layout: { visibility: "none" } },
+    { id: "topographic-layer", type: "raster", source: "topographic", layout: { visibility: "none" } },
   ],
   sky: {
     "sky-color": "#87CEEB",
@@ -474,6 +483,7 @@ export default function MapViewPage() {
     try {
       mapRef.current.setLayoutProperty("satellite-layer", "visibility", baseLayer === "satellite" ? "visible" : "none");
       mapRef.current.setLayoutProperty("street-layer", "visibility", baseLayer === "street" ? "visible" : "none");
+      mapRef.current.setLayoutProperty("topographic-layer", "visibility", baseLayer === "topographic" ? "visible" : "none");
     } catch {}
   }, [baseLayer]);
 
@@ -742,14 +752,14 @@ export default function MapViewPage() {
         <div className="flex flex-wrap gap-3 items-center">
           {/* Base layer */}
           <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-1 shadow-sm">
-            {(["satellite", "street"] as const).map((bl) => (
+            {(["satellite", "street", "topographic"] as const).map((bl) => (
               <button
                 key={bl}
                 onClick={() => setBaseLayer(bl)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${baseLayer === bl ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
               >
-                {bl === "satellite" ? <Satellite className="w-3.5 h-3.5" /> : <MapIcon className="w-3.5 h-3.5" />}
-                {bl.charAt(0).toUpperCase() + bl.slice(1)}
+                {bl === "satellite" ? <Satellite className="w-3.5 h-3.5" /> : bl === "topographic" ? <Mountain className="w-3.5 h-3.5" /> : <MapIcon className="w-3.5 h-3.5" />}
+                {bl === "topographic" ? "USGS Topo" : bl.charAt(0).toUpperCase() + bl.slice(1)}
               </button>
             ))}
           </div>

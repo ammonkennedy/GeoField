@@ -7,6 +7,8 @@ import {
   getSamples,
   getGetFoldersQueryKey,
   getGetSamplesQueryKey,
+  getSample,
+  subscribeToAccountDataChanges,
 } from "@workspace/api-client-react";
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import {
@@ -114,7 +116,19 @@ export function useOfflineSync() {
         continue;
       }
       try {
-        await createSample({ data: item.payload as any });
+        try {
+          // Reuse the durable queue ID as the cloud ID. If connectivity drops
+          // after AWS accepts the write, retrying cannot create a second copy.
+          await createSample({ data: item.payload as any, id: item.queuedId });
+        } catch (createError) {
+          // A previous attempt may have succeeded even though its response
+          // never reached this device. Confirm that record before retrying.
+          try {
+            await getSample(item.queuedId);
+          } catch {
+            throw createError;
+          }
+        }
         removeFromQueue(item.queuedId);
         synced++;
       } catch (error: any) {
@@ -177,6 +191,26 @@ export function useOfflineSync() {
 
   useEffect(() => {
     if (isOnline) sync();
+  }, [isOnline, sync]);
+
+  useEffect(() => {
+    if (!isOnline) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const refreshAfterCurrentSync = () => {
+      if (syncingRef.current) {
+        refreshTimer = setTimeout(refreshAfterCurrentSync, 500);
+        return;
+      }
+      sync();
+    };
+    const unsubscribe = subscribeToAccountDataChanges(() => {
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(refreshAfterCurrentSync, 300);
+    });
+    return () => {
+      clearTimeout(refreshTimer);
+      unsubscribe();
+    };
   }, [isOnline, sync]);
 
   useEffect(() => {

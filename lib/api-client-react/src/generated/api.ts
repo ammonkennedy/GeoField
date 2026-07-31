@@ -267,6 +267,31 @@ export async function getCurrentAccountToken(): Promise<string> {
   return token;
 }
 
+/**
+ * Notify the active client when another session for the same owner creates,
+ * updates, or deletes shared account data. Amplify applies the model's owner
+ * authorization to these subscriptions.
+ */
+export function subscribeToAccountDataChanges(onChange: () => void): () => void {
+  const subscriptions: Array<{ unsubscribe: () => void }> = [];
+  for (const modelName of ["Sample", "Dataset"] as const) {
+    for (const eventName of ["onCreate", "onUpdate", "onDelete"] as const) {
+      try {
+        const subscription = client.models[modelName][eventName]().subscribe({
+          next: onChange,
+          error: (error: unknown) => {
+            console.warn(`[GeoField sync] ${modelName}.${eventName} subscription unavailable`, error);
+          },
+        });
+        subscriptions.push(subscription);
+      } catch (error) {
+        console.warn(`[GeoField sync] Could not start ${modelName}.${eventName} subscription`, error);
+      }
+    }
+  }
+  return () => subscriptions.forEach((subscription) => subscription.unsubscribe());
+}
+
 export const getBeginBrowserLoginUrl = () => "/login";
 export const beginBrowserLogin = async () => null;
 export const getBeginBrowserLoginQueryKey = () => ["auth", "begin-login"] as const;
@@ -419,10 +444,11 @@ async function createSampleWithInput(input: Record<string, unknown>) {
   return asSample(result.data);
 }
 
-export async function createSample({ data }: { data: CreateSampleRequest }): Promise<Sample> {
+export async function createSample({ data, id }: { data: CreateSampleRequest; id?: string }): Promise<Sample> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before saving samples.");
   const folderId = normalizeFolderId(data.folderId);
   const baseInput = cleanObject({
+    id,
     sampleType: (data.sampleType || "rock") as any,
     sampleId: data.sampleId || `sample-${Date.now()}`,
     datasetId: folderId === null ? undefined : folderId,
