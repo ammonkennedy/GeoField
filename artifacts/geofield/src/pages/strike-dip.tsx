@@ -21,6 +21,7 @@ import {
 import { format as fmtDate } from "date-fns";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { deleteMeasurement, loadMeasurements, saveMeasurements, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
+import { SavePhotoButton } from "@/components/SavePhotoButton";
 
 function deriveDipDir(strikeStr: string): string {
   const n = parseFloat(strikeStr);
@@ -209,6 +210,10 @@ function MeasurementRow({
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
+                <SavePhotoButton
+                  src={measurement.photo}
+                  fileName={`geofield-${measurement.label || `strike-dip-${index + 1}`}`}
+                />
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -559,6 +564,7 @@ export default function StrikeDipPage() {
     const result = await saveFile(
       new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
       `${fileName}_${fmtDate(new Date(), "yyyyMMdd-HHmm")}.xlsx`,
+      { previewAfterSave: true },
     );
     toast({ title: result === "shared" ? "Export ready" : "Exported", description: `${visibleMeasurements.length} measurements prepared for Excel (photos not included).` });
   };

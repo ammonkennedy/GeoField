@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Download, GripVertical, RotateCcw, Plus, Trash2, ArrowLeftRight, ChevronDown, FileSpreadsheet } from "lucide-react";
+import { Download, ArrowUp, ArrowDown, RotateCcw, Plus, Trash2, ArrowLeftRight, ChevronDown, FileSpreadsheet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type ExportColumn, type ExportFormatConfig, type ExportCustomRow,
@@ -53,10 +53,18 @@ export function ExportCustomizerDialog({
   const [choosingRowTarget, setChoosingRowTarget] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState("");
-  const dragIndexRef = useRef<number | null>(null);
-  const groupDragRef = useRef<{ groupKey: string; index: number } | null>(null);
-  const customRowDragRef = useRef<{ groupKey: string; index: number } | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    setColumns(initialColumns);
+    setGroups(initialGroups);
+    setOpenGroups(new Set(initialGroups.slice(0, 1).map((group) => group.key)));
+    setSheetName(initialConfig.sheetName);
+    setOrientation(initialConfig.orientation || "normal");
+    setCustomRows(initialConfig.customRows || []);
+    setFileName(initialFileName);
+    setChoosingRowTarget(false);
+    setExportError("");
+  }, [open, initialColumns, initialGroups, initialConfig, initialFileName]);
 
   const handleOpenChange = (v: boolean) => {
     if (v) {
@@ -83,26 +91,6 @@ export function ExportCustomizerDialog({
     });
   };
 
-  const startColumnDrag = (event: React.DragEvent, index: number) => {
-    dragIndexRef.current = index;
-    setDragOverIndex(index);
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", columns[index]?.key ?? String(index));
-  };
-
-  const enterColumnDrag = (index: number) => {
-    const from = dragIndexRef.current;
-    if (from === null || from === index) return;
-    moveColumn(from, index);
-    dragIndexRef.current = index;
-    setDragOverIndex(index);
-  };
-
-  const endColumnDrag = () => {
-    dragIndexRef.current = null;
-    setDragOverIndex(null);
-  };
-
   const toggleCol = (i: number) =>
     setColumns((prev) => prev.map((c, idx) => (idx === i ? { ...c, enabled: !c.enabled } : c)));
 
@@ -114,6 +102,14 @@ export function ExportCustomizerDialog({
     setCustomRows((prev) => prev.map((row) => (row.id === id ? { ...row, text } : row)));
   const removeCustomRow = (id: string) =>
     setCustomRows((prev) => prev.filter((row) => row.id !== id));
+  const moveCustomRow = (from: number, to: number) =>
+    setCustomRows((current) => {
+      if (from === to || from < 0 || to < 0 || from >= current.length || to >= current.length) return current;
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
 
   const enableAll = () => setColumns((prev) => prev.map((c) => ({ ...c, enabled: true })));
   const disableAll = () => setColumns((prev) => prev.map((c) => ({ ...c, enabled: false })));
@@ -125,50 +121,12 @@ export function ExportCustomizerDialog({
   const moveGroupColumn = (groupKey: string, from: number, to: number) => {
     if (from === to) return;
     updateGroupColumns(groupKey, (items) => {
+      if (from < 0 || to < 0 || from >= items.length || to >= items.length) return items;
       const next = [...items];
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
       return next;
     });
-  };
-
-  const stopGroupPointerDrag = () => {
-    groupDragRef.current = null;
-    document.removeEventListener("pointermove", handleGroupPointerMove);
-    document.removeEventListener("pointerup", stopGroupPointerDrag);
-    document.removeEventListener("pointercancel", stopGroupPointerDrag);
-  };
-
-  const handleGroupPointerMove = (event: PointerEvent) => {
-    const active = groupDragRef.current;
-    if (!active) return;
-    event.preventDefault();
-    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-group-key][data-column-index]"))
-      .filter((row) => row.dataset.groupKey === active.groupKey);
-    if (rows.length === 0) return;
-    let targetIndex = active.index;
-    let closestDistance = Number.POSITIVE_INFINITY;
-    for (const row of rows) {
-      const rect = row.getBoundingClientRect();
-      const distance = Math.abs(event.clientY - (rect.top + rect.height / 2));
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        targetIndex = Number(row.dataset.columnIndex);
-      }
-    }
-    if (!Number.isInteger(targetIndex) || targetIndex === active.index) return;
-    moveGroupColumn(active.groupKey, active.index, targetIndex);
-    groupDragRef.current = { groupKey: active.groupKey, index: targetIndex };
-  };
-
-  const startGroupPointerDrag = (event: React.PointerEvent, groupKey: string, index: number) => {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    event.preventDefault();
-    stopGroupPointerDrag();
-    groupDragRef.current = { groupKey, index };
-    document.addEventListener("pointermove", handleGroupPointerMove, { passive: false });
-    document.addEventListener("pointerup", stopGroupPointerDrag, { once: true });
-    document.addEventListener("pointercancel", stopGroupPointerDrag, { once: true });
   };
 
   const addRowToGroups = (groupKey: string | "all") => {
@@ -195,48 +153,11 @@ export function ExportCustomizerDialog({
     setGroups((current) => current.map((group) => {
       if (group.key !== groupKey) return group;
       const rows = [...(group.customRows || [])];
+      if (from < 0 || to < 0 || from >= rows.length || to >= rows.length) return group;
       const [moved] = rows.splice(from, 1);
       rows.splice(to, 0, moved);
       return { ...group, customRows: rows };
     }));
-  };
-
-  const stopCustomRowPointerDrag = () => {
-    customRowDragRef.current = null;
-    document.removeEventListener("pointermove", handleCustomRowPointerMove);
-    document.removeEventListener("pointerup", stopCustomRowPointerDrag);
-    document.removeEventListener("pointercancel", stopCustomRowPointerDrag);
-  };
-
-  const handleCustomRowPointerMove = (event: PointerEvent) => {
-    const active = customRowDragRef.current;
-    if (!active) return;
-    event.preventDefault();
-    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-custom-row-group][data-custom-row-index]"))
-      .filter((row) => row.dataset.customRowGroup === active.groupKey);
-    let targetIndex = active.index;
-    let closestDistance = Number.POSITIVE_INFINITY;
-    for (const row of rows) {
-      const rect = row.getBoundingClientRect();
-      const distance = Math.abs(event.clientY - (rect.top + rect.height / 2));
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        targetIndex = Number(row.dataset.customRowIndex);
-      }
-    }
-    if (!Number.isInteger(targetIndex) || targetIndex === active.index) return;
-    moveGroupCustomRow(active.groupKey, active.index, targetIndex);
-    customRowDragRef.current = { groupKey: active.groupKey, index: targetIndex };
-  };
-
-  const startCustomRowPointerDrag = (event: React.PointerEvent, groupKey: string, index: number) => {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    event.preventDefault();
-    stopCustomRowPointerDrag();
-    customRowDragRef.current = { groupKey, index };
-    document.addEventListener("pointermove", handleCustomRowPointerMove, { passive: false });
-    document.addEventListener("pointerup", stopCustomRowPointerDrag, { once: true });
-    document.addEventListener("pointercancel", stopCustomRowPointerDrag, { once: true });
   };
 
   const handleExport = async () => {
@@ -358,6 +279,12 @@ export function ExportCustomizerDialog({
               <div className="space-y-1.5">
                 {customRows.map((row, index) => (
                   <div key={row.id} className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-card">
+                    <ReorderButtons
+                      label={`extra row ${index + 1}`}
+                      index={index}
+                      count={customRows.length}
+                      onMove={(nextIndex) => moveCustomRow(index, nextIndex)}
+                    />
                     <span className="text-xs text-muted-foreground w-12 shrink-0">Row {index + 1}</span>
                     <Input
                       value={row.text}
@@ -428,10 +355,13 @@ export function ExportCustomizerDialog({
                           <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => updateGroupColumns(group.key, (items) => items.map((item) => ({ ...item, enabled: false })))}>None</button>
                         </div>
                         {(group.customRows || []).map((row, rowIndex) => (
-                          <div key={row.id} data-custom-row-group={group.key} data-custom-row-index={rowIndex} className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-2 py-2">
-                            <button type="button" aria-label={`Drag top row ${rowIndex + 1} to reorder`} className="touch-none cursor-grab rounded p-1.5 text-muted-foreground/60 active:cursor-grabbing active:bg-muted" onPointerDown={(event) => startCustomRowPointerDrag(event, group.key, rowIndex)}>
-                              <GripVertical className="h-4 w-4" />
-                            </button>
+                          <div key={row.id} className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-2 py-2">
+                            <ReorderButtons
+                              label={`${group.label} top row ${rowIndex + 1}`}
+                              index={rowIndex}
+                              count={(group.customRows || []).length}
+                              onMove={(nextIndex) => moveGroupCustomRow(group.key, rowIndex, nextIndex)}
+                            />
                             <span className="shrink-0 text-xs text-muted-foreground">Top row {rowIndex + 1}</span>
                             <Input value={row.text} onChange={(event) => updateGroupRow(group.key, row.id, event.target.value)} placeholder="Blank spacing or title text…" className="h-8" />
                             <button type="button" aria-label="Remove custom row" onClick={() => removeGroupRow(group.key, row.id)} className="rounded p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -440,25 +370,14 @@ export function ExportCustomizerDialog({
                         {group.columns.map((column, columnIndex) => (
                           <div
                             key={column.key}
-                            data-group-key={group.key}
-                            data-column-index={columnIndex}
-                            onDragOver={(event) => event.preventDefault()}
-                            onDragEnter={() => {
-                              const active = groupDragRef.current;
-                              if (!active || active.groupKey !== group.key || active.index === columnIndex) return;
-                              moveGroupColumn(group.key, active.index, columnIndex);
-                              groupDragRef.current = { groupKey: group.key, index: columnIndex };
-                            }}
                             className={cn("flex items-center gap-2 rounded-lg border px-2 py-2", column.enabled ? "bg-card" : "border-dashed opacity-60")}
                           >
-                            <button
-                              type="button"
-                              aria-label={`Drag ${column.label} to reorder`}
-                              className="touch-none cursor-grab rounded p-1.5 text-muted-foreground/60 active:cursor-grabbing active:bg-muted"
-                              onPointerDown={(event) => startGroupPointerDrag(event, group.key, columnIndex)}
-                            >
-                              <GripVertical className="h-4 w-4" />
-                            </button>
+                            <ReorderButtons
+                              label={column.label}
+                              index={columnIndex}
+                              count={group.columns.length}
+                              onMove={(nextIndex) => moveGroupColumn(group.key, columnIndex, nextIndex)}
+                            />
                             <input value={column.label} onChange={(event) => updateGroupColumns(group.key, (items) => items.map((item, index) => index === columnIndex ? { ...item, label: event.target.value } : item))} className="min-w-0 flex-1 rounded bg-transparent px-1 text-sm outline-none focus:bg-muted" />
                             <button type="button" aria-label={column.enabled ? `Discard ${column.label}` : `Keep ${column.label}`} onClick={() => updateGroupColumns(group.key, (items) => items.map((item, index) => index === columnIndex ? { ...item, enabled: !item.enabled } : item))} className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded border-2", column.enabled ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background")}>
                               {column.enabled && <span className="text-xs">✓</span>}
@@ -512,34 +431,19 @@ export function ExportCustomizerDialog({
               {columns.map((col, i) => (
                 <div
                   key={col.key}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                  }}
-                  onDragEnter={() => enterColumnDrag(i)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    endColumnDrag();
-                  }}
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-xl border transition-all",
                     col.enabled
                       ? "bg-card border-border"
-                      : "bg-muted/40 border-dashed border-border/50 opacity-60",
-                    dragOverIndex === i && "ring-2 ring-primary/30 border-primary/40"
+                      : "bg-muted/40 border-dashed border-border/50 opacity-60"
                   )}
                 >
-                  <button
-                    type="button"
-                    draggable
-                    onDragStart={(e) => startColumnDrag(e, i)}
-                    onDragEnd={endColumnDrag}
-                    className="cursor-grab active:cursor-grabbing rounded p-1 text-muted-foreground/50 hover:bg-muted hover:text-foreground transition-colors shrink-0"
-                    title="Drag to reorder column"
-                    aria-label={`Drag ${col.label} column to reorder`}
-                  >
-                    <GripVertical className="w-4 h-4" />
-                  </button>
+                  <ReorderButtons
+                    label={col.label}
+                    index={i}
+                    count={columns.length}
+                    onMove={(nextIndex) => moveColumn(i, nextIndex)}
+                  />
 
                   {/* Editable label */}
                   <input
@@ -588,5 +492,42 @@ export function ExportCustomizerDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ReorderButtons({
+  label,
+  index,
+  count,
+  onMove,
+}: {
+  label: string;
+  index: number;
+  count: number;
+  onMove: (nextIndex: number) => void;
+}) {
+  return (
+    <span className="flex shrink-0 flex-col overflow-hidden rounded-md border border-border bg-background shadow-sm">
+      <button
+        type="button"
+        onClick={() => onMove(index - 1)}
+        disabled={index === 0}
+        className="flex h-6 w-7 items-center justify-center border-b border-border text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-25"
+        aria-label={`Move ${label} up one line`}
+        title="Move up one line"
+      >
+        <ArrowUp className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onMove(index + 1)}
+        disabled={index >= count - 1}
+        className="flex h-6 w-7 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-25"
+        aria-label={`Move ${label} down one line`}
+        title="Move down one line"
+      >
+        <ArrowDown className="h-3.5 w-3.5" />
+      </button>
+    </span>
   );
 }

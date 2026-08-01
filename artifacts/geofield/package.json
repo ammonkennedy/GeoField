@@ -7,13 +7,15 @@
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-    ,"test:strike-dip": "node --test src/lib/strike-dip-math.test.ts"
-    ,"test:macrostrat": "node --test src/lib/macrostrat.test.ts"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:strike-dip": "node --test src/lib/strike-dip-math.test.ts",
+    "test:macrostrat": "node --test src/lib/macrostrat.test.ts"
   },
   "dependencies": {
+    "@capacitor-community/file-opener": "^8.0.1",
     "@capacitor-community/speech-recognition": "^7.0.1",
     "@capacitor/core": "^8.4.2",
+    "@capacitor/filesystem": "^8.1.2",
     "@capacitor/ios": "^8.4.2",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.4",

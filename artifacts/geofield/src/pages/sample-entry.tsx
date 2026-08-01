@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
 import { Capacitor } from "@capacitor/core";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
+import { SavePhotoButton } from "@/components/SavePhotoButton";
 
 const sampleTypes = [
   { id: 'rock', label: 'Rock', icon: Mountain, color: 'text-[var(--color-rock)]', bg: 'bg-[var(--color-rock)]/10' },
@@ -721,6 +722,7 @@ export default function SampleEntry() {
                               {slot.type === "photo" ? "Photo" : "Video"}
                             </span>
                             <button type="button" onClick={() => clearSlot(i)} className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow"><X className="w-3.5 h-3.5" /></button>
+                            {slot.type === "photo" && <SavePhotoButton src={slot.dataUrl} fileName={slot.fileName || `geofield-${getTypeLabel(currentType).toLowerCase()}-${i + 1}`} />}
                             {slot.type === "photo" && <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer" onClick={() => openSlot(i, "camera")}><Camera className="w-6 h-6 text-white" /></div>}
                           </>
                         ) : (

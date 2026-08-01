@@ -79,6 +79,7 @@ export async function exportSamplesWithConfig(
   await saveFile(
     new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`,
+    { previewAfterSave: true },
   );
 }
 
@@ -139,6 +140,7 @@ export async function exportDatasetWorkbookWithConfig({
   await saveFile(
     new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`,
+    { previewAfterSave: true },
   );
 }
 

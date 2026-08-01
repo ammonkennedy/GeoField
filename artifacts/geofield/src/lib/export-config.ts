@@ -128,8 +128,22 @@ type StoredCustomParameter = {
 };
 
 function getCustomParameters(fields: Record<string, any>): StoredCustomParameter[] {
-  if (!Array.isArray(fields.customParams)) return [];
-  return fields.customParams.flatMap((parameter: unknown) => {
+  let stored = fields.customParams;
+  if (typeof stored === "string") {
+    try {
+      stored = JSON.parse(stored);
+    } catch {
+      return [];
+    }
+  }
+  if (stored && !Array.isArray(stored) && typeof stored === "object") {
+    const record = stored as Record<string, unknown>;
+    stored = "label" in record
+      ? [record]
+      : Object.entries(record).map(([label, value]) => ({ label, value }));
+  }
+  if (!Array.isArray(stored)) return [];
+  return stored.flatMap((parameter: unknown) => {
     if (!parameter || typeof parameter !== "object") return [];
     const label = String((parameter as Record<string, unknown>).label ?? "").trim();
     if (!label) return [];
@@ -141,13 +155,34 @@ function customParameterKey(label: string, occurrence: number) {
   return `_customParameter:${label}:${occurrence}`;
 }
 
+function exportCellValue(value: unknown): string | number | boolean {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+const MEDIA_EXPORT_FIELDS = new Set([
+  "photo",
+  "primaryPhoto",
+  "photoCount",
+  "videoCount",
+]);
+
+function isMediaExportField(key: string) {
+  return MEDIA_EXPORT_FIELDS.has(key) || key.startsWith("media");
+}
+
 export function getSampleColumns(samples: Sample[]): ExportColumn[] {
   const fieldKeys = new Set<string>();
   const customParameterColumns = new Map<string, ExportColumn>();
   samples.forEach((s) => {
     const fields = (s.fields as Record<string, any>) || {};
     Object.keys(fields).forEach((k) => {
-      if (k !== "customParams" && k !== "photo" && !k.startsWith("media")) fieldKeys.add(k);
+      if (k !== "customParams" && !isMediaExportField(k)) fieldKeys.add(k);
     });
     const occurrences = new Map<string, number>();
     getCustomParameters(fields).forEach(({ label }) => {
@@ -188,14 +223,14 @@ export function sampleToDataRow(sample: Sample, folderName: string): Record<stri
     _createdAt: format(new Date(sample.createdAt), "yyyy-MM-dd HH:mm"),
   };
   Object.entries(fields).forEach(([key, value]) => {
-    if (key === "customParams" || key === "photo" || key.startsWith("media")) return;
-    row[`field_${key}`] = value !== undefined && value !== null ? String(value) : "";
+    if (key === "customParams" || isMediaExportField(key)) return;
+    row[`field_${key}`] = exportCellValue(value);
   });
   const occurrences = new Map<string, number>();
   getCustomParameters(fields).forEach(({ label, value }) => {
     const occurrence = occurrences.get(label) ?? 0;
     occurrences.set(label, occurrence + 1);
-    row[customParameterKey(label, occurrence)] = value !== undefined && value !== null ? value : "";
+    row[customParameterKey(label, occurrence)] = exportCellValue(value);
   });
   return row;
 }

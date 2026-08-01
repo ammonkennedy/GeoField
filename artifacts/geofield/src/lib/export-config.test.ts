@@ -58,3 +58,29 @@ test("keeps repeated custom parameter names in separate columns", () => {
   assert.equal(columns.length, 2);
   assert.deepEqual(columns.map((column) => row[column.key]), [10, 20]);
 });
+
+test("supports legacy serialized custom parameters without object-string cells", () => {
+  const record = sample("R-4", []) as Sample;
+  record.fields = {
+    customParams: JSON.stringify([
+      { label: "Joint spacing", value: "8 cm" },
+      { label: "Minerals", value: ["quartz", "feldspar"] },
+    ]),
+    primaryPhoto: { storageKey: "photo-1" },
+    photoCount: 1,
+    videoCount: 2,
+  };
+
+  const columns = getSampleColumns([record]);
+  const row = sampleToDataRow(record, "Outcrop C");
+  const jointSpacing = columns.find((column) => column.label === "Joint spacing")!;
+  const minerals = columns.find((column) => column.label === "Minerals")!;
+
+  assert.equal(columns.some((column) => column.label === "custom Params"), false);
+  assert.equal(row[jointSpacing.key], "8 cm");
+  assert.equal(row[minerals.key], '["quartz","feldspar"]');
+  assert.equal(columns.some((column) => ["primary Photo", "photo Count", "video Count"].includes(column.label)), false);
+  assert.equal(row.field_primaryPhoto, undefined);
+  assert.equal(row.field_photoCount, undefined);
+  assert.equal(row.field_videoCount, undefined);
+});

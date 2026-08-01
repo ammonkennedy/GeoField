@@ -363,7 +363,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
         const blob = await new Promise<Blob>((resolve, reject) =>
           canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Could not create the PNG image.")), "image/png")
         );
-        await saveFile(blob, fname);
+        await saveFile(blob, fname, { previewAfterSave: true });
       } catch (error: any) {
         if (error?.name !== "AbortError") console.error("Chart export failed", error);
       } finally {
