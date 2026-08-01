@@ -153,10 +153,10 @@
   user-select: text;
 }
 
-/* Keep map controls clear of the iPhone status bar and Dynamic Island when a
-   map occupies the screen. The trip map receives the same safe-area spacing. */
+/* Full-screen maps occupy the app's content pane below the fixed mobile header,
+   so their controls need only a small, consistent inset from the map itself. */
 .geofield-fullscreen-map .maplibregl-ctrl-top-right {
-  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  top: 12px;
 }
 
 .trip-map-overlay {
