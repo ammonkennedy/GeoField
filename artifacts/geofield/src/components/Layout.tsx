@@ -142,12 +142,12 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <div className={cn(
-      "min-h-screen min-h-[100dvh] bg-background flex flex-col md:flex-row",
+      "flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-background md:h-auto md:min-h-screen md:flex-row md:overflow-visible",
       sidebarOpen && "fixed inset-0 h-[100dvh] w-full overflow-hidden md:static md:h-auto md:w-auto md:overflow-visible"
     )}>
       {/* Mobile Header */}
       <header className={cn(
-        "sticky top-0 isolate z-[120] flex shrink-0 items-center justify-between border-b bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden",
+        "relative isolate z-[120] flex shrink-0 touch-none items-center justify-between border-b bg-card/95 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur md:hidden",
         sidebarOpen && "pointer-events-none"
       )}>
         <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
@@ -460,7 +460,10 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         )}
 
-        <div className="flex-1 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-8 md:max-w-6xl mx-auto w-full">
+        <div
+          id="geofield-page-scroll"
+          className="mx-auto min-h-0 w-full flex-1 overflow-y-auto overscroll-y-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch] md:max-w-6xl md:overflow-visible md:p-8"
+        >
           {children}
         </div>
       </main>

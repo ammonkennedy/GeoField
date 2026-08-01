@@ -125,16 +125,25 @@
 /* WKWebView behaves more like an installed app when rubber-band scrolling and
    accidental text selection are constrained, while form fields remain usable. */
 .native-app {
+  height: 100%;
+  overflow: hidden;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
 }
 
 .native-app body {
-  min-height: 100dvh;
-  overflow-x: hidden;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
   -webkit-touch-callout: none;
   user-select: none;
+}
+
+.native-app #root {
+  height: 100%;
+  overflow: hidden;
 }
 
 .native-app input,
