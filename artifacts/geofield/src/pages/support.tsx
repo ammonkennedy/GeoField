@@ -20,7 +20,7 @@ export default function SupportPage() {
 
       <div className="relative mx-auto w-full max-w-3xl">
         <div className="mb-8 flex items-center justify-center gap-3 sm:justify-start">
-          <GeoFieldLogo className="h-12 w-12 shadow-md" />
+          <GeoFieldLogo className="h-12 w-12" />
           <span className="font-display text-2xl font-bold text-primary">GeoField</span>
         </div>
 

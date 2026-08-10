@@ -152,7 +152,7 @@ export function Layout({ children }: { children: ReactNode }) {
       )}>
         <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
           <button type="button" className="touch-manipulation rounded-[22%] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="View GeoField logo full screen" onClick={() => setLogoOpen(true)}>
-            <GeoFieldLogo className="h-9 w-9 shadow-sm" />
+            <GeoFieldLogo className="h-9 w-9" />
           </button>
           <span>GeoField</span>
         </div>
@@ -183,7 +183,7 @@ export function Layout({ children }: { children: ReactNode }) {
       >
         <div className="p-6 hidden md:flex items-center gap-3 border-b border-border/70">
           <button type="button" className="rounded-[22%] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="View GeoField logo full screen" onClick={() => setLogoOpen(true)}>
-            <GeoFieldLogo className="h-12 w-12 shadow-sm" />
+            <GeoFieldLogo className="h-12 w-12" />
           </button>
           <div>
             <div className="text-primary font-display font-bold text-2xl leading-none">GeoField</div>
@@ -497,7 +497,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <X className="h-7 w-7" />
           </button>
           <div onClick={(event) => event.stopPropagation()}>
-            <GeoFieldLogo className="h-auto w-[min(88vw,80dvh)] rounded-[22%] shadow-2xl" />
+            <GeoFieldLogo className="h-auto w-[min(88vw,80dvh)]" />
           </div>
         </div>
       )}

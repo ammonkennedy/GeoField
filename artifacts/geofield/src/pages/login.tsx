@@ -70,7 +70,7 @@ export default function Login() {
 
       <Card className="relative z-10 w-full max-w-md p-8 md:p-10 shadow-2xl border-primary/10 bg-card/80 backdrop-blur-xl m-4">
         <div className="flex flex-col items-center text-center space-y-6">
-          <GeoFieldLogo className="h-20 w-20 shadow-xl" />
+          <GeoFieldLogo className="h-20 w-20" />
 
           <div className="space-y-2">
             <h1 className="text-4xl font-display font-bold text-foreground">GeoField</h1>
