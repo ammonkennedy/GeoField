@@ -216,7 +216,6 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   useEffect(() => {
     if (!open) return;
     history.current = [];
-    phoneHemisphere.current = null;
     setStatus("starting"); setError(""); setStable(false); setReading(null);
     setRawOrientation({ strike: null, dipDirection: null, dip: 0 });
     setFiltered(emptyFiltered());
