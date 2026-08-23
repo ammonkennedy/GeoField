@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import {
   MapPin, Plus, Trash2, Save, Map, X, Navigation, Edit3, Bookmark,
-  Layers, Satellite, Mountain, Search, Loader2, Upload, Check,
+  Layers, Satellite, Mountain, Search, Loader2, Upload, Check, Maximize2, Minimize2,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { loadCustomLayers, safeAddCustomLayer, safeRemoveCustomLayer, deleteCustomLayer, type CustomMapLayer } from "@/lib/custom-layers";
+import { loadCustomLayers, addCustomLayer, safeAddCustomLayer, safeRemoveCustomLayer, deleteCustomLayer, parseCustomLayerFile, SUPPORTED_LAYER_ACCEPT, type CustomMapLayer } from "@/lib/custom-layers";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -251,6 +251,7 @@ export default function TripPlannerPage() {
   const pinModeRef       = useRef(false);
   const customLayersRef  = useRef<CustomMapLayer[]>(loadCustomLayers());
   const spreadsheetInputRef = useRef<HTMLInputElement>(null);
+  const layerFileInputRef = useRef<HTMLInputElement>(null);
 
   // Interaction state
   const [pinMode,         setPinMode]         = useState(false);
@@ -265,10 +266,23 @@ export default function TripPlannerPage() {
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [siteImportError, setSiteImportError] = useState("");
   const [siteImportNotice, setSiteImportNotice] = useState("");
+  const [geologyOpacity, setGeologyOpacity] = useState(0.65);
+  const [mapFullScreen, setMapFullScreen] = useState(false);
+  const [layerModalOpen, setLayerModalOpen] = useState(false);
+  const [newLayerName, setNewLayerName] = useState("");
+  const [newLayerColor, setNewLayerColor] = useState("#e63946");
+  const [newLayerGeoJson, setNewLayerGeoJson] = useState<string | null>(null);
+  const [newLayerFileName, setNewLayerFileName] = useState("");
+  const [newLayerFileSummary, setNewLayerFileSummary] = useState("");
+  const [newLayerError, setNewLayerError] = useState("");
 
   // Keep refs in sync
   useEffect(() => { overlayLayerRef.current = overlayLayer; setGeoInfo(null); }, [overlayLayer]);
   useEffect(() => { terrainRef.current = terrain; }, [terrain]);
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapLoadedRef.current || overlayLayer !== "geology") return;
+    try { mapInstanceRef.current.setPaintProperty("geology-overlay", "raster-opacity", geologyOpacity); } catch {}
+  }, [geologyOpacity, overlayLayer]);
 
   // Sync custom layers from localStorage
   useEffect(() => {
@@ -593,6 +607,9 @@ export default function TripPlannerPage() {
             // Apply overlay
             if (overlayLayerRef.current !== "none") {
               safeAddOverlay(map, overlayLayerRef.current);
+              if (overlayLayerRef.current === "geology") {
+                try { map.setPaintProperty("geology-overlay", "raster-opacity", geologyOpacity); } catch {}
+              }
             }
 
             // Add any saved custom layers
@@ -718,7 +735,12 @@ export default function TripPlannerPage() {
     overlayLayerRef.current = overlayLayer;
     if (!mapInstanceRef.current || !mapLoadedRef.current) return;
     safeRemoveOverlays(mapInstanceRef.current);
-    if (overlayLayer !== "none") safeAddOverlay(mapInstanceRef.current, overlayLayer);
+    if (overlayLayer !== "none") {
+      safeAddOverlay(mapInstanceRef.current, overlayLayer);
+      if (overlayLayer === "geology") {
+        try { mapInstanceRef.current.setPaintProperty("geology-overlay", "raster-opacity", geologyOpacity); } catch {}
+      }
+    }
   }, [overlayLayer]);
 
   useEffect(() => {
@@ -823,6 +845,28 @@ export default function TripPlannerPage() {
         accept={SITE_SPREADSHEET_ACCEPT}
         className="hidden"
         onChange={handleSpreadsheetImport}
+      />
+      <input
+        ref={layerFileInputRef}
+        type="file"
+        accept={SUPPORTED_LAYER_ACCEPT}
+        className="hidden"
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          event.target.value = "";
+          setNewLayerFileName(file.name);
+          setNewLayerFileSummary("");
+          try {
+            const parsed = await parseCustomLayerFile(file);
+            setNewLayerGeoJson(parsed.geojson);
+            setNewLayerFileSummary(`${parsed.kind} · ${parsed.featureCount} feature${parsed.featureCount === 1 ? "" : "s"}`);
+            setNewLayerError("");
+          } catch (error) {
+            setNewLayerGeoJson(null);
+            setNewLayerError(error instanceof Error ? error.message : "Invalid map layer file.");
+          }
+        }}
       />
       <div className="max-w-3xl mx-auto">
         {/* Header */}
@@ -1008,10 +1052,10 @@ export default function TripPlannerPage() {
 
       {/* ── Map Modal ──────────────────────────────────────────────────────── */}
       {mapOpen && (
-        <div className="trip-map-overlay fixed inset-0 z-[200] flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-black/60 p-2 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label="Trip Planning Map">
+        <div className={`trip-map-overlay fixed inset-0 z-[200] flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-black/60 backdrop-blur-sm ${mapFullScreen ? "p-0" : "p-2 sm:p-4"}`} role="dialog" aria-modal="true" aria-label="Trip Planning Map">
           <div
-            className="bg-card rounded-3xl shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden"
-            style={{ height: MAP_MODAL_HEIGHT }}
+            className={`flex w-full flex-col overflow-hidden bg-card shadow-2xl ${mapFullScreen ? "h-full max-w-none rounded-none" : "max-w-6xl rounded-3xl"}`}
+            style={{ height: mapFullScreen ? "100%" : MAP_MODAL_HEIGHT }}
           >
             {/* Modal header */}
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-6 sm:py-4">
@@ -1104,6 +1148,18 @@ export default function TripPlannerPage() {
                 <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               </div>
 
+              {overlayLayer === "geology" && (
+                <label className="col-span-2 flex min-w-0 items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm sm:col-span-1">
+                  Opacity
+                  <input aria-label="Geology opacity" type="range" min="0" max="1" step="0.05" value={geologyOpacity} onChange={(event) => setGeologyOpacity(Number(event.target.value))} className="min-w-0 flex-1 accent-primary sm:w-20" />
+                  <span className="w-8 tabular-nums">{Math.round(geologyOpacity * 100)}%</span>
+                </label>
+              )}
+
+              <button type="button" onClick={() => { setNewLayerName(""); setNewLayerColor("#e63946"); setNewLayerGeoJson(null); setNewLayerFileName(""); setNewLayerFileSummary(""); setNewLayerError(""); setLayerModalOpen(true); }} className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-muted-foreground shadow-sm hover:text-foreground sm:min-h-0 sm:w-auto sm:py-1.5">
+                <Plus className="h-3.5 w-3.5" />Insert Layer
+              </button>
+
               {/* Custom layer chips */}
               {customLayers.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
@@ -1145,6 +1201,9 @@ export default function TripPlannerPage() {
 
             {/* Map container */}
             <div className="relative flex-1 overflow-hidden">
+              <button type="button" onClick={() => { setGeoInfo(null); setMapFullScreen((value) => !value); }} className="absolute left-3 top-3 z-10 flex min-h-11 items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold shadow-lg backdrop-blur" aria-label={mapFullScreen ? "Exit full-screen trip map" : "Open full-screen trip map"}>
+                {mapFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}{mapFullScreen ? "Exit Full Screen" : "Full Screen"}
+              </button>
               {/* Hint banner */}
               {!pendingCoords && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-card/95 backdrop-blur border border-border rounded-xl px-4 py-2.5 shadow-lg text-sm flex items-center gap-2 pointer-events-none whitespace-nowrap">
@@ -1280,6 +1339,19 @@ export default function TripPlannerPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+      {layerModalOpen && (
+        <div className="fixed inset-0 z-[220] flex h-[100dvh] items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Insert Map Layer">
+          <div className="w-full max-w-md space-y-4 rounded-2xl bg-card p-6 shadow-2xl">
+            <div className="flex items-center justify-between"><h2 className="flex items-center gap-2 font-display text-lg font-bold"><Layers className="h-5 w-5 text-primary" />Insert Map Layer</h2><button type="button" onClick={() => setLayerModalOpen(false)} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-muted" aria-label="Close map layer popup"><X className="h-5 w-5" /></button></div>
+            <p className="text-sm text-muted-foreground">Upload GeoJSON, KML, GPX, CSV, or TSV data to overlay on the trip map.</p>
+            <div className="space-y-1"><Label className="text-xs">Layer Name</Label><Input value={newLayerName} onChange={(event) => setNewLayerName(event.target.value)} placeholder="e.g. Fault lines or survey boundary" /></div>
+            <div className="space-y-2"><Label className="text-xs">Layer Color</Label><div className="flex flex-wrap gap-2">{["#e63946","#2d7dd2","#06d6a0","#ffd166","#9b5de5","#f77f00","#4cc9f0","#8b5e3c"].map((color) => <button key={color} type="button" onClick={() => setNewLayerColor(color)} className={`h-8 w-8 rounded-full border-2 ${newLayerColor === color ? "scale-110 border-foreground shadow" : "border-transparent"}`} style={{ backgroundColor: color }} aria-label={`Use ${color}`} />)}<input type="color" value={newLayerColor} onChange={(event) => setNewLayerColor(event.target.value)} className="h-8 w-8 cursor-pointer rounded-full border border-border" aria-label="Custom layer color" /></div></div>
+            <button type="button" onClick={() => layerFileInputRef.current?.click()} className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-6 text-muted-foreground hover:border-primary hover:text-primary"><Upload className="h-6 w-6" />{newLayerFileName ? <><span className="text-sm font-medium text-foreground">{newLayerFileName}</span><span className="text-xs">{newLayerFileSummary}</span></> : <span className="text-sm">Choose a map layer file</span>}</button>
+            {newLayerError && <p className="text-sm text-destructive">{newLayerError}</p>}
+            <div className="flex gap-3"><Button className="flex-1" disabled={!newLayerName.trim() || !newLayerGeoJson} onClick={() => { if (!newLayerName.trim() || !newLayerGeoJson) return; addCustomLayer({ id: crypto.randomUUID(), name: newLayerName.trim(), color: newLayerColor, geojson: newLayerGeoJson, createdAt: new Date().toISOString() }); setLayerModalOpen(false); }}>Add to Map</Button><Button variant="outline" className="flex-1" onClick={() => setLayerModalOpen(false)}>Cancel</Button></div>
           </div>
         </div>
       )}

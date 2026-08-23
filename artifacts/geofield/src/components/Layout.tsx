@@ -202,7 +202,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <div id="mobile-navigation-scroll" className="flex min-h-0 flex-1 touch-pan-y flex-col gap-6 overflow-y-auto overscroll-y-contain pb-5 pt-8 md:py-5">
+        <div id="mobile-navigation-scroll" className="flex min-h-0 flex-1 touch-pan-y flex-col gap-6 overflow-y-auto overscroll-y-contain pb-5 pt-20 md:py-5">
           {/* Main Nav */}
           <div className="px-4">
             <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.18em] mb-3 px-2">Views</h3>

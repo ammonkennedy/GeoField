@@ -115,8 +115,8 @@ export const STRIKE_DIP_COLUMNS: ExportColumn[] = [
 
 /* ── Sample columns ─────────────────────────────────────────────────────── */
 export const SAMPLE_FIXED_COLUMNS: ExportColumn[] = [
-  { key: "_sampleId",   label: "Sample ID",      enabled: true, defaultWidth: 16 },
-  { key: "_sampleType", label: "Sample Type",    enabled: true, defaultWidth: 12 },
+  { key: "_sampleId",   label: "Sample ID",      enabled: true, defaultWidth: 22 },
+  { key: "_sampleType", label: "Sample Type",    enabled: true, defaultWidth: 16 },
   { key: "_folder",     label: "Folder",         enabled: true, defaultWidth: 20 },
   { key: "_notes",      label: "Notes",          enabled: true, defaultWidth: 40 },
   { key: "_createdAt",  label: "Record Created", enabled: true, defaultWidth: 18 },
@@ -306,16 +306,49 @@ export function buildStyledWorksheet(
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"] = isTransposed
-    ? [{ wch: 24 }, ...dataRows.map(() => ({ wch: 18 }))]
-    : enabled.map((c) => ({ wch: c.defaultWidth ?? 15 }));
+  const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+  const headerRowIndex = customRowCount;
+  const displayLength = (value: unknown) => String(value ?? "")
+    .split(/\r?\n/)
+    .reduce((longest, line) => Math.max(longest, line.length), 0);
+  const columnWidths = isTransposed
+    ? [24, ...dataRows.map((_, index) => Math.min(28, Math.max(14, displayLength(transposedHeaderRow[index + 1]) + 2)))]
+    : enabled.map((column) => Math.min(28, Math.max(
+        column.defaultWidth ?? 15,
+        displayLength(column.label) + 2,
+        ...dataRows.map((row) => displayLength(row[column.key]) + 2),
+      )));
+  ws["!cols"] = columnWidths.map((wch) => ({ wch }));
+
+  // Give wrapped values enough vertical room in mobile previews instead of
+  // requiring the viewer to move back to the top to inspect clipped content.
+  ws["!rows"] = aoa.map((row, rowIndex) => {
+    if (rowIndex < customRowCount) return { hpt: row[0] ? 24 : 15 };
+    if (rowIndex === headerRowIndex) return { hpt: 30 };
+    const wrappedLines = row.reduce((largest, value, columnIndex) => {
+      const width = Math.max(1, columnWidths[columnIndex] || 15);
+      const lines = String(value ?? "").split(/\r?\n/).reduce(
+        (count, line) => count + Math.max(1, Math.ceil(line.length / width)),
+        0,
+      );
+      return Math.max(largest, lines);
+    }, 1);
+    return { hpt: Math.min(90, Math.max(20, wrappedLines * 15)) };
+  });
+
+  // These hints are honored by Excel/Numbers and make wide exports open at a
+  // useful scale while still allowing normal two-direction navigation.
+  (ws as any)["!views"] = [{ zoomScale: 75, zoomScaleNormal: 100 }];
+  (ws as any)["!pageSetup"] = { orientation: "landscape", fitToWidth: 1, fitToHeight: 0 };
+  if (headers.length > 0 && renderedRows.length > 0) {
+    ws["!autofilter"] = {
+      ref: XLSX.utils.encode_range({ r: headerRowIndex, c: 0 }, { r: range.e.r, c: range.e.c }),
+    };
+  }
 
   if (config.freezeHeader) {
     (ws as any)["!freeze"] = { xSplit: isTransposed ? 1 : 0, ySplit: customRowCount + 1 };
   }
-
-  const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
-  const headerRowIndex = customRowCount;
 
   // Custom title/spacing rows styling
   customRows.forEach((row, index) => {
@@ -324,7 +357,7 @@ export function buildStyledWorksheet(
     if (!ws[addr]) return;
     ws[addr].s = {
       font: { bold: true, sz: 14 },
-      alignment: { vertical: "center" },
+      alignment: { vertical: "center", wrapText: true },
     };
   });
 
@@ -338,8 +371,21 @@ export function buildStyledWorksheet(
         color: { rgb: config.headerTextLight ? "FFFFFF" : "111111" },
       },
       fill: { patternType: "solid", fgColor: { rgb: config.headerBgColor.toUpperCase() } },
-      alignment: { vertical: "center" },
+      alignment: { vertical: "center", wrapText: true },
     };
+  }
+
+  // Keep every value visually contained within its worksheet cell. Without
+  // wrapping, Excel and Quick Look render long text over neighboring blanks.
+  for (let r = headerRowIndex + 1; r <= range.e.r; r++) {
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      if (!ws[addr]) ws[addr] = { t: "z", v: "" };
+      ws[addr].s = {
+        ...(ws[addr].s || {}),
+        alignment: { vertical: "top", wrapText: true },
+      };
+    }
   }
 
   // Zebra striping every other data row after the header
