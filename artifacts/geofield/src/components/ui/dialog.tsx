@@ -29,16 +29,16 @@ export function Dialog({ open, onOpenChange, children, panelClassName }: DialogP
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => onOpenChange(false)}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            className="fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-50 bg-black/60 backdrop-blur-sm md:inset-0"
           />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+          <div className="pointer-events-none fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-50 flex min-h-0 items-center justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:inset-0 md:p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               role="dialog"
               aria-modal="true"
-              className={cn("relative bg-card w-full max-w-lg rounded-2xl shadow-2xl border border-border pointer-events-auto overflow-hidden flex flex-col max-h-[90vh]", panelClassName)}
+              className={cn("relative flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl pointer-events-auto md:max-h-[90vh]", panelClassName)}
             >
               <button
                 type="button"
@@ -58,7 +58,7 @@ export function Dialog({ open, onOpenChange, children, panelClassName }: DialogP
 }
 
 export function DialogContent({ children, className }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("p-6 overflow-y-auto", className)}>{children}</div>
+  return <div className={cn("min-h-0 touch-pan-y overflow-y-auto overscroll-y-contain p-6 [-webkit-overflow-scrolling:touch]", className)}>{children}</div>
 }
 
 export function DialogHeader({ children, className }: React.HTMLAttributes<HTMLDivElement>) {

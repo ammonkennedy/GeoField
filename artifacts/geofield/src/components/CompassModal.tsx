@@ -299,9 +299,8 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
         {(["true", "magnetic"] as const).map((value) => <button key={value} type="button" aria-label={`Use ${value} north`} aria-pressed={selectedNorthReference === value} onClick={() => selectNorthReference(value)} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedNorthReference === value ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>{value === "true" ? "True North" : "Magnetic North"}</button>)}
       </div>
       {notice && <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300">{notice}</p>}
-      {status === "starting" && <p className="py-8 text-center text-sm text-slate-400">Updating compass…</p>}
       {status === "error" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>}
-      {(status === "active" || reading) && <>
+      {(status === "starting" || status === "active" || reading) && <>
         <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#121a27] to-[#080d14] px-3 pb-5 pt-5 shadow-inner">
           <div className="mb-3 grid grid-cols-2 gap-3">
             <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">Strike · RHR</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{fmt(filtered.strike)}</p></div>
@@ -319,10 +318,11 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
             </button>
           </div>
           <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Water-flow direction</span></div>
+          {status === "starting" && <div className="absolute inset-0 flex items-center justify-center bg-[#080d14]/55 backdrop-blur-[1px]" aria-live="polite"><div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#0d1117]/95 px-4 py-2.5 text-sm text-slate-200 shadow-xl"><span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300/30 border-t-blue-300" aria-hidden="true" />Starting sensors…</div></div>}
         </div>
-        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${stable ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{stable ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{stable ? "Stable — ready to capture" : "Hold steady to capture"}</div>
+        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${stable ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{stable ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : stable ? "Stable — ready to capture" : "Hold steady to capture"}</div>
         {accuracyLow && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-300">Compass accuracy is low. Move iPhone in a figure-eight and keep it away from magnets or metal objects.</p>}
-        <Button className="w-full" disabled={!stable || filtered.strike === null} onClick={capture}>Capture Measurement</Button>
+        <Button className="w-full" disabled={status !== "active" || !stable || filtered.strike === null} onClick={capture}>Capture Measurement</Button>
       </>}
       {(!native || (import.meta.env.DEV && status === "error")) && <div className="space-y-3 rounded-xl border border-dashed border-slate-600 p-3"><p className="text-xs text-amber-300">Simulator/manual sensor mode — not a real measurement.</p><label className="block text-xs">Dip {mockDip}°<input className="w-full" type="range" min="0" max="90" value={mockDip} onChange={(e) => setMockDip(Number(e.target.value))} /></label><label className="block text-xs">Dip direction {mockDirection}°<input className="w-full" type="range" min="0" max="359" value={mockDirection} onChange={(e) => setMockDirection(Number(e.target.value))} /></label><Button variant="outline" className="w-full" onClick={useMock}>Apply Mock Reading</Button></div>}
       <details className="text-xs text-slate-400"><summary>Measurement diagnostics</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2">{diagnostic}</pre></details>

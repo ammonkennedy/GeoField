@@ -1008,7 +1008,7 @@ export default function TripPlannerPage() {
 
       {/* ── Map Modal ──────────────────────────────────────────────────────── */}
       {mapOpen && (
-        <div className="trip-map-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-2 backdrop-blur-sm sm:p-4">
+        <div className="trip-map-overlay fixed inset-0 z-[200] flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-black/60 p-2 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-label="Trip Planning Map">
           <div
             className="bg-card rounded-3xl shadow-2xl w-full max-w-6xl flex flex-col overflow-hidden"
             style={{ height: MAP_MODAL_HEIGHT }}
@@ -1202,7 +1202,15 @@ export default function TripPlannerPage() {
 
               {/* Site form popup */}
               {pendingCoords && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-card border border-border rounded-2xl shadow-xl p-5 w-80">
+                <div
+                  className="absolute inset-0 z-20 flex touch-pan-y items-start justify-center overflow-y-auto overscroll-y-contain bg-black/35 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-4 [-webkit-overflow-scrolling:touch]"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerMove={(event) => event.stopPropagation()}
+                  onTouchStart={(event) => event.stopPropagation()}
+                  onTouchMove={(event) => event.stopPropagation()}
+                  onWheel={(event) => event.stopPropagation()}
+                >
+                <div className="my-auto w-full max-w-sm rounded-2xl border border-border bg-card p-5 shadow-xl">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold font-display flex items-center gap-2 text-base">
                       <MapPin className="w-4 h-4 text-primary" />
@@ -1257,6 +1265,7 @@ export default function TripPlannerPage() {
                       Add Sample Site
                     </Button>
                   </div>
+                </div>
                 </div>
               )}
 
