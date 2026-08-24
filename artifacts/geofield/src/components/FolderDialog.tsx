@@ -5,9 +5,11 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { useFoldersMutations } from "@/hooks/use-geofield";
-import { Folder } from "@workspace/api-client-react";
+import { Folder, useGetCurrentAuthUser } from "@workspace/api-client-react";
 import { createLocalDataset, updateLocalDataset } from "@/lib/local-datasets";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
+import { requireAccountForSave } from "@/lib/guest-access";
 
 export function FolderDialog({ 
   open, 
@@ -22,6 +24,8 @@ export function FolderDialog({
   const [description, setDescription] = useState(folder?.description || "");
   const { createFolder, updateFolder } = useFoldersMutations();
   const { toast } = useToast();
+  const { data: authData } = useGetCurrentAuthUser();
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     setName(folder?.name || "");
@@ -40,6 +44,7 @@ export function FolderDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    if (!requireAccountForSave(authData?.user, setLocation)) return;
 
     // Local datasets are what make the app usable before the backend folder API exists.
     if (folder && ((folder as any).isLocal || (typeof folder.id === "number" && folder.id < 0))) {

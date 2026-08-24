@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
-import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
+import { useGetCurrentAuthUser, useGetSamples, useGetFolders } from "@workspace/api-client-react";
 import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DA
 import { loadMeasurements, reassignMeasurementsDataset, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { archiveLocalItem } from "@/lib/recently-deleted";
 import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
+import { requireAccountForSave } from "@/lib/guest-access";
 
 const typeStyles = {
   water: { label: "Water", variant: "water" as const },
@@ -40,6 +41,7 @@ function parseRouteId(value?: string): string | number | undefined {
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
+  const { data: authData } = useGetCurrentAuthUser();
   const { folderId } = useParams();
   const activeFolderId = parseRouteId(folderId);
   const isLocalFolder = typeof activeFolderId === "number" && activeFolderId < 0;
@@ -130,6 +132,7 @@ export default function Dashboard() {
     : "/sample/new";
 
   const handleDeleteFolder = () => {
+    if (!requireAccountForSave(authData?.user, setLocation)) return;
     if (!activeFolder || !confirm("Are you sure you want to delete this dataset? Samples will become uncategorized.")) return;
 
     if ((activeFolder as any).isLocal || (typeof activeFolder.id === "number" && activeFolder.id < 0)) {
@@ -147,6 +150,7 @@ export default function Dashboard() {
   };
 
   const handleDeleteSample = () => {
+    if (!requireAccountForSave(authData?.user, setLocation)) return;
     if (!deleteId) return;
     if (typeof deleteId === "string" && deleteId.startsWith("q_")) {
       const queued = getQueue().find((item) => item.queuedId === deleteId);

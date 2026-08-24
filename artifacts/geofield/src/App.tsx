@@ -14,25 +14,28 @@ import AccountSettingsPage from "@/pages/account-settings";
 import FiguresPage from "@/pages/figures";
 import SupportPage from "@/pages/support";
 import NotFound from "@/pages/not-found";
+import { isGuestMode } from "@/lib/guest-access";
 
 const queryClient = new QueryClient();
 
-// Remove the guest-mode flag left by older versions. Application routes now
-// always require an authenticated account.
-localStorage.removeItem("geofield-demo-mode");
-
-function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+function AccessibleRoute({ component: Component }: { component: React.ComponentType }) {
   const { data, isLoading } = useGetCurrentAuthUser();
 
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
-  if (!data?.user) {
+  if (!data?.user && !isGuestMode()) {
     return <Redirect to="/login" />;
   }
 
   return <Component />;
+}
+
+function AccountRoute({ component: Component }: { component: React.ComponentType }) {
+  const { data, isLoading } = useGetCurrentAuthUser();
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  return data?.user ? <Component /> : <Redirect to="/login" />;
 }
 
 function Router() {
@@ -41,28 +44,28 @@ function Router() {
       <Route path="/login" component={Login} />
       <Route path="/support" component={SupportPage} />
       <Route path="/">
-        <ProtectedRoute component={Dashboard} />
+        <AccessibleRoute component={Dashboard} />
       </Route>
       <Route path="/dataset/:folderId">
-        <ProtectedRoute component={Dashboard} />
+        <AccessibleRoute component={Dashboard} />
       </Route>
       <Route path="/map">
-        <ProtectedRoute component={MapViewPage} />
+        <AccessibleRoute component={MapViewPage} />
       </Route>
       <Route path="/trip/:tripId">
-        <ProtectedRoute component={TripPlannerPage} />
+        <AccessibleRoute component={TripPlannerPage} />
       </Route>
       <Route path="/strike-dip">
-        <ProtectedRoute component={StrikeDipPage} />
+        <AccessibleRoute component={StrikeDipPage} />
       </Route>
       <Route path="/figures">
-        <ProtectedRoute component={FiguresPage} />
+        <AccessibleRoute component={FiguresPage} />
       </Route>
       <Route path="/sample/:id">
-        <ProtectedRoute component={SampleEntry} />
+        <AccessibleRoute component={SampleEntry} />
       </Route>
       <Route path="/account">
-        <ProtectedRoute component={AccountSettingsPage} />
+        <AccountRoute component={AccountSettingsPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>

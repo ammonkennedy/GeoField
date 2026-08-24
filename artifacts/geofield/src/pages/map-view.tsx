@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Layout } from "@/components/Layout";
-import { useGetSamples, useGetFolders } from "@workspace/api-client-react";
+import { useGetCurrentAuthUser, useGetSamples, useGetFolders } from "@workspace/api-client-react";
+import { useLocation } from "wouter";
 import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ import { queryMacrostratGeology } from "@/lib/macrostrat-service";
 import type { MacrostratSelection } from "@/lib/macrostrat-types";
 import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { requireAccountForSave } from "@/lib/guest-access";
 
 const TYPE_COLORS: Record<string, string> = {
   water: "#2d7dd2",
@@ -173,6 +175,8 @@ interface GeoInfo {
 }
 
 export default function MapViewPage() {
+  const [, setLocation] = useLocation();
+  const { data: authData } = useGetCurrentAuthUser();
   const [selectedFolderId, setSelectedFolderId] = useState<number | string | "all">("all");
   const [baseLayer, setBaseLayer] = useState<BaseLayer>("satellite");
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
@@ -835,6 +839,7 @@ export default function MapViewPage() {
                 <span>{layer.name}</span>
                 <button
                   onClick={() => {
+                    if (!requireAccountForSave(authData?.user, setLocation, "/map")) return;
                     if (!confirm(`Remove the "${layer.name}" layer?`)) return;
                     deleteCustomLayer(layer.id);
                   }}
@@ -1033,6 +1038,7 @@ export default function MapViewPage() {
                 disabled={!newLayerName.trim() || !newLayerGeoJson}
                 onClick={() => {
                   if (!newLayerName.trim() || !newLayerGeoJson) return;
+                  if (!requireAccountForSave(authData?.user, setLocation, "/map")) return;
                   const layer: CustomMapLayer = {
                     id: crypto.randomUUID(),
                     name: newLayerName.trim(),

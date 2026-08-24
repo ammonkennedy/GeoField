@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Compass, Map } from "lucide-react";
 import { GeoFieldLogo } from "@/components/GeoFieldLogo";
+import { consumeAuthReturnPath, enterGuestMode, leaveGuestMode } from "@/lib/guest-access";
 
 export default function Login() {
   const cloudAuthConfigured = isAuthConfigured();
@@ -22,7 +23,10 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (data?.user) setLocation("/");
+    if (data?.user) {
+      leaveGuestMode();
+      setLocation(consumeAuthReturnPath());
+    }
   }, [data?.user, setLocation]);
 
   if (isLoading || data?.user) return null;
@@ -45,7 +49,7 @@ export default function Login() {
         await signInUser({ email, password });
         queryClient.clear();
         await refetch();
-        setLocation("/");
+        leaveGuestMode();
       }
     } catch (error: any) {
       setMessage(error?.message || "Something went wrong. Please try again.");
@@ -118,8 +122,21 @@ export default function Login() {
               <Button variant="outline" className="w-full" onClick={() => setMode("signin")}>Back to sign in</Button>
             ))}
 
+            {mode === "signin" && (
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => {
+                  enterGuestMode();
+                  setLocation("/");
+                }}
+              >
+                Continue without logging in
+              </Button>
+            )}
+
             <p className="text-xs text-muted-foreground text-center">
-              Create an account or sign in to use GeoField and sync your field data across devices.
+              Browse GeoField without an account. You’ll be asked to create an account or sign in before saving data.
             </p>
           </div>
 

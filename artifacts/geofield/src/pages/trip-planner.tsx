@@ -15,6 +15,8 @@ import { createTripDataset, deleteLocalDataset, updateLocalDataset } from "@/lib
 import { getQueue, setQueue, type QueuedSample } from "@/lib/offline-queue";
 import { geocodeAddress } from "@/lib/geocoding";
 import { lookupSoil } from "@/lib/soil-data";
+import { useGetCurrentAuthUser } from "@workspace/api-client-react";
+import { requireAccountForSave } from "@/lib/guest-access";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -231,6 +233,7 @@ const TRIP_MAP_STYLE: any = {
 export default function TripPlannerPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const [, setLocation] = useLocation();
+  const { data: authData } = useGetCurrentAuthUser();
   const [trips, setTrips] = useState<Trip[]>(loadTrips);
   const [mapOpen, setMapOpen] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
@@ -316,6 +319,7 @@ export default function TripPlannerPage() {
   // Create a new trip when navigating to /trip/new
   useEffect(() => {
     if (tripId === "new") {
+      if (!requireAccountForSave(authData?.user, setLocation, "/trip/new")) return;
       const tripIdValue = `trip_${Date.now()}`;
       const dataset = createTripDataset({
         tripId: tripIdValue,
@@ -336,7 +340,7 @@ export default function TripPlannerPage() {
       setTrips(updated);
       setLocation(`/trip/${newTrip.id}`, { replace: true });
     }
-  }, [tripId]);
+  }, [tripId, authData?.user, setLocation]);
 
   const activeTrip = tripId && tripId !== "new" ? trips.find((t) => t.id === tripId) : null;
 
@@ -399,6 +403,7 @@ export default function TripPlannerPage() {
   };
 
   const updateTrip = (updates: Partial<Trip>) => {
+    if (!requireAccountForSave(authData?.user, setLocation)) return;
     const updated = trips.map((t) => {
       if (t.id !== activeTrip?.id) return t;
       const nextTrip = { ...t, ...updates, updatedAt: new Date().toISOString() };
@@ -426,6 +431,7 @@ export default function TripPlannerPage() {
 
   const deleteTrip = () => {
     if (!activeTrip) return;
+    if (!requireAccountForSave(authData?.user, setLocation)) return;
     if (!confirm(`Delete "${activeTrip.name}"? This cannot be undone.`)) return;
     activeTrip.sites.forEach(removePlannedSiteSample);
     if (activeTrip.datasetId) deleteLocalDataset(activeTrip.datasetId);
@@ -437,6 +443,7 @@ export default function TripPlannerPage() {
 
   const addSite = (site: Omit<PlannedSite, "id" | "addedAt">) => {
     if (!activeTrip) return;
+    if (!requireAccountForSave(authData?.user, setLocation)) return;
     const { trip, datasetId } = ensureTripDataset(activeTrip);
     const siteIndex = trip.sites.length;
     const newSiteBase: PlannedSite = { ...site, id: `site_${Date.now()}`, addedAt: new Date().toISOString() };
@@ -450,6 +457,7 @@ export default function TripPlannerPage() {
 
   const addSites = (sites: Omit<PlannedSite, "id" | "addedAt">[]) => {
     if (!activeTrip || sites.length === 0) return [];
+    if (!requireAccountForSave(authData?.user, setLocation)) return [];
     const { trip, datasetId } = ensureTripDataset(activeTrip);
     const addedAt = new Date().toISOString();
     const newSites = sites.map((site, index) => {
@@ -479,6 +487,7 @@ export default function TripPlannerPage() {
 
   const removeSite = (id: string) => {
     if (!activeTrip) return;
+    if (!requireAccountForSave(authData?.user, setLocation)) return;
     const site = activeTrip.sites.find((s) => s.id === id);
     if (site) removePlannedSiteSample(site);
     updateTrip({ sites: activeTrip.sites.filter((s) => s.id !== id) });
@@ -1173,6 +1182,7 @@ export default function TripPlannerPage() {
                       <span className="max-w-[100px] truncate">{layer.name}</span>
                       <button
                         onClick={() => {
+                          if (!requireAccountForSave(authData?.user, setLocation)) return;
                           if (!confirm(`Remove "${layer.name}" layer?`)) return;
                           deleteCustomLayer(layer.id);
                         }}
@@ -1351,7 +1361,7 @@ export default function TripPlannerPage() {
             <div className="space-y-2"><Label className="text-xs">Layer Color</Label><div className="flex flex-wrap gap-2">{["#e63946","#2d7dd2","#06d6a0","#ffd166","#9b5de5","#f77f00","#4cc9f0","#8b5e3c"].map((color) => <button key={color} type="button" onClick={() => setNewLayerColor(color)} className={`h-8 w-8 rounded-full border-2 ${newLayerColor === color ? "scale-110 border-foreground shadow" : "border-transparent"}`} style={{ backgroundColor: color }} aria-label={`Use ${color}`} />)}<input type="color" value={newLayerColor} onChange={(event) => setNewLayerColor(event.target.value)} className="h-8 w-8 cursor-pointer rounded-full border border-border" aria-label="Custom layer color" /></div></div>
             <button type="button" onClick={() => layerFileInputRef.current?.click()} className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-6 text-muted-foreground hover:border-primary hover:text-primary"><Upload className="h-6 w-6" />{newLayerFileName ? <><span className="text-sm font-medium text-foreground">{newLayerFileName}</span><span className="text-xs">{newLayerFileSummary}</span></> : <span className="text-sm">Choose a map layer file</span>}</button>
             {newLayerError && <p className="text-sm text-destructive">{newLayerError}</p>}
-            <div className="flex gap-3"><Button className="flex-1" disabled={!newLayerName.trim() || !newLayerGeoJson} onClick={() => { if (!newLayerName.trim() || !newLayerGeoJson) return; addCustomLayer({ id: crypto.randomUUID(), name: newLayerName.trim(), color: newLayerColor, geojson: newLayerGeoJson, createdAt: new Date().toISOString() }); setLayerModalOpen(false); }}>Add to Map</Button><Button variant="outline" className="flex-1" onClick={() => setLayerModalOpen(false)}>Cancel</Button></div>
+            <div className="flex gap-3"><Button className="flex-1" disabled={!newLayerName.trim() || !newLayerGeoJson} onClick={() => { if (!newLayerName.trim() || !newLayerGeoJson || !requireAccountForSave(authData?.user, setLocation)) return; addCustomLayer({ id: crypto.randomUUID(), name: newLayerName.trim(), color: newLayerColor, geojson: newLayerGeoJson, createdAt: new Date().toISOString() }); setLayerModalOpen(false); }}>Add to Map</Button><Button variant="outline" className="flex-1" onClick={() => setLayerModalOpen(false)}>Cancel</Button></div>
           </div>
         </div>
       )}

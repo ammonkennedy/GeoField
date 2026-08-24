@@ -11,6 +11,7 @@ import { useOfflineSync } from "@/hooks/use-offline-sync";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { GeoFieldLogo } from "@/components/GeoFieldLogo";
 import { clearCachedCloudSamples } from "@/lib/cloud-samples";
+import { leaveGuestMode } from "@/lib/guest-access";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -34,6 +35,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     await signOutUser();
+    leaveGuestMode();
     clearCachedCloudSamples();
     queryClient.clear();
     setSidebarOpen(false);

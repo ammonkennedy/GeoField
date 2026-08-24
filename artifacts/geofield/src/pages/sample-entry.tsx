@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck, FileQuestion } from "lucide-react";
 import { useSamplesMutations } from "@/hooks/use-geofield";
-import { useGetFolders, useGetSample } from "@workspace/api-client-react";
+import { useGetCurrentAuthUser, useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { enqueue, getQueue, updateQueuedSample } from "@/lib/offline-queue";
 import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
@@ -23,6 +23,7 @@ import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
 import { Capacitor } from "@capacitor/core";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 import { SavePhotoButton } from "@/components/SavePhotoButton";
+import { requireAccountForSave } from "@/lib/guest-access";
 
 const sampleTypes = [
   { id: 'rock', label: 'Rock', icon: Mountain, color: 'text-[var(--color-rock)]', bg: 'bg-[var(--color-rock)]/10' },
@@ -178,6 +179,7 @@ export default function SampleEntry() {
     ? new URLSearchParams(location.split("?")[1] ?? "").get("folderId") || ""
     : "";
   const { toast } = useToast();
+  const { data: authData } = useGetCurrentAuthUser();
 
   const { data: existingSample, isLoading: loadingSample } = useGetSample(sampleLookupId, {
     query: { enabled: isEdit && !isOfflineEdit && Boolean(id) }
@@ -496,6 +498,7 @@ export default function SampleEntry() {
   };
 
   const onSubmit = async (data: FormValues) => {
+    if (!requireAccountForSave(authData?.user, setLocation, location)) return;
     const invalidField = Object.entries(data.fields).find(([, value]) => exceedsSevenDecimalPlaces(value));
     const invalidCustomParameter = customParams.find((parameter) => exceedsSevenDecimalPlaces(parameter.value));
     if (invalidField || invalidCustomParameter) {

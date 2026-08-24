@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { useGetFolders } from "@workspace/api-client-react";
+import { useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
+import { useLocation } from "wouter";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ import { format as fmtDate } from "date-fns";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { deleteMeasurement, loadMeasurements, saveMeasurements, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { SavePhotoButton } from "@/components/SavePhotoButton";
+import { requireAccountForSave } from "@/lib/guest-access";
 
 function deriveDipDir(strikeStr: string): string {
   const n = parseFloat(strikeStr);
@@ -439,6 +441,8 @@ function addGpsToMeasurement(measurement: StrikeDipMeasurement, position: Geoloc
 
 export default function StrikeDipPage() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const { data: authData } = useGetCurrentAuthUser();
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
   const [compassOpen, setCompassOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
@@ -485,6 +489,7 @@ export default function StrikeDipPage() {
   }, []);
 
   const addMeasurementWithGps = (measurement: StrikeDipMeasurement, successTitle?: string, successDescription?: string) => {
+    if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
     if (!navigator.geolocation) {
       setMeasurements((prev) => [...prev, measurement]);
       if (successTitle) toast({ title: successTitle, description: successDescription });
@@ -514,6 +519,7 @@ export default function StrikeDipPage() {
   };
 
   const saveManualMeasurement = () => {
+    if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
     const strike = normalizeStrike(manualDraft.strike);
     const dip = normalizeAngle(manualDraft.dip, 90);
     if (!strike || !dip) {
@@ -531,10 +537,12 @@ export default function StrikeDipPage() {
   };
 
   const updateMeasurementById = (id: string, m: StrikeDipMeasurement) => {
+    if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
     setMeasurements((prev) => prev.map((item) => item.id === id ? m : item));
   };
 
   const deleteMeasurementById = (id: string) => {
+    if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
     const measurement = measurements.find((item) => item.id === id);
     if (!measurement || !confirm(`Delete "${measurement.label || "this measurement"}"? You can restore it from Settings for 20 days.`)) return;
     deleteMeasurement(id);
