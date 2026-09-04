@@ -15,6 +15,7 @@ import {
   updateUserAttribute,
 } from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
+import { getUrl, uploadData } from "aws-amplify/storage";
 import outputs from "../../../../amplify_outputs.json";
 import type {
   AuthUserEnvelope,
@@ -40,6 +41,40 @@ const client: any = generateClient();
 export function isAuthConfigured(): boolean {
   const auth = (outputs as any)?.auth;
   return Boolean(auth?.user_pool_id && auth?.user_pool_client_id);
+}
+
+export function isStorageConfigured(): boolean {
+  return Boolean((outputs as any)?.storage?.bucket_name);
+}
+
+export async function uploadSampleMedia(input: {
+  sampleId: string;
+  localUri: string;
+  fileName: string;
+  mimeType: string;
+}): Promise<{ storageKey: string; cloudUrl: string }> {
+  if (!isStorageConfigured()) {
+    throw new Error("Cloud media storage is not configured in this build. Deploy the Amplify backend and rebuild GeoField.");
+  }
+  const session = await fetchAuthSession();
+  const identityId = session.identityId;
+  if (!identityId) throw new Error("Sign in before uploading sample media.");
+  const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "-");
+  // A stable key makes a retry overwrite the same object instead of creating
+  // an orphan if connectivity drops after S3 accepts an upload.
+  const storageKey = `media/${identityId}/${input.sampleId}/${safeName}`;
+  const response = await fetch(input.localUri);
+  if (!response.ok) throw new Error(`Could not read media (${response.status}).`);
+  const body = await response.blob();
+  await uploadData({ path: storageKey, data: body, options: { contentType: input.mimeType } }).result;
+  const signed = await getUrl({ path: storageKey, options: { expiresIn: 3600 } });
+  return { storageKey, cloudUrl: signed.url.toString() };
+}
+
+export async function resolveSampleMediaUrl(storageKey: string): Promise<string> {
+  if (!isStorageConfigured()) return "";
+  const signed = await getUrl({ path: storageKey, options: { expiresIn: 3600 } });
+  return signed.url.toString();
 }
 
 type ErrorType<T = unknown> = Error & { data?: T };
@@ -150,6 +185,22 @@ function asSample(sample: any): Sample {
     createdAt: sample.createdAt ?? nowIso(),
     updatedAt: sample.updatedAt ?? sample.createdAt ?? nowIso(),
   } as Sample;
+}
+
+async function hydrateSampleMedia(sample: Sample): Promise<Sample> {
+  const fields = (sample.fields ?? {}) as Record<string, any>;
+  if (!Array.isArray(fields.media)) return sample;
+  const media = await Promise.all(fields.media.map(async (item: any) => {
+    if (!item?.storageKey) return item;
+    try {
+      const cloudUrl = await resolveSampleMediaUrl(item.storageKey);
+      return { ...item, cloudUrl, dataUrl: cloudUrl, syncStatus: "synced" };
+    } catch {
+      return { ...item, cloudUrl: "", dataUrl: "" };
+    }
+  }));
+  const primaryPhoto = media.find((item: any) => item?.kind === "photo" || item?.type === "photo");
+  return { ...sample, fields: { ...fields, media, primaryPhoto: primaryPhoto ?? fields.primaryPhoto } } as Sample;
 }
 
 function cleanObject<T extends Record<string, any>>(obj: T): T {
@@ -326,9 +377,9 @@ export function useGetFolders<TData = Folder[]>(options?: QueryOptions<any>): Us
   return { ...query, queryKey };
 }
 
-export async function createFolder({ data }: { data: CreateFolderRequest }): Promise<Folder> {
+export async function createFolder({ data, id }: { data: CreateFolderRequest; id?: string }): Promise<Folder> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before creating datasets.");
-  const result = await client.models.Dataset.create({ name: data.name, description: data.description ?? "", createdAt: nowIso(), updatedAt: nowIso() });
+  const result = await client.models.Dataset.create({ id, name: data.name, description: data.description ?? "", createdAt: nowIso(), updatedAt: nowIso() });
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFolder(result.data);
 }
@@ -402,7 +453,7 @@ export async function getSamples(
       if (isExpired(record)) {
         await client.models.Sample.delete({ id: String(record.id) });
       } else if (isActive(record)) {
-        samples.push(asSample(record));
+        samples.push(await hydrateSampleMedia(asSample(record)));
       }
     }
     page += 1;
@@ -425,7 +476,7 @@ export async function getSample(id: string | number): Promise<Sample> {
   const result = await client.models.Sample.get({ id: String(sampleId) });
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   if (!result.data) throw new Error("Sample not found");
-  return asSample(result.data);
+  return hydrateSampleMedia(asSample(result.data));
 }
 export function useGetSample<TData = Sample>(id: string | number, options?: QueryOptions<any>): UseQueryResult<TData, ErrorType<unknown>> & { queryKey: QueryKey } {
   const sampleId = currentSampleIdFallback(id);
@@ -482,6 +533,7 @@ export async function updateSample({ id, data }: { id: string | number; data: Up
     datasetId: data.folderId === undefined ? undefined : folderId,
     notes: data.notes || undefined,
     fields: data.fields === undefined ? undefined : serializeFields(data.fields),
+    updatedAt: nowIso(),
   }));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asSample(result.data);

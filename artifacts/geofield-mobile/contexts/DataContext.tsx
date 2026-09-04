@@ -1,5 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import {
+  createFolder as createCloudFolder,
+  createSample as createCloudSample,
+  getFolders as getCloudFolders,
+  getSample as getCloudSample,
+  getSamples as getCloudSamples,
+  updateSample as updateCloudSample,
+  uploadSampleMedia,
+} from "@workspace/api-client-react";
 
 export type SampleType = "water" | "rock" | "soil_sand" | "other";
 
@@ -20,6 +29,7 @@ export interface Sample {
   photos: string[];
   createdAt: string;
   updatedAt: string;
+  media?: Array<{ localUri?: string; storageKey?: string; cloudUrl?: string; kind: "photo" | "video"; fileName: string; mimeType: string }>;
 }
 
 export interface Folder {
@@ -100,6 +110,9 @@ interface DataContextValue {
   updateColumn: (id: string, updates: Partial<StratColumn>) => Promise<void>;
   deleteColumn: (id: string) => Promise<void>;
   isLoaded: boolean;
+  isSyncing: boolean;
+  lastSyncedAt: string | null;
+  syncNow: () => Promise<{ uploaded: number; downloaded: number }>;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -110,6 +123,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>([]);
   const [columns, setColumns] = useState<StratColumn[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -117,13 +132,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       load<Folder>(KEYS.folders),
       load<StrikeDipMeasurement>(KEYS.measurements),
       load<StratColumn>(KEYS.columns),
-    ]).then(([s, f, m, c]) => {
+      AsyncStorage.getItem("geofield_last_synced_at"),
+    ]).then(([s, f, m, c, lastSync]) => {
       const retainedSamples = s.filter((sample) => (sample.sampleType as string) !== "air");
       if (retainedSamples.length !== s.length) void save(KEYS.samples, retainedSamples);
       setSamples(retainedSamples);
       setFolders(f);
       setMeasurements(m);
       setColumns(c);
+      setLastSyncedAt(lastSync);
       setIsLoaded(true);
     });
   }, []);
@@ -234,13 +251,114 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const syncNow = useCallback(async () => {
+    if (isSyncing) return { uploaded: 0, downloaded: 0 };
+    setIsSyncing(true);
+    let uploaded = 0;
+    try {
+      const [remoteFolders, remoteSamples] = await Promise.all([getCloudFolders(), getCloudSamples()]);
+      const remoteFolderIds = new Set(remoteFolders.map((folder) => String(folder.id)));
+      for (const folder of folders) {
+        if (!remoteFolderIds.has(folder.id)) {
+          await createCloudFolder({ id: folder.id, data: { name: folder.name, description: folder.description } });
+          uploaded += 1;
+        }
+      }
+
+      const remoteById = new Map(remoteSamples.map((sample) => [String(sample.id), sample]));
+      const syncedLocals: Sample[] = [];
+      for (const sample of samples) {
+        const remote = remoteById.get(sample.id);
+        if (remote && Date.parse(remote.updatedAt) >= Date.parse(sample.updatedAt)) {
+          syncedLocals.push(sample);
+          continue;
+        }
+
+        const existingMedia = sample.media ?? [];
+        const media = [] as NonNullable<Sample["media"]>;
+        for (let index = 0; index < sample.photos.length; index += 1) {
+          const uri = sample.photos[index];
+          const prior = existingMedia.find((item) => item.localUri === uri || item.cloudUrl === uri);
+          if (prior?.storageKey) {
+            media.push(prior);
+            continue;
+          }
+          const kind = /\.(mp4|mov|m4v|webm|3gp)(\?|#|$)/i.test(uri) ? "video" : "photo";
+          const extension = uri.split(/[?#]/)[0].split(".").pop() || (kind === "video" ? "mp4" : "jpg");
+          const mimeType = kind === "video" ? `video/${extension === "mov" ? "quicktime" : extension}` : `image/${extension === "jpg" ? "jpeg" : extension}`;
+          const uploadedMedia = await uploadSampleMedia({ sampleId: sample.id, localUri: uri, fileName: `${kind}-${index}.${extension}`, mimeType });
+          media.push({ ...uploadedMedia, localUri: uri, kind, fileName: `${kind}-${index}.${extension}`, mimeType });
+        }
+        const fields = {
+          ...sample.fields,
+          location: sample.location ? `${sample.location.lat.toFixed(7)}, ${sample.location.lon.toFixed(7)}` : undefined,
+          altitude: sample.location?.altitude ?? undefined,
+          media: media.map((item) => ({ ...item, type: item.kind, syncStatus: "synced" })),
+          photoCount: media.filter((item) => item.kind === "photo").length,
+          videoCount: media.filter((item) => item.kind === "video").length,
+        };
+        const data = { sampleId: sample.sampleId, sampleType: sample.sampleType, folderId: sample.folderId, notes: sample.notes, fields };
+        if (remote) await updateCloudSample({ id: sample.id, data });
+        else {
+          try {
+            await createCloudSample({ id: sample.id, data });
+          } catch (error) {
+            await getCloudSample(sample.id).catch(() => { throw error; });
+          }
+        }
+        syncedLocals.push({ ...sample, media });
+        uploaded += 1;
+      }
+
+      const freshRemote = await getCloudSamples();
+      const localById = new Map(syncedLocals.map((sample) => [sample.id, sample]));
+      const merged = [...syncedLocals];
+      for (const cloud of freshRemote) {
+        const local = localById.get(String(cloud.id));
+        if (local && Date.parse(local.updatedAt) > Date.parse(cloud.updatedAt)) continue;
+        const cloudFields = (cloud.fields ?? {}) as any;
+        const cloudMedia = Array.isArray(cloudFields.media) ? cloudFields.media : [];
+        const mapped: Sample = {
+          id: String(cloud.id), sampleId: cloud.sampleId, sampleType: cloud.sampleType as SampleType,
+          folderId: cloud.folderId == null ? null : String(cloud.folderId), notes: cloud.notes ?? "",
+          fields: Object.fromEntries(Object.entries(cloudFields).filter(([key, value]) => key !== "media" && key !== "location" && typeof value === "string")) as Record<string, string>,
+          location: (() => {
+            const match = typeof cloudFields.location === "string" ? cloudFields.location.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/) : null;
+            return match ? { lat: Number(match[1]), lon: Number(match[2]), altitude: Number.isFinite(Number(cloudFields.altitude)) ? Number(cloudFields.altitude) : null } : null;
+          })(),
+          photos: cloudMedia.map((item: any) => item.cloudUrl || item.dataUrl).filter(Boolean),
+          media: cloudMedia.map((item: any) => ({ ...item, kind: item.kind || item.type })),
+          createdAt: cloud.createdAt, updatedAt: cloud.updatedAt,
+        };
+        const position = merged.findIndex((item) => item.id === mapped.id);
+        if (position >= 0) merged[position] = mapped;
+        else merged.unshift(mapped);
+      }
+      const mergedFolders = [...folders];
+      for (const cloud of await getCloudFolders()) {
+        if (!mergedFolders.some((folder) => folder.id === String(cloud.id))) {
+          mergedFolders.push({ id: String(cloud.id), name: cloud.name, description: cloud.description ?? "", createdAt: cloud.createdAt });
+        }
+      }
+      await Promise.all([save(KEYS.samples, merged), save(KEYS.folders, mergedFolders)]);
+      setSamples(merged);
+      setFolders(mergedFolders);
+      const syncedAt = new Date().toISOString();
+      await AsyncStorage.setItem("geofield_last_synced_at", syncedAt);
+      setLastSyncedAt(syncedAt);
+      return { uploaded, downloaded: freshRemote.length };
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [folders, isSyncing, samples]);
+
   return (
     <DataContext.Provider value={{
       samples, addSample, updateSample, deleteSample,
       folders, addFolder, updateFolder, deleteFolder,
       measurements, addMeasurement, deleteMeasurement,
       columns, addColumn, updateColumn, deleteColumn,
-      isLoaded,
+      isLoaded, isSyncing, lastSyncedAt, syncNow,
     }}>
       {children}
     </DataContext.Provider>

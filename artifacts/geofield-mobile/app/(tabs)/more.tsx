@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Modal,
@@ -16,6 +16,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useData } from "@/contexts/DataContext";
+import {
+  confirmSignUpUser,
+  getCurrentAuthUser,
+  signInUser,
+  signOutUser,
+  signUpUser,
+} from "@workspace/api-client-react";
 
 function Row({
   icon,
@@ -144,11 +151,70 @@ function FolderModal({
   );
 }
 
+function AccountModal({ visible, onClose, colors, onChanged }: { visible: boolean; onClose: () => void; colors: ReturnType<typeof useColors>; onChanged: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [mode, setMode] = useState<"signin" | "signup" | "confirm">("signin");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      if (mode === "signin") await signInUser({ email, password });
+      else if (mode === "signup") {
+        const result = await signUpUser({ email, password });
+        if (!result.isSignUpComplete) { setMode("confirm"); return; }
+      } else {
+        await confirmSignUpUser({ email, code });
+        await signInUser({ email, password });
+      }
+      onChanged();
+      onClose();
+    } catch (error: any) {
+      Alert.alert("Account error", error?.message || "Could not connect to your GeoField account.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <Modal visible={visible} animationType="slide" presentationStyle="formSheet">
+    <View style={[styles.sheet, { backgroundColor: colors.background, padding: 20, gap: 14 }]}>
+      <View style={styles.sheetHeader}>
+        <Text style={[styles.sheetTitle, { color: colors.foreground, fontFamily: "Inter_700Bold" }]}>GeoField Cloud</Text>
+        <TouchableOpacity onPress={onClose}><Feather name="x" size={22} color={colors.mutedForeground} /></TouchableOpacity>
+      </View>
+      <Text style={{ color: colors.mutedForeground }}>Use the same account on your phone and computer.</Text>
+      <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="Email" placeholderTextColor={colors.mutedForeground} style={[styles.accountInput, { color: colors.foreground, backgroundColor: colors.muted }]} />
+      {mode !== "confirm" && <TextInput value={password} onChangeText={setPassword} secureTextEntry placeholder="Password" placeholderTextColor={colors.mutedForeground} style={[styles.accountInput, { color: colors.foreground, backgroundColor: colors.muted }]} />}
+      {mode === "confirm" && <TextInput value={code} onChangeText={setCode} keyboardType="number-pad" placeholder="Email confirmation code" placeholderTextColor={colors.mutedForeground} style={[styles.accountInput, { color: colors.foreground, backgroundColor: colors.muted }]} />}
+      <TouchableOpacity disabled={busy} onPress={submit} style={[styles.accountButton, { backgroundColor: colors.primary }]}>
+        <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>{busy ? "Connecting…" : mode === "signin" ? "Sign In" : mode === "signup" ? "Create Account" : "Confirm & Sign In"}</Text>
+      </TouchableOpacity>
+      {mode !== "confirm" && <TouchableOpacity onPress={() => setMode(mode === "signin" ? "signup" : "signin")}><Text style={{ color: colors.primary, textAlign: "center" }}>{mode === "signin" ? "Create an account" : "I already have an account"}</Text></TouchableOpacity>}
+    </View>
+  </Modal>;
+}
+
 export default function MoreTab() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { samples, folders, measurements, columns } = useData();
+  const { samples, folders, measurements, columns, isSyncing, lastSyncedAt, syncNow } = useData();
   const [folderModal, setFolderModal] = useState(false);
+  const [accountModal, setAccountModal] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const refreshUser = () => { getCurrentAuthUser().then(({ user }) => setUserEmail(user?.email ?? null)); };
+  useEffect(refreshUser, []);
+
+  const handleSync = async () => {
+    if (!userEmail) { setAccountModal(true); return; }
+    try {
+      const result = await syncNow();
+      Alert.alert("Sync complete", `${result.uploaded} local item${result.uploaded === 1 ? "" : "s"} uploaded. ${result.downloaded} cloud sample${result.downloaded === 1 ? "" : "s"} available.`);
+    } catch (error: any) {
+      Alert.alert("Sync failed", error?.message || "Check your connection and try again.");
+    }
+  };
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
 
@@ -184,6 +250,12 @@ export default function MoreTab() {
       </View>
 
       {/* Data */}
+      <Section title="CLOUD SYNC" colors={colors}>
+        <Row icon="user" label={userEmail || "Sign in"} sub={userEmail ? "Connected to GeoField Cloud" : "Use the same account as the website"} onPress={() => setAccountModal(true)} colors={colors} />
+        <Row icon="refresh-cw" label={isSyncing ? "Syncing…" : "Sync now"} sub={lastSyncedAt ? `Last synced ${new Date(lastSyncedAt).toLocaleString()}` : "Upload samples and media, then download cloud changes"} onPress={isSyncing ? undefined : handleSync} colors={colors} />
+        {userEmail && <Row icon="log-out" label="Sign out" onPress={async () => { await signOutUser(); setUserEmail(null); }} colors={colors} />}
+      </Section>
+
       <Section title="DATA" colors={colors}>
         <Row icon="folder" label="Datasets" sub={`${folders.length} dataset${folders.length !== 1 ? "s" : ""}`} onPress={() => setFolderModal(true)} colors={colors} />
       </Section>
@@ -215,6 +287,7 @@ export default function MoreTab() {
       </Section>
 
       <FolderModal visible={folderModal} onClose={() => setFolderModal(false)} colors={colors} />
+      <AccountModal visible={accountModal} onClose={() => setAccountModal(false)} colors={colors} onChanged={refreshUser} />
     </ScrollView>
   );
 }
@@ -254,4 +327,6 @@ const styles = StyleSheet.create({
   folderName: { flex: 1, fontSize: 15 },
   empty: { alignItems: "center", padding: 40, gap: 8 },
   emptyText: { fontSize: 14 },
+  accountInput: { paddingHorizontal: 14, paddingVertical: 12, borderRadius: 10, fontSize: 16 },
+  accountButton: { alignItems: "center", padding: 14, borderRadius: 10 },
 });

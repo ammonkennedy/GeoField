@@ -32,9 +32,9 @@ Useful current capabilities:
 
 ## Important Product Notes
 
-Offline capture exists, but media cloud sync is not complete yet. Photos and videos are stored on the device until a full upload/sync pipeline is added.
+Offline capture remains available on the device. Signed-in mobile users can choose **Sync now** to upload datasets, samples, photos, and videos to the same Amplify backend used by the website, then download changes made on another device. Media is stored in a private, per-user Amplify Storage/S3 path.
 
-The web app and mobile app share the same product direction, but the mobile app is still mostly local-first. The next major product step is to make mobile collection and web review use the same synced dataset everywhere.
+The mobile app is local-first and uses explicit synchronization so field capture continues without service. Deploying backend changes and rebuilding the clients with the generated `amplify_outputs.json` is required whenever Amplify resources change.
 
 ## Recommended Roadmap
 
@@ -46,5 +46,5 @@ The web app and mobile app share the same product direction, but the mobile app 
 6. Make maps a central field workspace with better filtering, clustering, imported boundaries, and offline map support.
 7. Add pre-export quality checks for missing coordinates, duplicate IDs, missing dates, unexpected units, and incomplete fields.
 8. Add tests for save, sync, export, auth, and dataset ownership.
-9. Add a real media upload pipeline for photos/videos.
+9. Add background/resumable media transfer and richer per-file upload progress for large videos.
 10. Improve onboarding and documentation for non-developer field users.

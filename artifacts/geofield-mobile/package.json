@@ -16,6 +16,8 @@
     "@expo/ngrok": "^4.1.0",
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@aws-amplify/react-native": "^1.1.10",
+    "@react-native-community/netinfo": "^11.4.1",
     "@stardazed/streams-text-encoding": "^1.0.2",
     "@tanstack/react-query": "catalog:",
     "@types/react": "~19.1.10",
@@ -51,6 +53,7 @@
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
     "react-native-worklets": "0.5.1",
+    "react-native-get-random-values": "^1.11.0",
     "typescript": "~5.9.2",
     "zod": "catalog:",
     "zod-validation-error": "^3.4.0"
