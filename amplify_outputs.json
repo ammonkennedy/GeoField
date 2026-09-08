@@ -254,6 +254,69 @@
               "isRequired": false,
               "attributes": []
             },
+            "strikeDegrees": {
+              "name": "strikeDegrees",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "dipDegrees": {
+              "name": "dipDegrees",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "dipDirectionDegrees": {
+              "name": "dipDirectionDegrees",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "convention": {
+              "name": "convention",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "northReference": {
+              "name": "northReference",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "compassAccuracy": {
+              "name": "compassAccuracy",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "orientationQuaternion": {
+              "name": "orientationQuaternion",
+              "isArray": false,
+              "type": "AWSJSON",
+              "isRequired": false,
+              "attributes": []
+            },
+            "planeNormal": {
+              "name": "planeNormal",
+              "isArray": false,
+              "type": "AWSJSON",
+              "isRequired": false,
+              "attributes": []
+            },
+            "quality": {
+              "name": "quality",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "location": {
               "name": "location",
               "isArray": false,
@@ -380,7 +443,6 @@
             "water",
             "rock",
             "soil_sand",
-            "air",
             "other"
           ]
         }
@@ -388,5 +450,26 @@
       "nonModels": {}
     }
   },
-  "version": "1.4"
+  "storage": {
+    "aws_region": "us-east-2",
+    "bucket_name": "amplify-d2vn10cqbsssgw-ma-geofieldmediabucket88997-og7ezpmkok2g",
+    "buckets": [
+      {
+        "name": "geofieldMedia",
+        "bucket_name": "amplify-d2vn10cqbsssgw-ma-geofieldmediabucket88997-og7ezpmkok2g",
+        "aws_region": "us-east-2",
+        "paths": {
+          "media/${cognito-identity.amazonaws.com:sub}/*": {
+            "entityidentity": [
+              "get",
+              "list",
+              "write",
+              "delete"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "version": "1.5"
 }
