@@ -325,7 +325,7 @@ export async function getCurrentAccountToken(): Promise<string> {
  */
 export function subscribeToAccountDataChanges(onChange: () => void): () => void {
   const subscriptions: Array<{ unsubscribe: () => void }> = [];
-  for (const modelName of ["Sample", "Dataset"] as const) {
+  for (const modelName of ["Sample", "Dataset", "StrikeDipMeasurement"] as const) {
     for (const eventName of ["onCreate", "onUpdate", "onDelete"] as const) {
       try {
         const subscription = client.models[modelName][eventName]().subscribe({
@@ -582,6 +582,103 @@ export function useDeleteSample(options?: MutationOptions<void, { id: string | n
 
 export async function moveSample({ id, data }: { id: string | number; data: MoveSampleRequest }): Promise<Sample> {
   return updateSample({ id, data: { folderId: data.folderId } });
+}
+
+export interface CloudStrikeDipMeasurement {
+  id: string;
+  datasetId?: string | null;
+  label: string;
+  strike: string;
+  dip: string;
+  dipDir: string;
+  strikeDegrees?: number;
+  dipDegrees?: number;
+  dipDirectionDegrees?: number;
+  convention?: string;
+  northReference?: string;
+  compassAccuracy?: number;
+  magneticHeading?: number;
+  trueHeading?: number;
+  magneticDeclination?: number;
+  referenceFrame?: string;
+  rawMagneticStrikeDegrees?: number;
+  orientationQuaternion?: unknown;
+  planeNormal?: unknown;
+  quality?: string;
+  location: string;
+  latitude?: number;
+  longitude?: number;
+  gpsAccuracy?: number;
+  utmZone?: string;
+  utmEasting?: number;
+  utmNorthing?: number;
+  date: string;
+  featureType: string;
+  rockLayerType?: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
+  return {
+    id: String(record.id), datasetId: record.datasetId ?? null,
+    label: record.label ?? "", strike: record.strike ?? "", dip: record.dip ?? "", dipDir: record.dipDir ?? "",
+    strikeDegrees: record.strikeDegrees ?? undefined, dipDegrees: record.dipDegrees ?? undefined,
+    dipDirectionDegrees: record.dipDirectionDegrees ?? undefined, convention: record.convention ?? undefined,
+    northReference: record.northReference ?? undefined, compassAccuracy: record.compassAccuracy ?? undefined,
+    magneticHeading: record.magneticHeading ?? undefined, trueHeading: record.trueHeading ?? undefined,
+    magneticDeclination: record.magneticDeclination ?? undefined, referenceFrame: record.referenceFrame ?? undefined,
+    rawMagneticStrikeDegrees: record.rawMagneticStrikeDegrees ?? undefined,
+    orientationQuaternion: record.orientationQuaternion ?? undefined, planeNormal: record.planeNormal ?? undefined,
+    quality: record.quality ?? undefined, location: record.location ?? "", latitude: record.latitude ?? undefined,
+    longitude: record.longitude ?? undefined, gpsAccuracy: record.gpsAccuracy ?? undefined, utmZone: record.utmZone ?? undefined,
+    utmEasting: record.utmEasting ?? undefined, utmNorthing: record.utmNorthing ?? undefined,
+    date: record.date ?? "", featureType: record.featureType ?? "", rockLayerType: record.rockLayerType ?? "", notes: record.notes ?? "",
+    createdAt: record.createdAt ?? nowIso(), updatedAt: record.updatedAt ?? record.createdAt ?? nowIso(),
+  };
+}
+
+function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
+  return cleanObject({
+    datasetId: normalizeFolderId(data.datasetId) ?? undefined, label: data.label, strike: data.strike, dip: data.dip,
+    dipDir: data.dipDir, strikeDegrees: data.strikeDegrees, dipDegrees: data.dipDegrees,
+    dipDirectionDegrees: data.dipDirectionDegrees, convention: data.convention, northReference: data.northReference,
+    compassAccuracy: data.compassAccuracy, magneticHeading: data.magneticHeading, trueHeading: data.trueHeading,
+    magneticDeclination: data.magneticDeclination, referenceFrame: data.referenceFrame,
+    rawMagneticStrikeDegrees: data.rawMagneticStrikeDegrees, orientationQuaternion: data.orientationQuaternion,
+    planeNormal: data.planeNormal, quality: data.quality, location: data.location, latitude: data.latitude,
+    longitude: data.longitude, gpsAccuracy: data.gpsAccuracy, utmZone: data.utmZone,
+    utmEasting: data.utmEasting, utmNorthing: data.utmNorthing, date: data.date?.slice(0, 10),
+    featureType: data.featureType, rockLayerType: data.rockLayerType, notes: data.notes,
+  });
+}
+
+export async function getStrikeDipMeasurements(): Promise<CloudStrikeDipMeasurement[]> {
+  if (!(await hasCurrentUser())) return [];
+  const items: CloudStrikeDipMeasurement[] = [];
+  let nextToken: string | null | undefined;
+  do {
+    const result = await client.models.StrikeDipMeasurement.list({ limit: 1000, nextToken });
+    if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    for (const record of result.data ?? []) if (!record.deletedAt) items.push(asStrikeDipMeasurement(record));
+    nextToken = result.nextToken;
+  } while (nextToken);
+  return items;
+}
+
+export async function createStrikeDipMeasurement(data: CloudStrikeDipMeasurement): Promise<CloudStrikeDipMeasurement> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before syncing measurements.");
+  const result = await client.models.StrikeDipMeasurement.create({ id: data.id, ...strikeDipInput(data), createdAt: data.createdAt, updatedAt: data.updatedAt } as any);
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  return asStrikeDipMeasurement(result.data);
+}
+
+export async function updateStrikeDipMeasurement(data: CloudStrikeDipMeasurement): Promise<CloudStrikeDipMeasurement> {
+  if (!(await hasCurrentUser())) throw new Error("Sign in before syncing measurements.");
+  const result = await client.models.StrikeDipMeasurement.update({ id: data.id, ...strikeDipInput(data), updatedAt: data.updatedAt } as any);
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  return asStrikeDipMeasurement(result.data);
 }
 export function useMoveSample(options?: MutationOptions<Sample, { id: string | number; data: MoveSampleRequest }>) {
   return useMutation<Sample, ErrorType<unknown>, { id: string | number; data: MoveSampleRequest }>({ mutationFn: moveSample, ...(options?.mutation as any) });

@@ -25,6 +25,8 @@ export interface StrikeDipMeasurement {
   datasetId?: number | string | null;
   notes: string;
   photo?: string;
+  createdAt?: string;
+  updatedAt?: string;
   latitude?: number;
   longitude?: number;
   gpsAccuracy?: number;

@@ -32,6 +32,7 @@ const schema = a.schema({
 
   StrikeDipMeasurement: a
     .model({
+      datasetId: a.id(),
       label: a.string(),
       strike: a.string(),
       dip: a.string(),
@@ -42,6 +43,11 @@ const schema = a.schema({
       convention: a.string(),
       northReference: a.string(),
       compassAccuracy: a.float(),
+      magneticHeading: a.float(),
+      trueHeading: a.float(),
+      magneticDeclination: a.float(),
+      referenceFrame: a.string(),
+      rawMagneticStrikeDegrees: a.float(),
       orientationQuaternion: a.json(),
       planeNormal: a.json(),
       quality: a.string(),
@@ -54,9 +60,11 @@ const schema = a.schema({
       utmNorthing: a.float(),
       date: a.date(),
       featureType: a.string(),
+      rockLayerType: a.string(),
       notes: a.string(),
       createdAt: a.datetime(),
       updatedAt: a.datetime(),
+      deletedAt: a.datetime(),
     })
     .authorization((allow) => [allow.owner()]),
 });

@@ -21,7 +21,7 @@ import {
 } from "@/lib/export-config";
 import { format as fmtDate } from "date-fns";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-import { deleteMeasurement, loadMeasurements, saveMeasurements, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
+import { deleteMeasurement, loadMeasurements, saveMeasurements, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { SavePhotoButton } from "@/components/SavePhotoButton";
 import { requireAccountForSave } from "@/lib/guest-access";
 
@@ -49,6 +49,7 @@ function toLocalDateTimeInputValue(date = new Date()): string {
 }
 
 function blankMeasurement(datasetId?: number | string | null): StrikeDipMeasurement {
+  const now = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
     label: "",
@@ -61,6 +62,8 @@ function blankMeasurement(datasetId?: number | string | null): StrikeDipMeasurem
     rockLayerType: "",
     datasetId: datasetId ?? null,
     notes: "",
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -473,6 +476,19 @@ export default function StrikeDipPage() {
   }, [measurements]);
 
   useEffect(() => {
+    const refreshFromSync = () => {
+      const next = loadMeasurements();
+      setMeasurements((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+    };
+    window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refreshFromSync);
+    window.addEventListener("storage", refreshFromSync);
+    return () => {
+      window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refreshFromSync);
+      window.removeEventListener("storage", refreshFromSync);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!newlyCreatedId) return;
     const timer = window.setTimeout(() => setNewlyCreatedId(null), 0);
     return () => window.clearTimeout(timer);
@@ -529,7 +545,7 @@ export default function StrikeDipPage() {
     const strikeDegrees = Number(strike);
     const dipDegrees = Number(dip);
     const dipDirectionDegrees = ((strikeDegrees + 90) % 360);
-    const measurement: StrikeDipMeasurement = { ...manualDraft, strike, dip, strikeDegrees, dipDegrees, dipDirectionDegrees, dipDir: `${dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(strike)}`, convention: "right-hand-rule", northReference: "magnetic", quality: "manual" };
+    const measurement: StrikeDipMeasurement = { ...manualDraft, strike, dip, strikeDegrees, dipDegrees, dipDirectionDegrees, dipDir: `${dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(strike)}`, convention: "right-hand-rule", northReference: "magnetic", quality: "manual", updatedAt: new Date().toISOString() };
     setMeasurements((prev) => [...prev, measurement]);
     setNewlyCreatedId(measurement.id);
     setManualOpen(false);
@@ -538,7 +554,7 @@ export default function StrikeDipPage() {
 
   const updateMeasurementById = (id: string, m: StrikeDipMeasurement) => {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
-    setMeasurements((prev) => prev.map((item) => item.id === id ? m : item));
+    setMeasurements((prev) => prev.map((item) => item.id === id ? { ...m, updatedAt: new Date().toISOString() } : item));
   };
 
   const deleteMeasurementById = (id: string) => {

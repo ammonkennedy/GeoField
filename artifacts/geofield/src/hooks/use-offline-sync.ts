@@ -9,6 +9,9 @@ import {
   getGetSamplesQueryKey,
   getSample,
   subscribeToAccountDataChanges,
+  createStrikeDipMeasurement,
+  getStrikeDipMeasurements,
+  updateStrikeDipMeasurement,
 } from "@workspace/api-client-react";
 import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import {
@@ -19,6 +22,30 @@ import {
   type LocalDataset,
 } from "@/lib/local-datasets";
 import { cacheCloudSamples, clearCachedCloudSamples, clearCloudBackfill, markCloudBackfillComplete, needsCloudBackfill } from "@/lib/cloud-samples";
+import { loadMeasurements, saveMeasurements, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
+
+async function syncStrikeDipMeasurements() {
+  const local = loadMeasurements();
+  const remote = await getStrikeDipMeasurements();
+  const remoteById = new Map(remote.map((item) => [item.id, item]));
+  for (const measurement of local) {
+    const existing = remoteById.get(measurement.id);
+    const now = new Date().toISOString();
+    const data = { ...measurement, createdAt: measurement.createdAt ?? now, updatedAt: measurement.updatedAt ?? measurement.createdAt ?? now } as any;
+    if (!existing) await createStrikeDipMeasurement(data);
+    else if (Date.parse(data.updatedAt) > Date.parse(existing.updatedAt)) await updateStrikeDipMeasurement(data);
+  }
+  const fresh = await getStrikeDipMeasurements();
+  const merged = [...local];
+  for (const cloud of fresh) {
+    const position = merged.findIndex((item) => item.id === cloud.id);
+    const mapped = cloud as unknown as StrikeDipMeasurement;
+    if (position < 0) merged.push(mapped);
+    else if (!merged[position].updatedAt || Date.parse(cloud.updatedAt) >= Date.parse(merged[position].updatedAt!)) merged[position] = mapped;
+  }
+  saveMeasurements(merged);
+  return fresh.length;
+}
 
 function isLocalDatasetId(value: unknown) {
   if (value === null || value === undefined || value === "") return false;
@@ -139,9 +166,10 @@ export function useOfflineSync() {
 
     // Always pull after uploads. A device with nothing pending still needs cloud changes.
     try {
-      const [remoteSamples, remoteFolders] = await Promise.all([
+      const [remoteSamples, remoteFolders, remoteMeasurementCount] = await Promise.all([
         getSamples(undefined, ({ page, downloaded }) => setSyncProgress(`Downloading cloud samples: ${downloaded} received (page ${page})…`)),
         getFolders(),
+        syncStrikeDipMeasurements(),
       ]);
       const mergedRemote = cacheCloudSamples(remoteSamples);
       markCloudBackfillComplete(mergedRemote.length);
@@ -151,7 +179,7 @@ export function useOfflineSync() {
       queryClient.setQueryData(getGetFoldersQueryKey(), remoteFolders);
       queryClient.invalidateQueries({ queryKey: getGetSamplesQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetFoldersQueryKey() });
-      console.info(`[GeoField sync] Downloaded ${mergedRemote.length} samples and ${remoteFolders.length} datasets.`);
+      console.info(`[GeoField sync] Downloaded ${mergedRemote.length} samples, ${remoteFolders.length} datasets, and ${remoteMeasurementCount} measurements.`);
     } catch (error: any) {
       const message = error?.message || "Could not download samples from AWS.";
       console.error("[GeoField sync] Cloud download failed", error);

@@ -8,6 +8,9 @@ import {
   getSamples as getCloudSamples,
   updateSample as updateCloudSample,
   uploadSampleMedia,
+  createStrikeDipMeasurement as createCloudMeasurement,
+  getStrikeDipMeasurements as getCloudMeasurements,
+  updateStrikeDipMeasurement as updateCloudMeasurement,
 } from "@workspace/api-client-react";
 
 export type SampleType = "water" | "rock" | "soil_sand" | "other";
@@ -50,6 +53,11 @@ export interface StrikeDipMeasurement {
   date: string;
   notes: string;
   createdAt: string;
+  updatedAt: string;
+  datasetId?: string | null;
+  strikeDegrees?: number;
+  dipDegrees?: number;
+  dipDirectionDegrees?: number;
 }
 
 export interface StratLayer {
@@ -103,7 +111,7 @@ interface DataContextValue {
   updateFolder: (id: string, name: string, description?: string) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   measurements: StrikeDipMeasurement[];
-  addMeasurement: (m: Omit<StrikeDipMeasurement, "id" | "createdAt">) => Promise<StrikeDipMeasurement>;
+  addMeasurement: (m: Omit<StrikeDipMeasurement, "id" | "createdAt" | "updatedAt">) => Promise<StrikeDipMeasurement>;
   deleteMeasurement: (id: string) => Promise<void>;
   columns: StratColumn[];
   addColumn: (name: string, description?: string) => Promise<StratColumn>;
@@ -206,8 +214,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Measurements
-  const addMeasurement = useCallback(async (data: Omit<StrikeDipMeasurement, "id" | "createdAt">) => {
-    const m: StrikeDipMeasurement = { ...data, id: uid(), createdAt: new Date().toISOString() };
+  const addMeasurement = useCallback(async (data: Omit<StrikeDipMeasurement, "id" | "createdAt" | "updatedAt">) => {
+    const now = new Date().toISOString();
+    const m: StrikeDipMeasurement = { ...data, id: uid(), createdAt: now, updatedAt: now };
     setMeasurements((prev) => {
       const next = [m, ...prev];
       save(KEYS.measurements, next);
@@ -256,7 +265,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setIsSyncing(true);
     let uploaded = 0;
     try {
-      const [remoteFolders, remoteSamples] = await Promise.all([getCloudFolders(), getCloudSamples()]);
+      const [remoteFolders, remoteSamples, remoteMeasurements] = await Promise.all([getCloudFolders(), getCloudSamples(), getCloudMeasurements()]);
       const remoteFolderIds = new Set(remoteFolders.map((folder) => String(folder.id)));
       for (const folder of folders) {
         if (!remoteFolderIds.has(folder.id)) {
@@ -340,17 +349,50 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           mergedFolders.push({ id: String(cloud.id), name: cloud.name, description: cloud.description ?? "", createdAt: cloud.createdAt });
         }
       }
-      await Promise.all([save(KEYS.samples, merged), save(KEYS.folders, mergedFolders)]);
+      const remoteMeasurementsById = new Map(remoteMeasurements.map((item) => [item.id, item]));
+      for (const measurement of measurements) {
+        const remote = remoteMeasurementsById.get(measurement.id);
+        const data = {
+          ...measurement,
+          strikeDegrees: measurement.strikeDegrees ?? Number.parseFloat(measurement.strike),
+          dipDegrees: measurement.dipDegrees ?? Number.parseFloat(measurement.dip),
+          dipDirectionDegrees: measurement.dipDirectionDegrees ?? Number.parseFloat(measurement.dipDir),
+          convention: "right-hand-rule", northReference: "magnetic", quality: "manual",
+        } as any;
+        if (!remote) {
+          await createCloudMeasurement(data);
+          uploaded += 1;
+        } else if (Date.parse(measurement.updatedAt) > Date.parse(remote.updatedAt)) {
+          await updateCloudMeasurement(data);
+          uploaded += 1;
+        }
+      }
+      const freshMeasurements = await getCloudMeasurements();
+      const mergedMeasurements = [...measurements];
+      for (const cloud of freshMeasurements) {
+        const mapped: StrikeDipMeasurement = {
+          id: cloud.id, datasetId: cloud.datasetId ?? null, label: cloud.label, strike: cloud.strike,
+          dip: cloud.dip, dipDir: cloud.dipDir, strikeDegrees: cloud.strikeDegrees,
+          dipDegrees: cloud.dipDegrees, dipDirectionDegrees: cloud.dipDirectionDegrees,
+          featureType: cloud.featureType, location: cloud.location, date: cloud.date, notes: cloud.notes,
+          createdAt: cloud.createdAt, updatedAt: cloud.updatedAt,
+        };
+        const position = mergedMeasurements.findIndex((item) => item.id === mapped.id);
+        if (position < 0) mergedMeasurements.unshift(mapped);
+        else if (Date.parse(mapped.updatedAt) >= Date.parse(mergedMeasurements[position].updatedAt)) mergedMeasurements[position] = mapped;
+      }
+      await Promise.all([save(KEYS.samples, merged), save(KEYS.folders, mergedFolders), save(KEYS.measurements, mergedMeasurements)]);
       setSamples(merged);
       setFolders(mergedFolders);
+      setMeasurements(mergedMeasurements);
       const syncedAt = new Date().toISOString();
       await AsyncStorage.setItem("geofield_last_synced_at", syncedAt);
       setLastSyncedAt(syncedAt);
-      return { uploaded, downloaded: freshRemote.length };
+      return { uploaded, downloaded: freshRemote.length + freshMeasurements.length };
     } finally {
       setIsSyncing(false);
     }
-  }, [folders, isSyncing, samples]);
+  }, [folders, isSyncing, measurements, samples]);
 
   return (
     <DataContext.Provider value={{
