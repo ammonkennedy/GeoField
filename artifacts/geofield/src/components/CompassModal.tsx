@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
-import { AlertTriangle, CheckCircle, Smartphone, X } from "lucide-react";
+import { AlertTriangle, CheckCircle, Pause, Play, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
@@ -121,6 +121,8 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const [rawOrientation, setRawOrientation] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0 });
   const [filtered, setFiltered] = useState(emptyFiltered);
   const [stable, setStable] = useState(false);
+  const [held, setHeld] = useState(false);
+  const heldRef = useRef(false);
   const [primaryInstrument, setPrimaryInstrument] = useState<"strike-dip" | "north">("strike-dip");
   const [mockDip, setMockDip] = useState(30);
   const [mockDirection, setMockDirection] = useState(90);
@@ -128,6 +130,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const native = Capacitor.isNativePlatform();
 
   const process = (raw: SensorReading) => {
+    if (heldRef.current) return;
     if (raw.northReference !== "true" && raw.northReference !== "magnetic") {
       setError("The device supplied an unsupported north reference.");
       setStatus("error");
@@ -216,6 +219,8 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   useEffect(() => {
     if (!open) return;
     history.current = [];
+    heldRef.current = false;
+    setHeld(false);
     setStatus("starting"); setError(""); setStable(false); setReading(null);
     setRawOrientation({ strike: null, dipDirection: null, dip: 0 });
     setFiltered(emptyFiltered());
@@ -298,6 +303,11 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     setNotice("");
     setSelectedNorthReference(value);
   };
+  const toggleHeld = () => {
+    if (status !== "active" || !reading) return;
+    heldRef.current = !heldRef.current;
+    setHeld(heldRef.current);
+  };
 
   return <div className="fixed inset-0 z-[200] flex h-[100dvh] min-h-0 items-stretch justify-center overflow-hidden bg-black/80 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Geological Compass">
     <button
@@ -312,7 +322,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     <div className="flex min-h-0 w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117] text-slate-100 shadow-2xl sm:my-2 sm:max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
     <div className="sticky top-0 z-10 flex shrink-0 items-center border-b border-white/10 bg-[#0d1117]/95 px-5 py-3 pr-16 backdrop-blur"><div><h2 className="font-semibold">Geological Compass</h2><p className="text-xs text-slate-400">Right-hand-rule · {northReference} north</p></div></div>
     <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-y-contain px-5 pb-6 pt-4 [-webkit-overflow-scrolling:touch]">
-      <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Phone orientation does not matter.</span></div>
+      <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Tap the center of the compass to hold the reading while you move the phone.</span></div>
       <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="North reference">
         {(["true", "magnetic"] as const).map((value) => <button key={value} type="button" aria-label={`Use ${value} north`} aria-pressed={selectedNorthReference === value} onClick={() => selectNorthReference(value)} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedNorthReference === value ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>{value === "true" ? "True North" : "Magnetic North"}</button>)}
       </div>
@@ -334,11 +344,22 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
                 ? <NorthCompass northVector={filtered.screenNorthVector} reference={northReference} />
                 : <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} />}
             </button>
+            <button
+              type="button"
+              onClick={toggleHeld}
+              disabled={status !== "active" || !reading}
+              className={`absolute left-1/2 top-1/2 z-10 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 touch-manipulation items-center justify-center rounded-full border-2 shadow-2xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:cursor-wait disabled:opacity-50 ${held ? "border-amber-300 bg-amber-400 text-slate-950" : "border-white/60 bg-slate-950/90 text-white hover:scale-105 hover:bg-slate-800"}`}
+              aria-label={held ? "Resume live compass reading" : "Hold current compass reading"}
+              aria-pressed={held}
+              title={held ? "Resume live reading" : "Hold this reading"}
+            >
+              {held ? <Play className="h-7 w-7 fill-current" /> : <Pause className="h-7 w-7 fill-current" />}
+            </button>
           </div>
           <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Water-flow direction</span></div>
           {status === "starting" && <div className="absolute inset-0 flex items-center justify-center bg-[#080d14]/55 backdrop-blur-[1px]" aria-live="polite"><div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#0d1117]/95 px-4 py-2.5 text-sm text-slate-200 shadow-xl"><span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300/30 border-t-blue-300" aria-hidden="true" />Starting sensors…</div></div>}
         </div>
-        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${stable ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{stable ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : stable ? "Stable — ready to capture" : "Hold steady to capture"}</div>
+        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${held ? "bg-blue-500/10 text-blue-200" : stable ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{held ? <Pause className="h-4 w-4" /> : stable ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : held ? "Reading held — move the phone to view it, then tap the center to resume" : stable ? "Stable — ready to capture" : "Hold steady to capture"}</div>
         {accuracyLow && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-300">Compass accuracy is low. Move iPhone in a figure-eight and keep it away from magnets or metal objects.</p>}
         <Button className="w-full" disabled={status !== "active" || !stable || filtered.strike === null} onClick={capture}>Capture Measurement</Button>
       </>}
