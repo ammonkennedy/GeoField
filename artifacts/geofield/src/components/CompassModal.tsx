@@ -245,6 +245,15 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     };
   }, [open, native, selectedNorthReference]);
 
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open, onClose]);
+
   const hasDeclination = typeof reading?.trueHeading === "number" && typeof reading?.magneticHeading === "number";
   const northReference = activeNorthReference ?? selectedNorthReference;
   const declination = hasDeclination ? signedAngle(reading!.trueHeading! - reading!.magneticHeading!) : undefined;
@@ -291,8 +300,17 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   };
 
   return <div className="fixed inset-0 z-[200] flex h-[100dvh] min-h-0 items-stretch justify-center overflow-hidden bg-black/80 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Geological Compass">
+    <button
+      type="button"
+      onClick={onClose}
+      className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-30 flex h-12 w-12 touch-manipulation items-center justify-center rounded-full border border-white/30 bg-slate-950/95 text-white shadow-2xl backdrop-blur transition hover:scale-105 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+      aria-label="Back to strike and dip measurements"
+      title="Back to measurements"
+    >
+      <X className="h-7 w-7" strokeWidth={2.5} />
+    </button>
     <div className="flex min-h-0 w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117] text-slate-100 shadow-2xl sm:my-2 sm:max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
-    <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-white/10 bg-[#0d1117]/95 px-5 py-3 backdrop-blur"><div><h2 className="font-semibold">Geological Compass</h2><p className="text-xs text-slate-400">Right-hand-rule · {northReference} north</p></div><button type="button" onClick={onClose} className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full hover:bg-white/10" aria-label="Close geological compass"><X className="h-5 w-5" /></button></div>
+    <div className="sticky top-0 z-10 flex shrink-0 items-center border-b border-white/10 bg-[#0d1117]/95 px-5 py-3 pr-16 backdrop-blur"><div><h2 className="font-semibold">Geological Compass</h2><p className="text-xs text-slate-400">Right-hand-rule · {northReference} north</p></div></div>
     <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-y-contain px-5 pb-6 pt-4 [-webkit-overflow-scrolling:touch]">
       <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Phone orientation does not matter.</span></div>
       <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="North reference">
