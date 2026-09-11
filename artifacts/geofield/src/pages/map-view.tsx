@@ -28,6 +28,7 @@ import type { MacrostratSelection } from "@/lib/macrostrat-types";
 import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { requireAccountForSave } from "@/lib/guest-access";
+import { loadMeasurements, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
 const TYPE_COLORS: Record<string, string> = {
   water: "#2d7dd2",
@@ -46,6 +47,17 @@ const TYPE_LABELS: Record<string, string> = {
 
 function formatCoord(value: number) {
   return value.toFixed(7);
+}
+
+function measurementCoords(measurement: StrikeDipMeasurement): [number, number] | null {
+  if (Number.isFinite(measurement.latitude) && Number.isFinite(measurement.longitude)) {
+    return [measurement.latitude!, measurement.longitude!];
+  }
+  return parseCoords(measurement.location);
+}
+
+function escapeHtml(value: unknown) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character]!);
 }
 
 function getSampleLabel(sample: any) {
@@ -200,6 +212,7 @@ export default function MapViewPage() {
   const [newLayerFileName, setNewLayerFileName] = useState("");
   const [newLayerFileSummary, setNewLayerFileSummary] = useState("");
   const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
+  const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
 
   const { data: folders } = useGetFolders();
   const { data: serverSamples } = useGetSamples();
@@ -233,6 +246,10 @@ export default function MapViewPage() {
   );
   const samplesWithCoords = filteredSamples.filter((s) => parseCoords((s.fields as any)?.location));
   const samplesWithoutCoords = filteredSamples.filter((s) => !parseCoords((s.fields as any)?.location));
+  const filteredMeasurements = measurements.filter((measurement) =>
+    selectedFolderId === "all" ? true : String(measurement.datasetId ?? "") === String(selectedFolderId)
+  );
+  const measurementsWithCoords = filteredMeasurements.filter(measurementCoords);
   const searchableSamples = (allSamples || [])
     .map((sample) => ({ sample, coords: parseCoords((sample.fields as any)?.location) }))
     .filter((entry) => entry.coords);
@@ -326,6 +343,16 @@ export default function MapViewPage() {
     return () => {
       window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshDatasets);
       window.removeEventListener("storage", refreshDatasets);
+    };
+  }, []);
+
+  useEffect(() => {
+    const refreshMeasurements = () => setMeasurements(loadMeasurements());
+    window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refreshMeasurements);
+    window.addEventListener("storage", refreshMeasurements);
+    return () => {
+      window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refreshMeasurements);
+      window.removeEventListener("storage", refreshMeasurements);
     };
   }, []);
 
@@ -589,6 +616,53 @@ export default function MapViewPage() {
       markersRef.current.push(marker);
     });
 
+    const currentMeasurements = measurements.filter((measurement) =>
+      selectedFolderId === "all" ? true : String(measurement.datasetId ?? "") === String(selectedFolderId)
+    );
+    currentMeasurements.forEach((measurement) => {
+      const coords = measurementCoords(measurement);
+      if (!coords) return;
+      allCoords.push([coords[1], coords[0]]);
+
+      const strike = Number.isFinite(measurement.strikeDegrees)
+        ? measurement.strikeDegrees!
+        : Number.parseFloat(measurement.strike) || 0;
+      const el = document.createElement("button");
+      el.type = "button";
+      el.setAttribute("aria-label", `Strike and dip measurement ${measurement.label || measurement.strike}`);
+      el.style.cssText = "width:42px;height:42px;border:0;background:transparent;padding:0;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));";
+      el.innerHTML = `
+        <svg viewBox="0 0 42 42" width="42" height="42" aria-hidden="true">
+          <circle cx="21" cy="21" r="18" fill="rgba(255,255,255,.88)" stroke="#7c3aed" stroke-width="2"/>
+          <g transform="rotate(${strike} 21 21)">
+            <path d="M21 7V35 M21 21H34" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M21 7V35 M21 21H34" fill="none" stroke="#4c1d95" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+        </svg>`;
+      const marker = new L.Marker({ element: el, anchor: "center", rotationAlignment: "map" })
+        .setLngLat([coords[1], coords[0]])
+        .addTo(map);
+      el.addEventListener("click", (event: Event) => {
+        event.stopPropagation();
+        popup
+          .setLngLat([coords[1], coords[0]])
+          .setHTML(`
+            <div style="font-family:system-ui,sans-serif;min-width:190px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="color:#4c1d95;font-size:22px;font-weight:800;">⊢</span>
+                <div><strong style="font-size:13px;">${escapeHtml(measurement.label || "Strike & Dip")}</strong><div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Structural measurement</div></div>
+              </div>
+              <div style="font-size:12px;margin-bottom:4px;"><strong>Strike:</strong> ${escapeHtml(measurement.strike)} &nbsp; <strong>Dip:</strong> ${escapeHtml(measurement.dip)}</div>
+              ${measurement.dipDir ? `<div style="font-size:11px;color:#666;margin-bottom:4px;"><strong>Dip direction:</strong> ${escapeHtml(measurement.dipDir)}</div>` : ""}
+              ${measurement.featureType ? `<div style="font-size:11px;color:#666;margin-bottom:4px;"><strong>Feature:</strong> ${escapeHtml(measurement.featureType)}</div>` : ""}
+              <div style="font-size:11px;color:#666;">📍 ${formatCoord(coords[0])}, ${formatCoord(coords[1])}</div>
+              <a href="/strike-dip" style="display:block;margin-top:10px;background:#7c3aed;color:white;text-align:center;border-radius:6px;padding:6px;font-size:12px;text-decoration:none;font-weight:600;">View Measurements →</a>
+            </div>`)
+          .addTo(map);
+      });
+      markersRef.current.push(marker);
+    });
+
     if (allCoords.length === 1) {
       map.flyTo({ center: allCoords[0], zoom: 13 });
     } else if (allCoords.length > 1) {
@@ -613,7 +687,7 @@ export default function MapViewPage() {
         });
       }
     });
-  }, [allSamples, selectedFolderId]);
+  }, [allSamples, measurements, selectedFolderId]);
 
   function focusSample(coords: [number, number]) {
     setSelectedFolderId("all");
@@ -682,7 +756,7 @@ export default function MapViewPage() {
               Geological Map
             </h1>
             <p className="text-muted-foreground mt-1">
-              {samplesWithCoords.length} sample{samplesWithCoords.length !== 1 ? "s" : ""} plotted
+              {samplesWithCoords.length} sample{samplesWithCoords.length !== 1 ? "s" : ""} and {measurementsWithCoords.length} strike/dip measurement{measurementsWithCoords.length !== 1 ? "s" : ""} plotted
               {selectedFolderId !== "all" && (
                 <span className="ml-1">from <strong>{allFolders.find((f: any) => String(f.id) === String(selectedFolderId))?.name}</strong></span>
               )}
@@ -824,6 +898,12 @@ export default function MapViewPage() {
                 <span className="text-muted-foreground">{TYPE_LABELS[type]}</span>
               </div>
             ))}
+            <div className="flex items-center gap-1.5 text-sm">
+              <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
+                <path d="M10 2v16M10 10h8" fill="none" stroke="#4c1d95" strokeWidth="2.5" strokeLinecap="round" />
+              </svg>
+              <span className="text-muted-foreground">Strike/Dip</span>
+            </div>
           </div>
         </div>
 
