@@ -10,6 +10,7 @@ export type RotationMatrix3 = {
   m31: number; m32: number; m33: number;
 };
 export type ScreenVector = { right: number; up: number };
+export type LineationOrientation = { trend: number; plunge: number; vector: Vector3 };
 
 export const HORIZONTAL_THRESHOLD_DEGREES = 1;
 export const normalizeAzimuth = (angle: number) => ((angle % 360) + 360) % 360;
@@ -21,6 +22,30 @@ export const bearingInMirroredTrueNorthFrame = (trueBearing: number, declination
   normalizeAzimuth(trueBearing + 2 * declination);
 export const calibratedStrike = (strike: number | null, offsetDegrees = 10) =>
   strike === null ? null : normalizeAzimuth(strike + offsetDegrees);
+
+/** Convert a world-space line into the geological down-plunge convention. */
+export function lineationOrientationFromVector(input: Vector3): LineationOrientation | null {
+  const length = Math.hypot(input.east, input.north, input.up);
+  if (!Number.isFinite(length) || length < 1e-9) return null;
+  const sign = input.up > 0 ? -1 : 1;
+  const vector = {
+    east: sign * input.east / length,
+    north: sign * input.north / length,
+    up: sign * input.up / length,
+  };
+  const horizontal = Math.hypot(vector.east, vector.north);
+  const trend = horizontal < 1e-9 ? 0 : normalizeAzimuth(degrees(Math.atan2(vector.east, vector.north)));
+  const plunge = Math.min(90, Math.max(0, degrees(Math.atan2(-vector.up, horizontal))));
+  return { trend, plunge, vector };
+}
+
+export function flipLineationDirection(orientation: LineationOrientation): LineationOrientation {
+  return {
+    trend: normalizeAzimuth(orientation.trend + 180),
+    plunge: orientation.plunge,
+    vector: { east: -orientation.vector.east, north: -orientation.vector.north, up: orientation.vector.up },
+  };
+}
 const radians = (degrees: number) => degrees * Math.PI / 180;
 const degrees = (value: number) => value * 180 / Math.PI;
 

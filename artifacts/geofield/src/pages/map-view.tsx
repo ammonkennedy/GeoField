@@ -624,19 +624,22 @@ export default function MapViewPage() {
       if (!coords) return;
       allCoords.push([coords[1], coords[0]]);
 
-      const strike = Number.isFinite(measurement.strikeDegrees)
-        ? measurement.strikeDegrees!
-        : Number.parseFloat(measurement.strike) || 0;
+      const isLineation = measurement.measurementType === "lineation";
+      const bearing = isLineation
+        ? measurement.trendDegrees ?? 0
+        : Number.isFinite(measurement.strikeDegrees)
+          ? measurement.strikeDegrees!
+          : Number.parseFloat(measurement.strike) || 0;
       const el = document.createElement("button");
       el.type = "button";
-      el.setAttribute("aria-label", `Strike and dip measurement ${measurement.label || measurement.strike}`);
+      el.setAttribute("aria-label", `${isLineation ? "Lineation" : "Strike and dip"} measurement ${measurement.label || measurement.strike}`);
       el.style.cssText = "width:42px;height:42px;border:0;background:transparent;padding:0;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));";
       el.innerHTML = `
         <svg viewBox="0 0 42 42" width="42" height="42" aria-hidden="true">
           <circle cx="21" cy="21" r="18" fill="rgba(255,255,255,.88)" stroke="#7c3aed" stroke-width="2"/>
-          <g transform="rotate(${strike} 21 21)">
-            <path d="M21 7V35 M21 21H34" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M21 7V35 M21 21H34" fill="none" stroke="#4c1d95" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <g transform="rotate(${bearing} 21 21)">
+            <path d="${isLineation ? "M21 34V8 M15 14L21 8L27 14" : "M21 7V35 M21 21H34"}" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="${isLineation ? "M21 34V8 M15 14L21 8L27 14" : "M21 7V35 M21 21H34"}" fill="none" stroke="#4c1d95" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
           </g>
         </svg>`;
       const marker = new L.Marker({ element: el, anchor: "center", rotationAlignment: "map" })
@@ -649,11 +652,13 @@ export default function MapViewPage() {
           .setHTML(`
             <div style="font-family:system-ui,sans-serif;min-width:190px;">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                <span style="color:#4c1d95;font-size:22px;font-weight:800;">⊢</span>
-                <div><strong style="font-size:13px;">${escapeHtml(measurement.label || "Strike & Dip")}</strong><div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Structural measurement</div></div>
+                <span style="color:#4c1d95;font-size:22px;font-weight:800;">${isLineation ? "↑" : "⊢"}</span>
+                <div><strong style="font-size:13px;">${escapeHtml(measurement.label || (isLineation ? "Lineation" : "Strike & Dip"))}</strong><div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Structural measurement</div></div>
               </div>
-              <div style="font-size:12px;margin-bottom:4px;"><strong>Strike:</strong> ${escapeHtml(measurement.strike)} &nbsp; <strong>Dip:</strong> ${escapeHtml(measurement.dip)}</div>
-              ${measurement.dipDir ? `<div style="font-size:11px;color:#666;margin-bottom:4px;"><strong>Dip direction:</strong> ${escapeHtml(measurement.dipDir)}</div>` : ""}
+              ${isLineation
+                ? `<div style="font-size:12px;margin-bottom:4px;"><strong>Trend:</strong> ${Math.round(measurement.trendDegrees ?? 0)}° &nbsp; <strong>Plunge:</strong> ${Math.round(measurement.plungeDegrees ?? 0)}°</div>`
+                : `<div style="font-size:12px;margin-bottom:4px;"><strong>Strike:</strong> ${escapeHtml(measurement.strike)} &nbsp; <strong>Dip:</strong> ${escapeHtml(measurement.dip)}</div>`}
+              ${!isLineation && measurement.dipDir ? `<div style="font-size:11px;color:#666;margin-bottom:4px;"><strong>Dip direction:</strong> ${escapeHtml(measurement.dipDir)}</div>` : ""}
               ${measurement.featureType ? `<div style="font-size:11px;color:#666;margin-bottom:4px;"><strong>Feature:</strong> ${escapeHtml(measurement.featureType)}</div>` : ""}
               <div style="font-size:11px;color:#666;">📍 ${formatCoord(coords[0])}, ${formatCoord(coords[1])}</div>
               <a href="/strike-dip" style="display:block;margin-top:10px;background:#7c3aed;color:white;text-align:center;border-radius:6px;padding:6px;font-size:12px;text-decoration:none;font-weight:600;">View Measurements →</a>
@@ -756,7 +761,7 @@ export default function MapViewPage() {
               Geological Map
             </h1>
             <p className="text-muted-foreground mt-1">
-              {samplesWithCoords.length} sample{samplesWithCoords.length !== 1 ? "s" : ""} and {measurementsWithCoords.length} strike/dip measurement{measurementsWithCoords.length !== 1 ? "s" : ""} plotted
+              {samplesWithCoords.length} sample{samplesWithCoords.length !== 1 ? "s" : ""} and {measurementsWithCoords.length} structural measurement{measurementsWithCoords.length !== 1 ? "s" : ""} plotted
               {selectedFolderId !== "all" && (
                 <span className="ml-1">from <strong>{allFolders.find((f: any) => String(f.id) === String(selectedFolderId))?.name}</strong></span>
               )}

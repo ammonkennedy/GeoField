@@ -173,7 +173,9 @@ function MeasurementRow({
           <p className="text-sm font-medium truncate">{measurement.label || "Untitled measurement"}</p>
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
             <span className="text-xs font-mono text-primary">
-              Strike {measurement.strike || "--"} / Dip {measurement.dip || "--"}
+              {measurement.measurementType === "lineation"
+                ? `Trend ${measurement.trendDegrees?.toFixed(0).padStart(3, "0") ?? "--"}° / Plunge ${measurement.plungeDegrees ?? "--"}°`
+                : `Strike ${measurement.strike || "--"} / Dip ${measurement.dip || "--"}`}
             </span>
             {measurement.featureType && (
               <span className="text-xs text-muted-foreground">{measurement.featureType}</span>
@@ -263,14 +265,13 @@ function MeasurementRow({
               <Label className="text-xs">Label / Name</Label>
               <Input autoFocus={initiallyOpen} value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder="e.g. Outcrop A — bedding plane" className="h-9 text-sm" />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Strike</Label>
-              <Input type="text" inputMode="numeric" value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} onBlur={() => upd("strike", normalizeStrike(measurement.strike))} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Strike in degrees" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Dip</Label>
-              <Input type="text" inputMode="decimal" value={measurement.dip} onChange={(e) => upd("dip", e.target.value)} onBlur={() => upd("dip", normalizeAngle(measurement.dip, 90))} placeholder="0–90°" className="h-10 text-base font-mono" aria-label="Dip in degrees" />
-            </div>
+            {measurement.measurementType === "lineation" ? <>
+              <div className="space-y-1"><Label className="text-xs">Trend</Label><Input type="text" inputMode="numeric" value={measurement.trendDegrees ?? ""} onChange={(e) => onChange({ ...measurement, trendDegrees: Number(e.target.value) })} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Trend in degrees" /></div>
+              <div className="space-y-1"><Label className="text-xs">Plunge</Label><Input type="text" inputMode="decimal" value={measurement.plungeDegrees ?? ""} onChange={(e) => onChange({ ...measurement, plungeDegrees: Number(e.target.value) })} placeholder="0–90°" className="h-10 text-base font-mono" aria-label="Plunge in degrees" /></div>
+            </> : <>
+              <div className="space-y-1"><Label className="text-xs">Strike</Label><Input type="text" inputMode="numeric" value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} onBlur={() => upd("strike", normalizeStrike(measurement.strike))} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Strike in degrees" /></div>
+              <div className="space-y-1"><Label className="text-xs">Dip</Label><Input type="text" inputMode="decimal" value={measurement.dip} onChange={(e) => upd("dip", e.target.value)} onBlur={() => upd("dip", normalizeAngle(measurement.dip, 90))} placeholder="0–90°" className="h-10 text-base font-mono" aria-label="Dip in degrees" /></div>
+            </>}
             <div className="space-y-1">
               <Label className="text-xs">Feature Type</Label>
               <select
@@ -702,9 +703,21 @@ export default function StrikeDipPage() {
         open={compassOpen}
         onClose={() => setCompassOpen(false)}
         onCapture={(capture: StrikeDipCapture) => {
+          if (capture.measurementType === "lineation") {
+            const m: StrikeDipMeasurement = {
+              ...blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId),
+              ...capture,
+              measurementType: "lineation",
+              label: `Lineation ${capture.trendDegrees.toString().padStart(3, "0")}°/${capture.plungeDegrees}°`,
+              featureType: "Lineation",
+            };
+            addMeasurementWithGps(m, "Lineation captured", `Trend ${capture.trendDegrees}° / Plunge ${capture.plungeDegrees}°`);
+            return;
+          }
           const m: StrikeDipMeasurement = {
             ...blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId),
             ...capture,
+            measurementType: "plane",
             strike: String(capture.strikeDegrees),
             dip: String(capture.dipDegrees),
             dipDir: `${capture.dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(String(capture.strikeDegrees))}`,

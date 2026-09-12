@@ -44,6 +44,7 @@ export interface Folder {
 
 export interface StrikeDipMeasurement {
   id: string;
+  measurementType?: "plane" | "lineation";
   label: string;
   strike: string;
   dip: string;
@@ -58,6 +59,9 @@ export interface StrikeDipMeasurement {
   strikeDegrees?: number;
   dipDegrees?: number;
   dipDirectionDegrees?: number;
+  trendDegrees?: number;
+  plungeDegrees?: number;
+  lineVector?: { east: number; north: number; up: number };
 }
 
 export interface StratLayer {
@@ -374,6 +378,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           id: cloud.id, datasetId: cloud.datasetId ?? null, label: cloud.label, strike: cloud.strike,
           dip: cloud.dip, dipDir: cloud.dipDir, strikeDegrees: cloud.strikeDegrees,
           dipDegrees: cloud.dipDegrees, dipDirectionDegrees: cloud.dipDirectionDegrees,
+          measurementType: cloud.measurementType, trendDegrees: cloud.trendDegrees,
+          plungeDegrees: cloud.plungeDegrees, lineVector: cloud.lineVector as any,
           featureType: cloud.featureType, location: cloud.location, date: cloud.date, notes: cloud.notes,
           createdAt: cloud.createdAt, updatedAt: cloud.updatedAt,
         };

@@ -32,6 +32,7 @@ const schema = a.schema({
 
   StrikeDipMeasurement: a
     .model({
+      measurementType: a.string(),
       datasetId: a.id(),
       label: a.string(),
       strike: a.string(),
@@ -40,6 +41,9 @@ const schema = a.schema({
       strikeDegrees: a.float(),
       dipDegrees: a.float(),
       dipDirectionDegrees: a.float(),
+      trendDegrees: a.float(),
+      plungeDegrees: a.float(),
+      lineVector: a.json(),
       convention: a.string(),
       northReference: a.string(),
       compassAccuracy: a.float(),

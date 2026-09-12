@@ -1,5 +1,6 @@
 export interface StrikeDipMeasurement {
   id: string;
+  measurementType?: "plane" | "lineation";
   label: string;
   strike: string;
   dip: string;
@@ -7,6 +8,9 @@ export interface StrikeDipMeasurement {
   strikeDegrees?: number;
   dipDegrees?: number;
   dipDirectionDegrees?: number;
+  trendDegrees?: number;
+  plungeDegrees?: number;
+  lineVector?: { east: number; north: number; up: number };
   convention?: "right-hand-rule";
   northReference?: "true" | "magnetic";
   compassAccuracy?: number;

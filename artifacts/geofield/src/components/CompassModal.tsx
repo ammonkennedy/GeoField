@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Pause, Play, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, deviceVectorToScreen, flipLineationDirection, horizontalPlaneAxesFromNormal, lineationOrientationFromVector, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type LineationOrientation, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
   normalEast: number; normalNorth: number; normalUp: number;
+  lineEast?: number; lineNorth?: number; lineUp?: number;
   gravityX: number; gravityY: number; gravityZ: number;
   roll?: number; pitch?: number; yaw?: number;
   matrixM11?: number; matrixM12?: number; matrixM13?: number;
@@ -18,7 +19,8 @@ type SensorReading = {
   northReference: NorthReferencePreference;
   referenceFrame?: NorthReferencePreference;
 };
-type Capture = {
+type PlaneCapture = {
+  measurementType: "plane";
   strikeDegrees: number; dipDegrees: number; dipDirectionDegrees: number;
   convention: "right-hand-rule"; northReference: "true" | "magnetic";
   compassAccuracy?: number; magneticHeading?: number; trueHeading?: number; magneticDeclination?: number;
@@ -26,6 +28,13 @@ type Capture = {
   orientationQuaternion?: { x: number; y: number; z: number; w: number };
   planeNormal: Vector3; quality: "stable" | "unstable";
 };
+type LineationCapture = {
+  measurementType: "lineation";
+  trendDegrees: number; plungeDegrees: number;
+  northReference: "true" | "magnetic"; referenceFrame: "true" | "magnetic";
+  compassAccuracy?: number; lineVector: Vector3; quality: "stable" | "unstable";
+};
+type Capture = PlaneCapture | LineationCapture;
 interface Props { open: boolean; onClose: () => void; onCapture: (capture: Capture) => void; }
 interface GeologyMotionPlugin {
   available(): Promise<{ available: boolean }>;
@@ -111,6 +120,21 @@ function NorthCompass({ northVector, reference }: { northVector: ScreenVector | 
   </svg>;
 }
 
+function LineationCompass({ towardTop }: { towardTop: boolean }) {
+  return <svg viewBox="0 0 300 300" className="mx-auto w-full max-w-[310px] drop-shadow-2xl" aria-label="Lineation trend and plunge instrument">
+    <defs><radialGradient id="lineFace" cx="42%" cy="35%"><stop offset="0" stopColor="#202a3a" /><stop offset="1" stopColor="#080d14" /></radialGradient></defs>
+    <circle cx="150" cy="150" r="143" fill="#05080d" stroke="#64748b" strokeWidth="2" />
+    <circle cx="150" cy="150" r="136" fill="url(#lineFace)" stroke="#293548" strokeWidth="2" />
+    {Array.from({ length: 36 }, (_, index) => index * 10).map((degree) => { const angle = (degree - 90) * Math.PI / 180; return <line key={degree} x1={150 + 132 * Math.cos(angle)} y1={150 + 132 * Math.sin(angle)} x2={150 + (degree % 30 === 0 ? 116 : 124) * Math.cos(angle)} y2={150 + (degree % 30 === 0 ? 116 : 124) * Math.sin(angle)} stroke={degree % 30 === 0 ? "#e2e8f0" : "#526176"} strokeWidth={degree % 30 === 0 ? 2 : 1} />; })}
+    <text x="150" y="35" textAnchor="middle" fill="#fca5a5" fontSize="14" fontWeight="800">TOP</text>
+    <line x1="150" y1="258" x2="150" y2="42" stroke="#dbeafe" strokeWidth="8" strokeLinecap="round" />
+    <line x1="150" y1="258" x2="150" y2="42" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" />
+    <path d={towardTop ? "M150 48 L137 72 L163 72 Z" : "M150 252 L137 228 L163 228 Z"} fill="#fbbf24" stroke="#fff7cc" strokeWidth="2" />
+    <circle cx="150" cy="150" r="13" fill="#0a1019" stroke="#fbbf24" strokeWidth="3" />
+    <text x="150" y="284" textAnchor="middle" fill="#94a3b8" fontSize="9" letterSpacing="1.4">PHONE LONGITUDINAL AXIS</text>
+  </svg>;
+}
+
 export function CompassModal({ open, onClose, onCapture }: Props) {
   const [status, setStatus] = useState<"starting" | "active" | "unavailable" | "error">("starting");
   const [error, setError] = useState("");
@@ -124,9 +148,16 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const [held, setHeld] = useState(false);
   const heldRef = useRef(false);
   const [primaryInstrument, setPrimaryInstrument] = useState<"strike-dip" | "north">("strike-dip");
+  const [mode, setMode] = useState<"plane" | "lineation">("plane");
+  const [lineation, setLineation] = useState<LineationOrientation | null>(null);
+  const [lineStable, setLineStable] = useState(false);
+  const [lineFlipped, setLineFlipped] = useState(false);
+  const lineFlippedRef = useRef(false);
+  const [lineArrowTowardTop, setLineArrowTowardTop] = useState(true);
   const [mockDip, setMockDip] = useState(30);
   const [mockDirection, setMockDirection] = useState(90);
   const history = useRef<Array<{ strike: number | null; dipDirection: number | null; dip: number; normal: Vector3; gravityX: number; gravityY: number }>>([]);
+  const lineHistory = useRef<Vector3[]>([]);
   const native = Capacitor.isNativePlatform();
 
   const process = (raw: SensorReading) => {
@@ -214,13 +245,30 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     setReading({ ...raw, normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up });
     setFiltered({ ...meanOrientation, strikeVector: axes?.strike ?? null, downDipVector: axes?.downDip ?? null, screenStrikeVector, screenDownDipVector, screenNorthVector });
     setStable(isStable); setStatus("active");
+    if (typeof raw.lineEast === "number" && typeof raw.lineNorth === "number" && typeof raw.lineUp === "number") {
+      const rawLine = { east: raw.lineEast, north: raw.lineNorth, up: raw.lineUp };
+      lineHistory.current = [...lineHistory.current.slice(-(STABILITY_WINDOW - 1)), rawLine];
+      const mean = lineHistory.current.reduce((sum, item) => ({ east: sum.east + item.east, north: sum.north + item.north, up: sum.up + item.up }), { east: 0, north: 0, up: 0 });
+      let result = lineationOrientationFromVector(mean);
+      if (result && lineFlippedRef.current) result = flipLineationDirection(result);
+      setLineation(result);
+      setLineArrowTowardTop((rawLine.up <= 0) !== lineFlippedRef.current);
+      setLineStable(Boolean(result && lineHistory.current.length >= STABILITY_WINDOW && lineHistory.current.every((item) => {
+        let current = lineationOrientationFromVector(item);
+        if (current && lineFlippedRef.current) current = flipLineationDirection(current);
+        return current && angularDistance(current.trend, result!.trend) <= AZIMUTH_TOLERANCE && Math.abs(current.plunge - result!.plunge) <= DIP_TOLERANCE;
+      })));
+    }
   };
 
   useEffect(() => {
     if (!open) return;
     history.current = [];
+    lineHistory.current = [];
     heldRef.current = false;
     setHeld(false);
+    lineFlippedRef.current = false;
+    setLineation(null); setLineStable(false); setLineFlipped(false);
     setStatus("starting"); setError(""); setStable(false); setReading(null);
     setRawOrientation({ strike: null, dipDirection: null, dip: 0 });
     setFiltered(emptyFiltered());
@@ -289,13 +337,22 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
 
   const useMock = () => {
     const normal = normalForDip(mockDip, mockDirection);
-    const mockReading = { normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, northReference: selectedNorthReference };
+    const plungeRadians = mockDip * Math.PI / 180;
+    const trendRadians = mockDirection * Math.PI / 180;
+    const mockLine = { east: Math.cos(plungeRadians) * Math.sin(trendRadians), north: Math.cos(plungeRadians) * Math.cos(trendRadians), up: -Math.sin(plungeRadians) };
+    const mockReading = { normalEast: normal.east, normalNorth: normal.north, normalUp: normal.up, lineEast: mockLine.east, lineNorth: mockLine.north, lineUp: mockLine.up, gravityX: 0, gravityY: 0, gravityZ: -1, quaternionX: 0, quaternionY: 0, quaternionZ: 0, quaternionW: 1, magneticHeading: 0, headingAccuracy: 0, northReference: selectedNorthReference };
     process(mockReading);
     history.current = Array(STABILITY_WINDOW).fill({ ...planeOrientationFromNormal(normal), normal, gravityX: mockReading.gravityX, gravityY: mockReading.gravityY }); process(mockReading);
   };
   const capture = () => {
+    if (mode === "lineation") {
+      if (!lineation || !reading) return;
+      onCapture({ measurementType: "lineation", trendDegrees: Math.round(lineation.trend), plungeDegrees: Number(lineation.plunge.toFixed(1)), northReference, referenceFrame: northReference, compassAccuracy: reading.headingAccuracy, lineVector: lineation.vector, quality: lineStable ? "stable" : "unstable" });
+      onClose();
+      return;
+    }
     if (filtered.strike === null || filtered.dipDirection === null || !reading) return;
-    onCapture({ strikeDegrees: Math.round(filtered.strike), dipDegrees: Number(filtered.dip.toFixed(1)), dipDirectionDegrees: Math.round(filtered.dipDirection), convention: "right-hand-rule", northReference, compassAccuracy: reading.headingAccuracy, magneticHeading: reading.magneticHeading, trueHeading: reading.trueHeading, magneticDeclination: declination, referenceFrame: northReference, rawMagneticStrikeDegrees: northReference === "magnetic" && rawOrientation.strike !== null ? Math.round(rawOrientation.strike) : undefined, orientationQuaternion: { x: reading.quaternionX, y: reading.quaternionY, z: reading.quaternionZ, w: reading.quaternionW }, planeNormal: { east: reading.normalEast, north: reading.normalNorth, up: reading.normalUp }, quality: stable ? "stable" : "unstable" }); onClose();
+    onCapture({ measurementType: "plane", strikeDegrees: Math.round(filtered.strike), dipDegrees: Number(filtered.dip.toFixed(1)), dipDirectionDegrees: Math.round(filtered.dipDirection), convention: "right-hand-rule", northReference, compassAccuracy: reading.headingAccuracy, magneticHeading: reading.magneticHeading, trueHeading: reading.trueHeading, magneticDeclination: declination, referenceFrame: northReference, rawMagneticStrikeDegrees: northReference === "magnetic" && rawOrientation.strike !== null ? Math.round(rawOrientation.strike) : undefined, orientationQuaternion: { x: reading.quaternionX, y: reading.quaternionY, z: reading.quaternionZ, w: reading.quaternionW }, planeNormal: { east: reading.normalEast, north: reading.normalNorth, up: reading.normalUp }, quality: stable ? "stable" : "unstable" }); onClose();
   };
   const selectNorthReference = (value: NorthReferencePreference) => {
     if (value === selectedNorthReference) return;
@@ -307,6 +364,12 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     if (status !== "active" || !reading) return;
     heldRef.current = !heldRef.current;
     setHeld(heldRef.current);
+  };
+  const flipLineDirection = () => {
+    lineFlippedRef.current = !lineFlippedRef.current;
+    setLineFlipped(lineFlippedRef.current);
+    setLineation((current) => current ? flipLineationDirection(current) : current);
+    setLineArrowTowardTop((current) => !current);
   };
 
   return <div className="fixed inset-0 z-[200] flex h-[100dvh] min-h-0 items-stretch justify-center overflow-hidden bg-black/80 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Geological Compass">
@@ -326,24 +389,30 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="North reference">
         {(["true", "magnetic"] as const).map((value) => <button key={value} type="button" aria-label={`Use ${value} north`} aria-pressed={selectedNorthReference === value} onClick={() => selectNorthReference(value)} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedNorthReference === value ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>{value === "true" ? "True North" : "Magnetic North"}</button>)}
       </div>
+      <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="Measurement mode">
+        <button type="button" aria-pressed={mode === "plane"} onClick={() => setMode("plane")} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${mode === "plane" ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>Strike &amp; Dip</button>
+        <button type="button" aria-pressed={mode === "lineation"} onClick={() => setMode("lineation")} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${mode === "lineation" ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>Lineation</button>
+      </div>
       {notice && <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-300">{notice}</p>}
       {status === "error" && <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>}
       {(status === "starting" || status === "active" || reading) && <>
         <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#121a27] to-[#080d14] px-3 pb-5 pt-5 shadow-inner">
           <div className="mb-3 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">Strike · RHR</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{fmt(filtered.strike)}</p></div>
-            <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">Dip</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(filtered.dip)}°</p><p className="text-[10px] text-amber-200/70">plane slope</p></div>
+            <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">{mode === "plane" ? "Strike · RHR" : "Trend · down-plunge"}</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{mode === "plane" ? fmt(filtered.strike) : fmt(lineation?.trend ?? null)}</p></div>
+            <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">{mode === "plane" ? "Dip" : "Plunge"}</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(mode === "plane" ? filtered.dip : lineation?.plunge ?? 0)}°</p><p className="text-[10px] text-amber-200/70">{mode === "plane" ? "plane slope" : "below horizontal"}</p></div>
           </div>
           <p className="mb-1 text-center text-[10px] font-medium uppercase tracking-wider text-slate-400">Referenced to {northReference === "true" ? "True North" : "Magnetic North"}</p>
           <div className="relative mx-auto aspect-square w-full max-w-[330px]">
-            {primaryInstrument === "strike-dip"
+            {mode === "lineation"
+              ? <LineationCompass towardTop={lineArrowTowardTop} />
+              : primaryInstrument === "strike-dip"
               ? <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} />
               : <NorthCompass northVector={filtered.screenNorthVector} reference={northReference} />}
-            <button type="button" onClick={() => setPrimaryInstrument((current) => current === "strike-dip" ? "north" : "strike-dip")} className="absolute right-1 top-1 h-24 w-24 overflow-hidden rounded-full border-2 border-white/30 bg-[#080d14] p-0.5 shadow-2xl transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400" aria-label={primaryInstrument === "strike-dip" ? `Open ${northReference} north compass` : "Open strike and dip compass"}>
+            {mode === "plane" && <button type="button" onClick={() => setPrimaryInstrument((current) => current === "strike-dip" ? "north" : "strike-dip")} className="absolute right-1 top-1 h-24 w-24 overflow-hidden rounded-full border-2 border-white/30 bg-[#080d14] p-0.5 shadow-2xl transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400" aria-label={primaryInstrument === "strike-dip" ? `Open ${northReference} north compass` : "Open strike and dip compass"}>
               {primaryInstrument === "strike-dip"
                 ? <NorthCompass northVector={filtered.screenNorthVector} reference={northReference} />
                 : <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} />}
-            </button>
+            </button>}
             <button
               type="button"
               onClick={toggleHeld}
@@ -356,12 +425,15 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
               {held ? <Play className="h-7 w-7 fill-current" /> : <Pause className="h-7 w-7 fill-current" />}
             </button>
           </div>
-          <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Water-flow direction</span></div>
+          {mode === "lineation" && <button type="button" onClick={flipLineDirection} className="mx-auto mt-2 block min-h-10 rounded-lg border border-white/15 bg-white/5 px-4 text-xs font-semibold text-slate-200 hover:bg-white/10">Flip Direction{lineFlipped ? " (flipped)" : ""}</button>}
+          {mode === "plane"
+            ? <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Water-flow direction</span></div>
+            : <p className="mt-1 text-center text-[9px] uppercase tracking-wider text-slate-500">Align the blue center line with the linear feature; the arrow marks the measured direction</p>}
           {status === "starting" && <div className="absolute inset-0 flex items-center justify-center bg-[#080d14]/55 backdrop-blur-[1px]" aria-live="polite"><div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#0d1117]/95 px-4 py-2.5 text-sm text-slate-200 shadow-xl"><span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300/30 border-t-blue-300" aria-hidden="true" />Starting sensors…</div></div>}
         </div>
-        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${held ? "bg-blue-500/10 text-blue-200" : stable ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{held ? <Pause className="h-4 w-4" /> : stable ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : held ? "Reading held — move the phone to view it, then tap the center to resume" : stable ? "Stable — ready to capture" : "Hold steady to capture"}</div>
+        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${held ? "bg-blue-500/10 text-blue-200" : (mode === "plane" ? stable : lineStable) ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{held ? <Pause className="h-4 w-4" /> : (mode === "plane" ? stable : lineStable) ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : held ? "Reading held — move the phone to view it, then tap the center to resume" : (mode === "plane" ? stable : lineStable) ? "Stable — ready to capture" : "Hold steady to capture"}</div>
         {accuracyLow && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-300">Compass accuracy is low. Move iPhone in a figure-eight and keep it away from magnets or metal objects.</p>}
-        <Button className="w-full" disabled={status !== "active" || !stable || filtered.strike === null} onClick={capture}>Capture Measurement</Button>
+        <Button className="w-full" disabled={status !== "active" || (mode === "plane" ? !stable || filtered.strike === null : !lineStable || !lineation)} onClick={capture}>Capture {mode === "plane" ? "Measurement" : "Lineation"}</Button>
       </>}
       {(!native || (import.meta.env.DEV && status === "error")) && <div className="space-y-3 rounded-xl border border-dashed border-slate-600 p-3"><p className="text-xs text-amber-300">Simulator/manual sensor mode — not a real measurement.</p><label className="block text-xs">Dip {mockDip}°<input className="w-full" type="range" min="0" max="90" value={mockDip} onChange={(e) => setMockDip(Number(e.target.value))} /></label><label className="block text-xs">Dip direction {mockDirection}°<input className="w-full" type="range" min="0" max="359" value={mockDirection} onChange={(e) => setMockDirection(Number(e.target.value))} /></label><Button variant="outline" className="w-full" onClick={useMock}>Apply Mock Reading</Button></div>}
       <details className="text-xs text-slate-400"><summary>Measurement diagnostics</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2">{diagnostic}</pre></details>

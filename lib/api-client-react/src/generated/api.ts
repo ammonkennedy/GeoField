@@ -586,6 +586,7 @@ export async function moveSample({ id, data }: { id: string | number; data: Move
 
 export interface CloudStrikeDipMeasurement {
   id: string;
+  measurementType?: "plane" | "lineation";
   datasetId?: string | null;
   label: string;
   strike: string;
@@ -594,6 +595,9 @@ export interface CloudStrikeDipMeasurement {
   strikeDegrees?: number;
   dipDegrees?: number;
   dipDirectionDegrees?: number;
+  trendDegrees?: number;
+  plungeDegrees?: number;
+  lineVector?: unknown;
   convention?: string;
   northReference?: string;
   compassAccuracy?: number;
@@ -622,10 +626,12 @@ export interface CloudStrikeDipMeasurement {
 
 function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
   return {
-    id: String(record.id), datasetId: record.datasetId ?? null,
+    id: String(record.id), measurementType: record.measurementType === "lineation" ? "lineation" : "plane", datasetId: record.datasetId ?? null,
     label: record.label ?? "", strike: record.strike ?? "", dip: record.dip ?? "", dipDir: record.dipDir ?? "",
     strikeDegrees: record.strikeDegrees ?? undefined, dipDegrees: record.dipDegrees ?? undefined,
     dipDirectionDegrees: record.dipDirectionDegrees ?? undefined, convention: record.convention ?? undefined,
+    trendDegrees: record.trendDegrees ?? undefined, plungeDegrees: record.plungeDegrees ?? undefined,
+    lineVector: record.lineVector ?? undefined,
     northReference: record.northReference ?? undefined, compassAccuracy: record.compassAccuracy ?? undefined,
     magneticHeading: record.magneticHeading ?? undefined, trueHeading: record.trueHeading ?? undefined,
     magneticDeclination: record.magneticDeclination ?? undefined, referenceFrame: record.referenceFrame ?? undefined,
@@ -641,8 +647,9 @@ function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
 
 function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
   return cleanObject({
-    datasetId: normalizeFolderId(data.datasetId) ?? undefined, label: data.label, strike: data.strike, dip: data.dip,
+    measurementType: data.measurementType ?? "plane", datasetId: normalizeFolderId(data.datasetId) ?? undefined, label: data.label, strike: data.strike, dip: data.dip,
     dipDir: data.dipDir, strikeDegrees: data.strikeDegrees, dipDegrees: data.dipDegrees,
+    trendDegrees: data.trendDegrees, plungeDegrees: data.plungeDegrees, lineVector: data.lineVector,
     dipDirectionDegrees: data.dipDirectionDegrees, convention: data.convention, northReference: data.northReference,
     compassAccuracy: data.compassAccuracy, magneticHeading: data.magneticHeading, trueHeading: data.trueHeading,
     magneticDeclination: data.magneticDeclination, referenceFrame: data.referenceFrame,

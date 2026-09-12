@@ -1,8 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, circularMean, deviceVectorToScreen, horizontalPlaneAxesFromNormal, mirroredTrueNorthHeading, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
+import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, circularMean, deviceVectorToScreen, flipLineationDirection, horizontalPlaneAxesFromNormal, lineationOrientationFromVector, mirroredTrueNorthHeading, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
+
+for (const [name, vector, trend, plunge] of [
+  ["horizontal north", { east: 0, north: 1, up: 0 }, 0, 0],
+  ["horizontal east", { east: 1, north: 0, up: 0 }, 90, 0],
+  ["north down 30", { east: 0, north: Math.cos(Math.PI / 6), up: -0.5 }, 0, 30],
+  ["southwest down 45", { east: -0.5, north: -0.5, up: -Math.SQRT1_2 }, 225, 45],
+] as const) test(`lineation ${name}`, () => {
+  const result = lineationOrientationFromVector(vector);
+  assert.ok(result);
+  close(result.trend, trend); close(result.plunge, plunge);
+});
+test("lineation reverses an upward vector to down-plunge", () => {
+  const result = lineationOrientationFromVector({ east: 0, north: -Math.cos(Math.PI / 6), up: 0.5 });
+  assert.ok(result); close(result.trend, 0); close(result.plunge, 30);
+});
+test("lineation direction can be flipped without changing plunge", () => {
+  const result = lineationOrientationFromVector({ east: 1, north: 0, up: -1 });
+  assert.ok(result);
+  const flipped = flipLineationDirection(result);
+  close(flipped.trend, 270); close(flipped.plunge, 45);
+});
 
 test("horizontal plane hides direction and strike", () => assert.deepEqual(planeOrientationFromNormal({ east: 0, north: 0, up: 1 }), { dip: 0, dipDirection: null, strike: null }));
 for (const [name, direction, strike] of [["north", 0, 90], ["east", 90, 180], ["south", 180, 270], ["west", 270, 0]] as const) {

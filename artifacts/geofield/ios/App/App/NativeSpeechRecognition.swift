@@ -188,11 +188,26 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
             case .portraitUpsideDown: interfaceOrientation = "portrait-upside-down"
             default: interfaceOrientation = "portrait"
             }
+            // Device +Y points toward the visual top in portrait. Select the
+            // equivalent physical axis for the active interface orientation,
+            // transpose the attitude matrix (device -> reference), then convert
+            // Core Motion x=north, y=west, z=up into geographic ENU.
+            let deviceTop: (x: Double, y: Double, z: Double)
+            switch interfaceOrientation {
+            case "portrait-upside-down": deviceTop = (0, -1, 0)
+            case "landscape-left": deviceTop = (-1, 0, 0)
+            case "landscape-right": deviceTop = (1, 0, 0)
+            default: deviceTop = (0, 1, 0)
+            }
+            let lineReferenceX = r.m11 * deviceTop.x + r.m21 * deviceTop.y + r.m31 * deviceTop.z
+            let lineReferenceY = r.m12 * deviceTop.x + r.m22 * deviceTop.y + r.m32 * deviceTop.z
+            let lineReferenceZ = r.m13 * deviceTop.x + r.m23 * deviceTop.y + r.m33 * deviceTop.z
             // Both north-vertical frames are x=north, y=west, z=up. Transposing
             // attitude maps the phone-plane +Z normal into earth ENU. Its sign
             // is immaterial because the geological math always points it upward.
             var payload: JSObject = [
                 "normalEast": -r.m32, "normalNorth": r.m31, "normalUp": r.m33,
+                "lineEast": -lineReferenceY, "lineNorth": lineReferenceX, "lineUp": lineReferenceZ,
                 "gravityX": data.gravity.x, "gravityY": data.gravity.y, "gravityZ": data.gravity.z,
                 "roll": data.attitude.roll, "pitch": data.attitude.pitch, "yaw": data.attitude.yaw,
                 "matrixM11": r.m11, "matrixM12": r.m12, "matrixM13": r.m13,
