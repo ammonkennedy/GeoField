@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Pause, Play, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
@@ -372,18 +373,20 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     setLineArrowTowardTop((current) => !current);
   };
 
-  return <div className="fixed inset-0 z-[200] flex h-[100dvh] min-h-0 items-stretch justify-center overflow-hidden bg-black/80 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Geological Compass">
-    <button
-      type="button"
-      onClick={onClose}
-      className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-30 flex h-12 w-12 touch-manipulation items-center justify-center rounded-full border border-white/30 bg-slate-950/95 text-white shadow-2xl backdrop-blur transition hover:scale-105 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-      aria-label="Back to strike and dip measurements"
-      title="Back to measurements"
-    >
-      <X className="h-7 w-7" strokeWidth={2.5} />
-    </button>
+  return createPortal(<div className="fixed inset-0 z-[200] flex h-[100dvh] min-h-0 items-stretch justify-center overflow-hidden bg-black/80 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Geological Compass">
     <div className="flex min-h-0 w-full max-w-md flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0d1117] text-slate-100 shadow-2xl sm:my-2 sm:max-h-[calc(100dvh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]">
-    <div className="sticky top-0 z-10 flex shrink-0 items-center border-b border-white/10 bg-[#0d1117]/95 px-5 py-3 pr-16 backdrop-blur"><div><h2 className="font-semibold">Geological Compass</h2><p className="text-xs text-slate-400">Right-hand-rule · {northReference} north</p></div></div>
+    <div className="z-10 flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#0d1117] px-4 py-3">
+      <div className="min-w-0"><h2 className="font-semibold">Geological Compass</h2><p className="text-xs text-slate-400">Right-hand-rule · {northReference} north</p></div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="flex h-12 w-12 shrink-0 touch-manipulation items-center justify-center rounded-full border-2 border-white/60 bg-white text-slate-950 shadow-lg hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+        aria-label="Back to strike and dip measurements"
+        title="Back to strike and dip measurements"
+      >
+        <X className="h-7 w-7" strokeWidth={3} aria-hidden="true" />
+      </button>
+    </div>
     <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-y-contain px-5 pb-6 pt-4 [-webkit-overflow-scrolling:touch]">
       <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Tap the center of the compass to hold the reading while you move the phone.</span></div>
       <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="North reference">
@@ -438,7 +441,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       {(!native || (import.meta.env.DEV && status === "error")) && <div className="space-y-3 rounded-xl border border-dashed border-slate-600 p-3"><p className="text-xs text-amber-300">Simulator/manual sensor mode — not a real measurement.</p><label className="block text-xs">Dip {mockDip}°<input className="w-full" type="range" min="0" max="90" value={mockDip} onChange={(e) => setMockDip(Number(e.target.value))} /></label><label className="block text-xs">Dip direction {mockDirection}°<input className="w-full" type="range" min="0" max="359" value={mockDirection} onChange={(e) => setMockDirection(Number(e.target.value))} /></label><Button variant="outline" className="w-full" onClick={useMock}>Apply Mock Reading</Button></div>}
       <details className="text-xs text-slate-400"><summary>Measurement diagnostics</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2">{diagnostic}</pre></details>
       <p className="text-center text-[10px] text-slate-500">Field aid only; not survey-grade. Horizontal planes below 1° have no defined strike or dip direction.</p>
-    </div></div></div>;
+    </div></div></div>, document.body);
 }
 
 export type { Capture as StrikeDipCapture };

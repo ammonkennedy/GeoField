@@ -9,6 +9,22 @@ The project contains:
 - A backend/API layer for authenticated folders and samples.
 - Shared database, API specification, and generated client packages.
 
+## Updating the Xcode app
+
+Open `artifacts/geofield/ios/App/App.xcodeproj`. After pulling changes using
+Xcode's Source Control menu (or Git), press **Run**. The app target automatically
+builds the web app and copies its assets and Capacitor configuration before
+Xcode packages the app. This also runs for Archive and stops the build if the
+web build or copy fails, preventing an outdated bundle from being installed.
+
+Node.js and pnpm must be installed on the Xcode computer. On a fresh checkout,
+or when dependency manifests/the lockfile change, run
+`pnpm install --frozen-lockfile` from the repository root. When native Capacitor
+plugins are added or updated, run `pnpm exec cap sync ios` from
+`artifacts/geofield` before building so Xcode can resolve the updated native
+packages. Routine web code changes need only Pull and Run; builds do not pull
+from GitHub automatically.
+
 ## Current Field Workflow
 
 GeoField is aimed at field geologists and geo developers who need to collect structured observations in rough conditions.

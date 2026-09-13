@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { decodeMeasurementJson, encodeMeasurementJson } from "../measurement-json";
 import type { QueryKey, UseMutationOptions, UseQueryOptions, UseQueryResult } from "@tanstack/react-query";
 import { Amplify } from "aws-amplify";
 import {
@@ -631,12 +632,12 @@ function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
     strikeDegrees: record.strikeDegrees ?? undefined, dipDegrees: record.dipDegrees ?? undefined,
     dipDirectionDegrees: record.dipDirectionDegrees ?? undefined, convention: record.convention ?? undefined,
     trendDegrees: record.trendDegrees ?? undefined, plungeDegrees: record.plungeDegrees ?? undefined,
-    lineVector: record.lineVector ?? undefined,
+    lineVector: decodeMeasurementJson(record.lineVector),
     northReference: record.northReference ?? undefined, compassAccuracy: record.compassAccuracy ?? undefined,
     magneticHeading: record.magneticHeading ?? undefined, trueHeading: record.trueHeading ?? undefined,
     magneticDeclination: record.magneticDeclination ?? undefined, referenceFrame: record.referenceFrame ?? undefined,
     rawMagneticStrikeDegrees: record.rawMagneticStrikeDegrees ?? undefined,
-    orientationQuaternion: record.orientationQuaternion ?? undefined, planeNormal: record.planeNormal ?? undefined,
+    orientationQuaternion: decodeMeasurementJson(record.orientationQuaternion), planeNormal: decodeMeasurementJson(record.planeNormal),
     quality: record.quality ?? undefined, location: record.location ?? "", latitude: record.latitude ?? undefined,
     longitude: record.longitude ?? undefined, gpsAccuracy: record.gpsAccuracy ?? undefined, utmZone: record.utmZone ?? undefined,
     utmEasting: record.utmEasting ?? undefined, utmNorthing: record.utmNorthing ?? undefined,
@@ -649,12 +650,12 @@ function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
   return cleanObject({
     measurementType: data.measurementType ?? "plane", datasetId: normalizeFolderId(data.datasetId) ?? undefined, label: data.label, strike: data.strike, dip: data.dip,
     dipDir: data.dipDir, strikeDegrees: data.strikeDegrees, dipDegrees: data.dipDegrees,
-    trendDegrees: data.trendDegrees, plungeDegrees: data.plungeDegrees, lineVector: data.lineVector,
+    trendDegrees: data.trendDegrees, plungeDegrees: data.plungeDegrees, lineVector: encodeMeasurementJson(data.lineVector),
     dipDirectionDegrees: data.dipDirectionDegrees, convention: data.convention, northReference: data.northReference,
     compassAccuracy: data.compassAccuracy, magneticHeading: data.magneticHeading, trueHeading: data.trueHeading,
     magneticDeclination: data.magneticDeclination, referenceFrame: data.referenceFrame,
-    rawMagneticStrikeDegrees: data.rawMagneticStrikeDegrees, orientationQuaternion: data.orientationQuaternion,
-    planeNormal: data.planeNormal, quality: data.quality, location: data.location, latitude: data.latitude,
+    rawMagneticStrikeDegrees: data.rawMagneticStrikeDegrees, orientationQuaternion: encodeMeasurementJson(data.orientationQuaternion),
+    planeNormal: encodeMeasurementJson(data.planeNormal), quality: data.quality, location: data.location, latitude: data.latitude,
     longitude: data.longitude, gpsAccuracy: data.gpsAccuracy, utmZone: data.utmZone,
     utmEasting: data.utmEasting, utmNorthing: data.utmNorthing, date: data.date?.slice(0, 10),
     featureType: data.featureType, rockLayerType: data.rockLayerType, notes: data.notes,
