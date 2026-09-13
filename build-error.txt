@@ -1,0 +1,49 @@
+npm warn Unknown project config "auto-install-peers". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "strict-peer-dependencies". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+npm warn Unknown project config "dangerously-allow-all-builds". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> workspace@0.0.0 build
+> pnpm run typecheck && pnpm -r --if-present run build
+
+
+> workspace@0.0.0 typecheck /Users/ammonkennedy/projects/GeoField
+> pnpm run typecheck:libs && pnpm -r --filter "./artifacts/**" --filter "./scripts" --if-present run typecheck
+
+
+> workspace@0.0.0 typecheck:libs /Users/ammonkennedy/projects/GeoField
+> tsc --build
+
+(node:4665) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Scope: 5 of 10 workspace projects
+artifacts/api-server typecheck$ tsc -p tsconfig.json --noEmit
+artifacts/geofield typecheck$ tsc -p tsconfig.json --noEmit
+artifacts/geofield-mobile typecheck$ tsc -p tsconfig.json --noEmit
+artifacts/mockup-sandbox typecheck$ tsc -p tsconfig.json --noEmit
+artifacts/api-server typecheck: Done
+scripts typecheck$ tsc -p tsconfig.json --noEmit
+scripts typecheck: Done
+artifacts/geofield-mobile typecheck: Done
+artifacts/mockup-sandbox typecheck: src/components/ui/calendar.tsx(132,15): error TS2322: Type 'import("/Users/ammonkennedy/projects/GeoField/node_modules/.pnpm/@types+react@19.1.17/node_modules/@types/react/index").Ref<HTMLDivElement> | undefined' is not assignable to type 'React.Ref<HTMLDivElement> | undefined'.
+artifacts/mockup-sandbox typecheck:   Type '(instance: HTMLDivElement | null) => void | (() => VoidOrUndefinedOnly)' is not assignable to type 'Ref<HTMLDivElement> | undefined'.
+artifacts/mockup-sandbox typecheck:     Type '(instance: HTMLDivElement | null) => void | (() => VoidOrUndefinedOnly)' is not assignable to type '(instance: HTMLDivElement | null) => void | (() => VoidOrUndefinedOnly)'. Two different types with this name exist, but they are unrelated.
+artifacts/mockup-sandbox typecheck:       Type 'void | (() => VoidOrUndefinedOnly)' is not assignable to type 'void | (() => VoidOrUndefinedOnly)'. Two different types with this name exist, but they are unrelated.
+artifacts/mockup-sandbox typecheck:         Type '() => VoidOrUndefinedOnly' is not assignable to type 'void | (() => VoidOrUndefinedOnly)'.
+artifacts/mockup-sandbox typecheck:           Type '() => VoidOrUndefinedOnly' is not assignable to type '() => VoidOrUndefinedOnly'. Two different types with this name exist, but they are unrelated.
+artifacts/mockup-sandbox typecheck:             Type 'VoidOrUndefinedOnly' is not assignable to type 'VoidOrUndefinedOnly'. Two different types with this name exist, but they are unrelated.
+artifacts/mockup-sandbox typecheck:               Type '{ [UNDEFINED_VOID_ONLY]: never; }' is not assignable to type 'VoidOrUndefinedOnly'.
+artifacts/mockup-sandbox typecheck: src/components/ui/spinner.tsx(7,6): error TS2322: Type '{ suppressHydrationWarning?: boolean | undefined; color?: string | undefined; height?: string | number | undefined; id?: string | undefined; lang?: string | undefined; max?: string | number | undefined; ... 481 more ...; className: string; }' is not assignable to type 'RefAttributes<SVGSVGElement>'.
+artifacts/mockup-sandbox typecheck:   Types of property 'ref' are incompatible.
+artifacts/mockup-sandbox typecheck:     Type 'React.Ref<SVGSVGElement> | undefined' is not assignable to type 'import("/Users/ammonkennedy/projects/GeoField/node_modules/.pnpm/@types+react@19.1.17/node_modules/@types/react/index").Ref<SVGSVGElement> | undefined'.
+artifacts/mockup-sandbox typecheck:       Type '(instance: SVGSVGElement | null) => void | (() => VoidOrUndefinedOnly)' is not assignable to type 'Ref<SVGSVGElement> | undefined'.
+artifacts/mockup-sandbox typecheck:         Type '(instance: SVGSVGElement | null) => void | (() => VoidOrUndefinedOnly)' is not assignable to type '(instance: SVGSVGElement | null) => void | (() => VoidOrUndefinedOnly)'. Two different types with this name exist, but they are unrelated.
+artifacts/mockup-sandbox typecheck:           Type 'void | (() => VoidOrUndefinedOnly)' is not assignable to type 'void | (() => VoidOrUndefinedOnly)'. Two different types with this name exist, but they are unrelated.
+artifacts/mockup-sandbox typecheck:             Type '() => VoidOrUndefinedOnly' is not assignable to type 'void | (() => VoidOrUndefinedOnly)'.
+artifacts/mockup-sandbox typecheck:               Type '() => VoidOrUndefinedOnly' is not assignable to type '() => VoidOrUndefinedOnly'. Two different types with this name exist, but they are unrelated.
+artifacts/mockup-sandbox typecheck:                 Type 'VoidOrUndefinedOnly' is not assignable to type 'VoidOrUndefinedOnly'. Two different types with this name exist, but they are unrelated.
+artifacts/mockup-sandbox typecheck:                   Type '{ [UNDEFINED_VOID_ONLY]: never; }' is not assignable to type 'VoidOrUndefinedOnly'.
+artifacts/mockup-sandbox typecheck: Failed
+/Users/ammonkennedy/projects/GeoField/artifacts/mockup-sandbox:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/mockup-sandbox@2.0.0 typecheck: `tsc -p tsconfig.json --noEmit`
+Exit status 2
+ ELIFECYCLE  Command failed with exit code 2.
