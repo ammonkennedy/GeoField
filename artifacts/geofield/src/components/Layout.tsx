@@ -272,7 +272,7 @@ export function Layout({ children }: { children: ReactNode }) {
             </nav>
           </div>
 
-          {/* Strike & Dip */}
+          {/* Measurements */}
           <div className="px-4">
             <Link
               href="/strike-dip"
@@ -285,7 +285,7 @@ export function Layout({ children }: { children: ReactNode }) {
               onClick={() => setSidebarOpen(false)}
             >
               <Compass className="w-4 h-4 opacity-80 shrink-0" />
-              <span className="flex-1">Strike &amp; Dip</span>
+              <span className="flex-1">Measurements</span>
               {location === "/strike-dip" && <ChevronRight className="w-4 h-4 shrink-0" />}
             </Link>
             <Link

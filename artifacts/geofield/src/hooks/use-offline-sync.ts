@@ -1,3 +1,4 @@
+import { mergeMeasurements } from "@/lib/merge-measurements";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -36,13 +37,8 @@ async function syncStrikeDipMeasurements() {
     else if (Date.parse(data.updatedAt) > Date.parse(existing.updatedAt)) await updateStrikeDipMeasurement(data);
   }
   const fresh = await getStrikeDipMeasurements();
-  const merged = [...local];
-  for (const cloud of fresh) {
-    const position = merged.findIndex((item) => item.id === cloud.id);
-    const mapped = cloud as unknown as StrikeDipMeasurement;
-    if (position < 0) merged.push(mapped);
-    else if (!merged[position].updatedAt || Date.parse(cloud.updatedAt) >= Date.parse(merged[position].updatedAt!)) merged[position] = mapped;
-  }
+  // Re-read after the requests so photos/edits added during sync are preserved.
+  const merged = mergeMeasurements(loadMeasurements(), fresh as unknown as StrikeDipMeasurement[], local);
   saveMeasurements(merged);
   return fresh.length;
 }

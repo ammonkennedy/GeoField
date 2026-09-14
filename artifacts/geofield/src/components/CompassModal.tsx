@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
-import { AlertTriangle, CheckCircle, Pause, Play, Smartphone, X } from "lucide-react";
+import { AlertTriangle, CheckCircle, Pause, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, deviceVectorToScreen, flipLineationDirection, horizontalPlaneAxesFromNormal, lineationOrientationFromVector, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type LineationOrientation, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
@@ -59,7 +59,7 @@ const upwardUnitNormal = (normal: Vector3): Vector3 | null => {
   return { east: sign * normal.east / length, north: sign * normal.north / length, up: sign * normal.up / length };
 };
 
-function PlaneCompass({ strikeVector, downDipVector, dip }: { strikeVector: ScreenVector | null; downDipVector: ScreenVector | null; dip: number }) {
+function PlaneCompass({ strikeVector, downDipVector, dip, held = false }: { strikeVector: ScreenVector | null; downDipVector: ScreenVector | null; dip: number; held?: boolean }) {
   const ticks = Array.from({ length: 72 }, (_, index) => index * 5);
   const labels = Array.from({ length: 12 }, (_, index) => index * 30);
   const point = (vector: ScreenVector, radius: number) => ({ x: 150 + vector.right * radius, y: 150 - vector.up * radius });
@@ -87,9 +87,9 @@ function PlaneCompass({ strikeVector, downDipVector, dip }: { strikeVector: Scre
     {ticks.map((degree) => { const angle = (degree - 90) * Math.PI / 180; const major = degree % 30 === 0; const medium = degree % 10 === 0; const outer = 132; const inner = major ? 116 : medium ? 120 : 125; return <line key={degree} x1={150 + outer * Math.cos(angle)} y1={150 + outer * Math.sin(angle)} x2={150 + inner * Math.cos(angle)} y2={150 + inner * Math.sin(angle)} stroke={major ? "#e2e8f0" : medium ? "#94a3b8" : "#526176"} strokeWidth={major ? 2 : 1} />; })}
     {labels.map((degree) => { const angle = (degree - 90) * Math.PI / 180; return <text key={degree} x={150 + 99 * Math.cos(angle)} y={150 + 99 * Math.sin(angle) + 4} textAnchor="middle" fill="#dbe4f0" fontFamily="ui-monospace, SFMono-Regular" fontSize="11" fontWeight="650">{degree}</text>; })}
     {strikeStart && strikeEnd && strikeLevelStart && strikeLevelEnd && strikeVector && <g filter="url(#geoGlow)">
-      <line x1={strikeStart.x} y1={strikeStart.y} x2={strikeEnd.x} y2={strikeEnd.y} stroke="#60a5fa" strokeWidth="6" strokeLinecap="round" />
-      <line x1={strikeStart.x} y1={strikeStart.y} x2={strikeEnd.x} y2={strikeEnd.y} stroke="#dbeafe" strokeWidth="1.5" />
-      {[strikeLevelStart, strikeLevelEnd].map((center, index) => <line key={index} x1={center.x - strikeVector.up * 9} y1={center.y - strikeVector.right * 9} x2={center.x + strikeVector.up * 9} y2={center.y + strikeVector.right * 9} stroke="#93c5fd" strokeWidth="3" strokeLinecap="round" />)}
+      <line x1={strikeStart.x} y1={strikeStart.y} x2={strikeEnd.x} y2={strikeEnd.y} stroke={held ? "#1e3a8a" : "#60a5fa"} strokeWidth="6" strokeLinecap="round" />
+      <line x1={strikeStart.x} y1={strikeStart.y} x2={strikeEnd.x} y2={strikeEnd.y} stroke={held ? "#1d4ed8" : "#dbeafe"} strokeWidth="1.5" />
+      {[strikeLevelStart, strikeLevelEnd].map((center, index) => <line key={index} x1={center.x - strikeVector.up * 9} y1={center.y - strikeVector.right * 9} x2={center.x + strikeVector.up * 9} y2={center.y + strikeVector.right * 9} stroke={held ? "#1d4ed8" : "#93c5fd"} strokeWidth="3" strokeLinecap="round" />)}
     </g>}
     {downDipEnd && downDipArrowLeft && downDipArrowRight && <g><line x1="150" y1="150" x2={downDipEnd.x} y2={downDipEnd.y} stroke="#fbbf24" strokeWidth="3" strokeDasharray="5 4" /><path d={`M ${downDipEnd.x} ${downDipEnd.y} L ${downDipArrowLeft.x} ${downDipArrowLeft.y} L ${downDipArrowRight.x} ${downDipArrowRight.y} Z`} fill="#fbbf24" /></g>}
     <circle cx="150" cy="150" r="40" fill="#0a1019" stroke="#64748b" strokeWidth="2" />
@@ -345,7 +345,11 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     process(mockReading);
     history.current = Array(STABILITY_WINDOW).fill({ ...planeOrientationFromNormal(normal), normal, gravityX: mockReading.gravityX, gravityY: mockReading.gravityY }); process(mockReading);
   };
+  const canCapture = status === "active" && held && !!reading && (mode === "plane"
+    ? filtered.strike !== null && filtered.dipDirection !== null
+    : !!lineation);
   const capture = () => {
+    if (!canCapture || !heldRef.current) return;
     if (mode === "lineation") {
       if (!lineation || !reading) return;
       onCapture({ measurementType: "lineation", trendDegrees: Math.round(lineation.trend), plungeDegrees: Number(lineation.plunge.toFixed(1)), northReference, referenceFrame: northReference, compassAccuracy: reading.headingAccuracy, lineVector: lineation.vector, quality: lineStable ? "stable" : "unstable" });
@@ -409,24 +413,22 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
             {mode === "lineation"
               ? <LineationCompass towardTop={lineArrowTowardTop} />
               : primaryInstrument === "strike-dip"
-              ? <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} />
+              ? <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} held={held} />
               : <NorthCompass northVector={filtered.screenNorthVector} reference={northReference} />}
             {mode === "plane" && <button type="button" onClick={() => setPrimaryInstrument((current) => current === "strike-dip" ? "north" : "strike-dip")} className="absolute right-1 top-1 h-24 w-24 overflow-hidden rounded-full border-2 border-white/30 bg-[#080d14] p-0.5 shadow-2xl transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400" aria-label={primaryInstrument === "strike-dip" ? `Open ${northReference} north compass` : "Open strike and dip compass"}>
               {primaryInstrument === "strike-dip"
                 ? <NorthCompass northVector={filtered.screenNorthVector} reference={northReference} />
-                : <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} />}
+                : <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} held={held} />}
             </button>}
             <button
               type="button"
               onClick={toggleHeld}
               disabled={status !== "active" || !reading}
-              className={`absolute left-1/2 top-1/2 z-10 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 touch-manipulation items-center justify-center rounded-full border-2 shadow-2xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:cursor-wait disabled:opacity-50 ${held ? "border-amber-300 bg-amber-400 text-slate-950" : "border-white/60 bg-slate-950/90 text-white hover:scale-105 hover:bg-slate-800"}`}
+              className={`absolute left-1/2 top-1/2 z-10 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 touch-manipulation items-center justify-center rounded-full border-2 shadow-2xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:cursor-wait disabled:opacity-50 ${held ? "border-blue-700 bg-blue-900" : "border-blue-200 bg-blue-300"}`}
               aria-label={held ? "Resume live compass reading" : "Hold current compass reading"}
               aria-pressed={held}
               title={held ? "Resume live reading" : "Hold this reading"}
-            >
-              {held ? <Play className="h-7 w-7 fill-current" /> : <Pause className="h-7 w-7 fill-current" />}
-            </button>
+            />
           </div>
           {mode === "lineation" && <button type="button" onClick={flipLineDirection} className="mx-auto mt-2 block min-h-10 rounded-lg border border-white/15 bg-white/5 px-4 text-xs font-semibold text-slate-200 hover:bg-white/10">Flip Direction{lineFlipped ? " (flipped)" : ""}</button>}
           {mode === "plane"
@@ -434,9 +436,9 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
             : <p className="mt-1 text-center text-[9px] uppercase tracking-wider text-slate-500">Align the blue center line with the linear feature; the arrow marks the measured direction</p>}
           {status === "starting" && <div className="absolute inset-0 flex items-center justify-center bg-[#080d14]/55 backdrop-blur-[1px]" aria-live="polite"><div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#0d1117]/95 px-4 py-2.5 text-sm text-slate-200 shadow-xl"><span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300/30 border-t-blue-300" aria-hidden="true" />Starting sensors…</div></div>}
         </div>
-        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${held ? "bg-blue-500/10 text-blue-200" : (mode === "plane" ? stable : lineStable) ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{held ? <Pause className="h-4 w-4" /> : (mode === "plane" ? stable : lineStable) ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : held ? "Reading held — move the phone to view it, then tap the center to resume" : (mode === "plane" ? stable : lineStable) ? "Stable — ready to capture" : "Hold steady to capture"}</div>
+        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${held ? "bg-blue-500/10 text-blue-200" : (mode === "plane" ? stable : lineStable) ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{held ? <Pause className="h-4 w-4" /> : (mode === "plane" ? stable : lineStable) ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : held ? (canCapture ? "Reading paused — ready to capture. Tap the center to resume." : "Reading paused — no valid measurement. Tap the center to resume.") : (mode === "plane" ? stable : lineStable) ? "Stable — tap the center to pause, then capture" : "Tap the center to pause before capturing"}</div>
         {accuracyLow && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-300">Compass accuracy is low. Move iPhone in a figure-eight and keep it away from magnets or metal objects.</p>}
-        <Button className="w-full" disabled={status !== "active" || (mode === "plane" ? !stable || filtered.strike === null : !lineStable || !lineation)} onClick={capture}>Capture {mode === "plane" ? "Measurement" : "Lineation"}</Button>
+        <Button className="w-full" disabled={!canCapture} onClick={capture}>Capture {mode === "plane" ? "Measurement" : "Lineation"}</Button>
       </>}
       {(!native || (import.meta.env.DEV && status === "error")) && <div className="space-y-3 rounded-xl border border-dashed border-slate-600 p-3"><p className="text-xs text-amber-300">Simulator/manual sensor mode — not a real measurement.</p><label className="block text-xs">Dip {mockDip}°<input className="w-full" type="range" min="0" max="90" value={mockDip} onChange={(e) => setMockDip(Number(e.target.value))} /></label><label className="block text-xs">Dip direction {mockDirection}°<input className="w-full" type="range" min="0" max="359" value={mockDirection} onChange={(e) => setMockDirection(Number(e.target.value))} /></label><Button variant="outline" className="w-full" onClick={useMock}>Apply Mock Reading</Button></div>}
       <details className="text-xs text-slate-400"><summary>Measurement diagnostics</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2">{diagnostic}</pre></details>

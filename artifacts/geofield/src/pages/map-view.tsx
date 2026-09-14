@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { useGetCurrentAuthUser, useGetSamples, useGetFolders } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
-import { MapPin, FolderOpen, AlertCircle, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search, Loader2, Maximize2, Minimize2 } from "lucide-react";
+import { MapPin, FolderOpen, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -245,7 +245,6 @@ export default function MapViewPage() {
     selectedFolderId === "all" ? true : String(s.folderId ?? "") === String(selectedFolderId)
   );
   const samplesWithCoords = filteredSamples.filter((s) => parseCoords((s.fields as any)?.location));
-  const samplesWithoutCoords = filteredSamples.filter((s) => !parseCoords((s.fields as any)?.location));
   const filteredMeasurements = measurements.filter((measurement) =>
     selectedFolderId === "all" ? true : String(measurement.datasetId ?? "") === String(selectedFolderId)
   );
@@ -946,16 +945,7 @@ export default function MapViewPage() {
               : "Click a visible USDA soil map unit to get SSURGO classification data (US coverage)."}
           </div>
         )}
-        {samplesWithoutCoords.length > 0 && (
-          <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>
-              <strong>{samplesWithoutCoords.length} sample{samplesWithoutCoords.length !== 1 ? "s" : ""} not shown</strong>{" "}
-              — no GPS: {samplesWithoutCoords.map((s) => s.sampleId).join(", ")}.
-              Edit those samples and enter <em>lat, lng</em>.
-            </span>
-          </div>
-        )}
+
       </div>
 
       {/* Map + info panel */}

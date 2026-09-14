@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useParams } from "wouter";
 import {
   MapPin, Plus, Trash2, Save, Map, X, Navigation, Edit3, Bookmark,
@@ -1060,10 +1061,10 @@ export default function TripPlannerPage() {
       </div>
 
       {/* ── Map Modal ──────────────────────────────────────────────────────── */}
-      {mapOpen && (
+      {mapOpen && createPortal(
         <div className={`trip-map-overlay fixed inset-0 z-[200] flex h-[100dvh] min-h-0 items-center justify-center overflow-hidden bg-black/60 backdrop-blur-sm ${mapFullScreen ? "p-0" : "p-2 sm:p-4"}`} role="dialog" aria-modal="true" aria-label="Trip Planning Map">
           <div
-            className={`flex w-full flex-col overflow-hidden bg-card shadow-2xl ${mapFullScreen ? "h-full max-w-none rounded-none" : "max-w-6xl rounded-3xl"}`}
+            className={`flex max-h-full min-h-0 w-full flex-col overflow-hidden bg-card shadow-2xl ${mapFullScreen ? "h-full max-w-none rounded-none" : "max-w-6xl rounded-3xl"}`}
             style={{ height: mapFullScreen ? "100%" : MAP_MODAL_HEIGHT }}
           >
             {/* Modal header */}
@@ -1077,19 +1078,20 @@ export default function TripPlannerPage() {
                   Explore overlays by clicking · use "Add Sample Spot" to pin a site
                 </p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex shrink-0 items-center gap-3">
                 {(activeTrip?.sites.length ?? 0) > 0 && (
-                  <span className="text-sm text-muted-foreground">
+                  <span className="hidden text-sm text-muted-foreground sm:inline">
                     {activeTrip?.sites.length} site{(activeTrip?.sites.length ?? 0) !== 1 ? "s" : ""} planned
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={() => setMapOpen(false)}
-                  className="flex h-10 w-10 touch-manipulation items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  aria-label="Close trip planning map"
+                  className="relative z-20 flex h-12 w-12 shrink-0 touch-manipulation items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white shadow-lg transition-colors hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label="Back to trip information"
+                  title="Back to trip information"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-7 w-7" strokeWidth={3} aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -1350,7 +1352,7 @@ export default function TripPlannerPage() {
               )}
             </div>
           </div>
-        </div>
+        </div>, document.body
       )}
       {layerModalOpen && (
         <div className="fixed inset-0 z-[220] flex h-[100dvh] items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Insert Map Layer">

@@ -1,3 +1,5 @@
+import { defaultStorage } from "aws-amplify/utils";
+import { createOfflineAccount } from "../offline-account";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { decodeMeasurementJson, encodeMeasurementJson } from "../measurement-json";
 import type { QueryKey, UseMutationOptions, UseQueryOptions, UseQueryResult } from "@tanstack/react-query";
@@ -33,6 +35,7 @@ import type {
 Amplify.configure(outputs);
 
 const client: any = generateClient();
+const offlineAccount = createOfflineAccount(defaultStorage, `geofield-account:${outputs.auth.user_pool_client_id}`);
 
 /**
  * Local/native builds do not receive Amplify deployment outputs automatically.
@@ -117,6 +120,7 @@ function normalizeFolderId(folderId: unknown): string | null | undefined {
 }
 
 async function hasCurrentUser() {
+  if (await offlineAccount.isSignedOut()) return false;
   try {
     await getCurrentUser();
     return true;
@@ -219,26 +223,24 @@ export function useHealthCheck<TData = HealthStatus>(options?: QueryOptions<any>
 
 export const getGetCurrentAuthUserUrl = () => "/auth/current-user";
 export const getGetCurrentAuthUserQueryKey = () => ["auth", "current-user"] as const;
+async function loadConfirmedAccount() {
+  const user = await getCurrentUser();
+  const attributes = await fetchUserAttributes().catch(() => ({} as Record<string, string | undefined>));
+  return {
+    id: user.userId,
+    email: attributes.email ?? user.signInDetails?.loginId ?? null,
+    firstName: attributes.given_name ?? null,
+    lastName: attributes.family_name ?? null,
+    profileImageUrl: null,
+  };
+}
+
 export async function getCurrentAuthUser(): Promise<AuthUserEnvelope> {
-  try {
-    const user = await getCurrentUser();
-    const attributes = await fetchUserAttributes().catch(() => ({} as Record<string, string | undefined>));
-    return {
-      user: {
-        id: user.userId,
-        email: attributes.email ?? user.signInDetails?.loginId ?? null,
-        firstName: attributes.given_name ?? null,
-        lastName: attributes.family_name ?? null,
-        profileImageUrl: null,
-      },
-    };
-  } catch {
-    return { user: null };
-  }
+  return offlineAccount.resolve(loadConfirmedAccount, typeof navigator !== "undefined" && navigator.onLine === false);
 }
 export function useGetCurrentAuthUser<TData = AuthUserEnvelope>(options?: QueryOptions<any>): UseQueryResult<TData, ErrorType<unknown>> & { queryKey: QueryKey } {
   const queryKey = getGetCurrentAuthUserQueryKey();
-  const query = useQuery({ queryKey, queryFn: getCurrentAuthUser, retry: false, ...(options?.query as any) }) as any;
+  const query = useQuery({ queryKey, queryFn: getCurrentAuthUser, networkMode: "always", retry: false, ...(options?.query as any) }) as any;
   return { ...query, queryKey };
 }
 
@@ -246,12 +248,17 @@ export async function signInUser(input: { email: string; password: string }) {
   if (!isAuthConfigured()) {
     throw new Error("Cloud sign-in is not configured in this build. Continue on this device, or generate amplify_outputs.json before rebuilding.");
   }
+  const authenticate = async () => {
+    const result = await signIn({ username: input.email.trim(), password: input.password });
+    if (result.isSignedIn) await offlineAccount.remember(await loadConfirmedAccount());
+    return result;
+  };
   try {
-    return await signIn({ username: input.email.trim(), password: input.password });
+    return await authenticate();
   } catch (error: any) {
     if (error?.name === "UserAlreadyAuthenticatedException") {
-      await signOut();
-      return signIn({ username: input.email.trim(), password: input.password });
+      await signOutUser();
+      return authenticate();
     }
     throw error;
   }
@@ -266,7 +273,13 @@ export async function confirmSignUpUser(input: { email: string; code: string }) 
   return confirmSignUp({ username: input.email.trim(), confirmationCode: input.code.trim() });
 }
 export async function signOutUser() {
-  await signOut();
+  await offlineAccount.clear();
+  try {
+    await signOut();
+  } catch (error) {
+    // Local logout must work in the field even if server revocation fails.
+    console.warn("Local logout completed; AWS sign-out could not finish.", error);
+  }
 }
 
 export async function deleteCurrentAccount() {
@@ -287,6 +300,7 @@ export async function deleteCurrentAccount() {
     } while (nextToken);
   }
   await deleteUser();
+  await offlineAccount.clear();
 }
 
 export async function updateAccountEmail(input: { email: string }) {
