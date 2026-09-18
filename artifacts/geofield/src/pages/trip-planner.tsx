@@ -24,7 +24,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 type BaseLayer    = "street" | "satellite" | "topographic";
 type OverlayLayer = "none" | "geology" | "soil" | "trails";
 
-const USGS_IMAGERY_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}";
+const SATELLITE_IMAGERY_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
 const ESRI_STREET_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 const GEO_TILES    = "https://tiles.macrostrat.org/carto/{z}/{x}/{y}.png";
@@ -179,10 +179,12 @@ const TRIP_MAP_STYLE: any = {
   sources: {
     satellite: {
       type: "raster",
-      tiles: [USGS_IMAGERY_TILES],
+      tiles: [SATELLITE_IMAGERY_TILES],
       tileSize: 256,
-      attribution: "USGS The National Map, USDA NAIP",
-      maxzoom: 16,
+      attribution: 'Source: <a href="https://goto.arcgisonline.com/maps/World_Imagery" target="_blank" rel="noopener noreferrer">Esri World Imagery</a>, Vantor, Earthstar Geographics, and the GIS User Community',
+      // Request detailed imagery instead of enlarging the old level-16 tiles.
+      // Ground resolution varies by location; deeper zoom still magnifies pixels.
+      maxzoom: 19,
     },
     street: {
       type: "raster",

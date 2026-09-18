@@ -1,3 +1,4 @@
+import { resolveDatasetId } from "@/lib/dataset-identity";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
@@ -121,6 +122,12 @@ function MeasurementRow({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!initiallyOpen) return;
+    setOpen(true);
+    rowRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [initiallyOpen]);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const upd = (k: keyof StrikeDipMeasurement, v: string) => {
@@ -152,7 +159,7 @@ function MeasurementRow({
   };
 
   return (
-    <div className="border rounded-xl bg-card shadow-sm overflow-hidden">
+    <div ref={rowRef} className="border rounded-xl bg-card shadow-sm overflow-hidden scroll-mt-4">
       {/* Collapsed header */}
       <div className="flex items-center gap-3 px-4 py-3">
         {/* Photo thumbnail or index badge */}
@@ -461,20 +468,27 @@ export default function StrikeDipPage() {
     () => [...(folders || []), ...getVisibleLocalDatasets(localDatasets, folders)],
     [folders, localDatasets],
   );
+  useEffect(() => {
+    setSelectedDatasetId((id) => String(resolveDatasetId(id, localDatasets)));
+  }, [localDatasets]);
   const visibleMeasurements = useMemo(() => {
     if (selectedDatasetId === "all") return measurements;
     if (selectedDatasetId === "uncategorized") return measurements.filter((m) => !m.datasetId);
-    return measurements.filter((m) => String(m.datasetId ?? "") === selectedDatasetId);
-  }, [measurements, selectedDatasetId]);
+    return measurements.filter((m) => String(resolveDatasetId(m.datasetId, localDatasets) ?? "") === String(resolveDatasetId(selectedDatasetId, localDatasets)));
+  }, [measurements, selectedDatasetId, localDatasets]);
   const selectedDatasetName = selectedDatasetId === "all"
     ? "All Datasets"
     : selectedDatasetId === "uncategorized"
       ? "Uncategorized"
       : allFolders.find((folder: any) => String(folder.id) === selectedDatasetId)?.name || "Dataset";
 
-  useEffect(() => {
-    saveMeasurements(measurements);
-  }, [measurements]);
+  // Persist user changes immediately against current storage. Writing a whole
+  // React snapshot in an effect could overwrite a concurrent sync or lose an
+  // assignment when navigating away before the effect ran.
+  const changeMeasurements = (update: (current: StrikeDipMeasurement[]) => StrikeDipMeasurement[]) => {
+    saveMeasurements(update(loadMeasurements()));
+    setMeasurements(loadMeasurements());
+  };
 
   useEffect(() => {
     const refreshFromSync = () => {
@@ -507,26 +521,27 @@ export default function StrikeDipPage() {
 
   const addMeasurementWithGps = (measurement: StrikeDipMeasurement, successTitle?: string, successDescription?: string) => {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
-    if (!navigator.geolocation) {
-      setMeasurements((prev) => [...prev, measurement]);
-      if (successTitle) toast({ title: successTitle, description: successDescription });
-      return;
-    }
+    // Save and open the details now; a GPS fix can take ten seconds in the field.
+    changeMeasurements((prev) => [...prev, measurement]);
+    setNewlyCreatedId(measurement.id);
+    if (successTitle) toast({ title: successTitle, description: successDescription });
+    if (!navigator.geolocation) return;
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setMeasurements((prev) => [...prev, addGpsToMeasurement(measurement, position)]);
-        if (successTitle) toast({ title: successTitle, description: successDescription });
+        // Merge into the latest saved record so typing, photos, dataset changes,
+        // or deletion while GPS is pending cannot be overwritten or resurrected.
+        changeMeasurements((current) => current.map((item) => {
+          if (item.id !== measurement.id || item.location !== measurement.location ||
+              item.latitude !== measurement.latitude || item.longitude !== measurement.longitude) return item;
+          return {
+            ...addGpsToMeasurement(item, position),
+            updatedAt: new Date(Math.max(Date.now(), (Date.parse(item.updatedAt ?? "") || 0) + 1)).toISOString(),
+          };
+        }));
       },
-      () => {
-        setMeasurements((prev) => [...prev, measurement]);
-        if (successTitle) toast({ title: successTitle, description: successDescription });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
+      () => { /* The measurement is already saved and its details remain open. */ },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
     );
   };
 
@@ -547,7 +562,7 @@ export default function StrikeDipPage() {
     const dipDegrees = Number(dip);
     const dipDirectionDegrees = ((strikeDegrees + 90) % 360);
     const measurement: StrikeDipMeasurement = { ...manualDraft, strike, dip, strikeDegrees, dipDegrees, dipDirectionDegrees, dipDir: `${dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(strike)}`, convention: "right-hand-rule", northReference: "magnetic", quality: "manual", updatedAt: new Date().toISOString() };
-    setMeasurements((prev) => [...prev, measurement]);
+    changeMeasurements((prev) => [...prev, measurement]);
     setNewlyCreatedId(measurement.id);
     setManualOpen(false);
     toast({ title: "Measurement saved", description: `Strike ${strike}° / Dip ${dip}°` });
@@ -555,7 +570,7 @@ export default function StrikeDipPage() {
 
   const updateMeasurementById = (id: string, m: StrikeDipMeasurement) => {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
-    setMeasurements((prev) => prev.map((item) => item.id === id ? { ...m, updatedAt: new Date().toISOString() } : item));
+    changeMeasurements((prev) => prev.map((item) => item.id === id ? { ...m, updatedAt: new Date().toISOString() } : item));
   };
 
   const deleteMeasurementById = (id: string) => {

@@ -150,7 +150,7 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
             }
         }
         if CLLocationManager.headingAvailable() { location.startUpdatingHeading() }
-        motion.deviceMotionUpdateInterval = 1.0 / 15.0
+        motion.deviceMotionUpdateInterval = 1.0 / 30.0
         let frames = CMMotionManager.availableAttitudeReferenceFrames()
         let requestedReference = call.getString("northReference") ?? "true"
         let frame: CMAttitudeReferenceFrame

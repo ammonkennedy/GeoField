@@ -44,7 +44,10 @@ interface GeologyMotionPlugin {
   addListener(eventName: "orientation", listener: (reading: SensorReading) => void): Promise<PluginListenerHandle>;
 }
 const GeologyMotion = registerPlugin<GeologyMotionPlugin>("GeologyMotion");
-const STABILITY_WINDOW = 12, AZIMUTH_TOLERANCE = 3, DIP_TOLERANCE = 2;
+// At 30 Hz, four samples add about 50 ms of display smoothing delay.
+// Keep roughly 0.8 seconds of history for measurement quality assessment.
+const DISPLAY_WINDOW = 4;
+const STABILITY_WINDOW = 24, AZIMUTH_TOLERANCE = 3, DIP_TOLERANCE = 2;
 const NORTH_REFERENCE_KEY = "geofield_north_reference";
 const emptyFiltered = () => ({ strike: null as number | null, dipDirection: null as number | null, dip: 0, strikeVector: null as Vector3 | null, downDipVector: null as Vector3 | null, screenStrikeVector: null as ScreenVector | null, screenDownDipVector: null as ScreenVector | null, screenNorthVector: null as ScreenVector | null });
 const loadNorthReference = (): NorthReferencePreference =>
@@ -92,10 +95,6 @@ function PlaneCompass({ strikeVector, downDipVector, dip, held = false }: { stri
       {[strikeLevelStart, strikeLevelEnd].map((center, index) => <line key={index} x1={center.x - strikeVector.up * 9} y1={center.y - strikeVector.right * 9} x2={center.x + strikeVector.up * 9} y2={center.y + strikeVector.right * 9} stroke={held ? "#1d4ed8" : "#93c5fd"} strokeWidth="3" strokeLinecap="round" />)}
     </g>}
     {downDipEnd && downDipArrowLeft && downDipArrowRight && <g><line x1="150" y1="150" x2={downDipEnd.x} y2={downDipEnd.y} stroke="#fbbf24" strokeWidth="3" strokeDasharray="5 4" /><path d={`M ${downDipEnd.x} ${downDipEnd.y} L ${downDipArrowLeft.x} ${downDipArrowLeft.y} L ${downDipArrowRight.x} ${downDipArrowRight.y} Z`} fill="#fbbf24" /></g>}
-    <circle cx="150" cy="150" r="40" fill="#0a1019" stroke="#64748b" strokeWidth="2" />
-    <circle cx="150" cy="150" r="29" fill="none" stroke="#334155" />
-    <line x1="137" y1="150" x2="163" y2="150" stroke="#64748b" /><line x1="150" y1="137" x2="150" y2="163" stroke="#64748b" />
-    <circle cx="150" cy="150" r="5" fill="#f8fafc" stroke="#60a5fa" strokeWidth="2" />
     <g transform={`rotate(${-Math.min(90, Math.max(0, dip))},150,150)`}><line x1="128" y1="181" x2="172" y2="181" stroke="#fbbf24" strokeWidth="5" strokeLinecap="round" /></g>
     <text x="150" y="205" textAnchor="middle" fill="#94a3b8" fontSize="8" letterSpacing="1.4">PLANE ATTITUDE</text>
   </svg>;
@@ -121,17 +120,16 @@ function NorthCompass({ northVector, reference }: { northVector: ScreenVector | 
   </svg>;
 }
 
-function LineationCompass({ towardTop }: { towardTop: boolean }) {
+function LineationCompass({ towardTop, held }: { towardTop: boolean; held: boolean }) {
   return <svg viewBox="0 0 300 300" className="mx-auto w-full max-w-[310px] drop-shadow-2xl" aria-label="Lineation trend and plunge instrument">
     <defs><radialGradient id="lineFace" cx="42%" cy="35%"><stop offset="0" stopColor="#202a3a" /><stop offset="1" stopColor="#080d14" /></radialGradient></defs>
     <circle cx="150" cy="150" r="143" fill="#05080d" stroke="#64748b" strokeWidth="2" />
     <circle cx="150" cy="150" r="136" fill="url(#lineFace)" stroke="#293548" strokeWidth="2" />
     {Array.from({ length: 36 }, (_, index) => index * 10).map((degree) => { const angle = (degree - 90) * Math.PI / 180; return <line key={degree} x1={150 + 132 * Math.cos(angle)} y1={150 + 132 * Math.sin(angle)} x2={150 + (degree % 30 === 0 ? 116 : 124) * Math.cos(angle)} y2={150 + (degree % 30 === 0 ? 116 : 124) * Math.sin(angle)} stroke={degree % 30 === 0 ? "#e2e8f0" : "#526176"} strokeWidth={degree % 30 === 0 ? 2 : 1} />; })}
     <text x="150" y="35" textAnchor="middle" fill="#fca5a5" fontSize="14" fontWeight="800">TOP</text>
-    <line x1="150" y1="258" x2="150" y2="42" stroke="#dbeafe" strokeWidth="8" strokeLinecap="round" />
-    <line x1="150" y1="258" x2="150" y2="42" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" />
+    <line x1="150" y1="258" x2="150" y2="42" stroke={held ? "#1e3a8a" : "#dbeafe"} strokeWidth="8" strokeLinecap="round" />
+    <line x1="150" y1="258" x2="150" y2="42" stroke={held ? "#1d4ed8" : "#3b82f6"} strokeWidth="3" strokeLinecap="round" />
     <path d={towardTop ? "M150 48 L137 72 L163 72 Z" : "M150 252 L137 228 L163 228 Z"} fill="#fbbf24" stroke="#fff7cc" strokeWidth="2" />
-    <circle cx="150" cy="150" r="13" fill="#0a1019" stroke="#fbbf24" strokeWidth="3" />
     <text x="150" y="284" textAnchor="middle" fill="#94a3b8" fontSize="9" letterSpacing="1.4">PHONE LONGITUDINAL AXIS</text>
   </svg>;
 }
@@ -194,13 +192,14 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       gravityX: raw.gravityX,
       gravityY: raw.gravityY,
     }];
-    const meanNormal = upwardUnitNormal(history.current.reduce((sum, item) => ({
+    const displayHistory = history.current.slice(-DISPLAY_WINDOW);
+    const meanNormal = upwardUnitNormal(displayHistory.reduce((sum, item) => ({
       east: sum.east + item.normal.east,
       north: sum.north + item.normal.north,
       up: sum.up + item.normal.up,
     }), { east: 0, north: 0, up: 0 }));
     if (!meanNormal) return;
-    const meanGravity = history.current.reduce((sum, item) => ({
+    const meanGravity = displayHistory.reduce((sum, item) => ({
       x: sum.x + item.gravityX,
       y: sum.y + item.gravityY,
     }), { x: 0, y: 0 });
@@ -249,7 +248,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     if (typeof raw.lineEast === "number" && typeof raw.lineNorth === "number" && typeof raw.lineUp === "number") {
       const rawLine = { east: raw.lineEast, north: raw.lineNorth, up: raw.lineUp };
       lineHistory.current = [...lineHistory.current.slice(-(STABILITY_WINDOW - 1)), rawLine];
-      const mean = lineHistory.current.reduce((sum, item) => ({ east: sum.east + item.east, north: sum.north + item.north, up: sum.up + item.up }), { east: 0, north: 0, up: 0 });
+      const mean = lineHistory.current.slice(-DISPLAY_WINDOW).reduce((sum, item) => ({ east: sum.east + item.east, north: sum.north + item.north, up: sum.up + item.up }), { east: 0, north: 0, up: 0 });
       let result = lineationOrientationFromVector(mean);
       if (result && lineFlippedRef.current) result = flipLineationDirection(result);
       setLineation(result);
@@ -392,7 +391,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       </button>
     </div>
     <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-y-contain px-5 pb-6 pt-4 [-webkit-overflow-scrolling:touch]">
-      <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Tap the center of the compass to hold the reading while you move the phone.</span></div>
+      <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Tap the large compass face to hold the reading while you move the phone.</span></div>
       <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="North reference">
         {(["true", "magnetic"] as const).map((value) => <button key={value} type="button" aria-label={`Use ${value} north`} aria-pressed={selectedNorthReference === value} onClick={() => selectNorthReference(value)} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedNorthReference === value ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>{value === "true" ? "True North" : "Magnetic North"}</button>)}
       </div>
@@ -411,11 +410,11 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
           <p className="mb-1 text-center text-[10px] font-medium uppercase tracking-wider text-slate-400">Referenced to {northReference === "true" ? "True North" : "Magnetic North"}</p>
           <div className="relative mx-auto aspect-square w-full max-w-[330px]">
             {mode === "lineation"
-              ? <LineationCompass towardTop={lineArrowTowardTop} />
+              ? <LineationCompass towardTop={lineArrowTowardTop} held={held} />
               : primaryInstrument === "strike-dip"
               ? <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} held={held} />
               : <NorthCompass northVector={filtered.screenNorthVector} reference={northReference} />}
-            {mode === "plane" && <button type="button" onClick={() => setPrimaryInstrument((current) => current === "strike-dip" ? "north" : "strike-dip")} className="absolute right-1 top-1 h-24 w-24 overflow-hidden rounded-full border-2 border-white/30 bg-[#080d14] p-0.5 shadow-2xl transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400" aria-label={primaryInstrument === "strike-dip" ? `Open ${northReference} north compass` : "Open strike and dip compass"}>
+            {mode === "plane" && <button type="button" onClick={() => setPrimaryInstrument((current) => current === "strike-dip" ? "north" : "strike-dip")} className="absolute right-1 top-1 z-20 h-24 w-24 overflow-hidden rounded-full border-2 border-white/30 bg-[#080d14] p-0.5 shadow-2xl transition hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-400" aria-label={primaryInstrument === "strike-dip" ? `Open ${northReference} north compass` : "Open strike and dip compass"}>
               {primaryInstrument === "strike-dip"
                 ? <NorthCompass northVector={filtered.screenNorthVector} reference={northReference} />
                 : <PlaneCompass strikeVector={filtered.screenStrikeVector} downDipVector={filtered.screenDownDipVector} dip={filtered.dip} held={held} />}
@@ -424,7 +423,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
               type="button"
               onClick={toggleHeld}
               disabled={status !== "active" || !reading}
-              className={`absolute left-1/2 top-1/2 z-10 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 touch-manipulation items-center justify-center rounded-full border-2 shadow-2xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:cursor-wait disabled:opacity-50 ${held ? "border-blue-700 bg-blue-900" : "border-blue-200 bg-blue-300"}`}
+              className="absolute inset-0 z-10 h-full w-full touch-manipulation select-none rounded-full border-0 bg-transparent p-0 shadow-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:cursor-wait"
               aria-label={held ? "Resume live compass reading" : "Hold current compass reading"}
               aria-pressed={held}
               title={held ? "Resume live reading" : "Hold this reading"}
@@ -436,7 +435,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
             : <p className="mt-1 text-center text-[9px] uppercase tracking-wider text-slate-500">Align the blue center line with the linear feature; the arrow marks the measured direction</p>}
           {status === "starting" && <div className="absolute inset-0 flex items-center justify-center bg-[#080d14]/55 backdrop-blur-[1px]" aria-live="polite"><div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#0d1117]/95 px-4 py-2.5 text-sm text-slate-200 shadow-xl"><span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300/30 border-t-blue-300" aria-hidden="true" />Starting sensors…</div></div>}
         </div>
-        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${held ? "bg-blue-500/10 text-blue-200" : (mode === "plane" ? stable : lineStable) ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{held ? <Pause className="h-4 w-4" /> : (mode === "plane" ? stable : lineStable) ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : held ? (canCapture ? "Reading paused — ready to capture. Tap the center to resume." : "Reading paused — no valid measurement. Tap the center to resume.") : (mode === "plane" ? stable : lineStable) ? "Stable — tap the center to pause, then capture" : "Tap the center to pause before capturing"}</div>
+        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${held ? "bg-blue-500/10 text-blue-200" : (mode === "plane" ? stable : lineStable) ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{held ? <Pause className="h-4 w-4" /> : (mode === "plane" ? stable : lineStable) ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : held ? (canCapture ? "Reading paused — ready to capture. Tap the compass to resume." : "Reading paused — no valid measurement. Tap the compass to resume.") : (mode === "plane" ? stable : lineStable) ? "Stable — tap the compass to pause, then capture" : "Tap the compass to pause before capturing"}</div>
         {accuracyLow && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-300">Compass accuracy is low. Move iPhone in a figure-eight and keep it away from magnets or metal objects.</p>}
         <Button className="w-full" disabled={!canCapture} onClick={capture}>Capture {mode === "plane" ? "Measurement" : "Lineation"}</Button>
       </>}

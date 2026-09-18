@@ -1,6 +1,7 @@
 interface MeasurementRecord {
   id: string;
   photo?: string;
+  datasetId?: number | string | null;
   updatedAt?: string;
 }
 
@@ -21,6 +22,9 @@ export function mergeMeasurements<T extends MeasurementRecord>(
       if (!before) merged.push(cloud);
       continue;
     }
+    // A dataset that has not uploaded yet cannot be represented by the cloud.
+    // In particular, its missing cloud assignment must not erase the local link.
+    if (Number(local.datasetId) < 0) continue;
     // Keep edits made while uploads/downloads were in flight, including explicit
     // photo removal. They will be considered for upload on the next sync.
     if (!before || JSON.stringify(local) !== JSON.stringify(before)) continue;

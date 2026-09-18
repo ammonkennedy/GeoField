@@ -1,3 +1,6 @@
+import { exportMapImage } from "@/lib/export-map";
+import { saveFile } from "@/lib/save-file";
+import { lookupHikingTrails } from "@/lib/hiking-trails";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { useGetCurrentAuthUser, useGetSamples, useGetFolders } from "@workspace/api-client-react";
@@ -71,7 +74,7 @@ function getSampleLabel(sample: any) {
 type BaseLayer = "street" | "satellite" | "topographic";
 type OverlayLayer = "none" | "geology" | "soil" | "trails";
 
-const USGS_IMAGERY_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}";
+const SATELLITE_IMAGERY_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
 const ESRI_STREET_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
@@ -105,10 +108,12 @@ const INITIAL_STYLE: any = {
   sources: {
     satellite: {
       type: "raster",
-      tiles: [USGS_IMAGERY_TILES],
+      tiles: [SATELLITE_IMAGERY_TILES],
       tileSize: 256,
-      attribution: "USGS The National Map, USDA NAIP",
-      maxzoom: 16,
+      attribution: 'Source: <a href="https://goto.arcgisonline.com/maps/World_Imagery" target="_blank" rel="noopener noreferrer">Esri World Imagery</a>, Vantor, Earthstar Geographics, and the GIS User Community',
+      // Request detailed imagery instead of enlarging the old level-16 tiles.
+      // Ground resolution varies by location; deeper zoom still magnifies pixels.
+      maxzoom: 19,
     },
     street: {
       type: "raster",
@@ -194,6 +199,8 @@ export default function MapViewPage() {
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
   const [geologyOpacity, setGeologyOpacity] = useState(MACROSTRAT_DEFAULT_OPACITY);
   const [terrain, setTerrain] = useState(false);
+  const trailRequestRef = useRef<AbortController | null>(null);
+  const trailPopupRef = useRef<any>(null);
   const [geoInfo, setGeoInfo] = useState<GeoInfo | null>(null);
   const [customLayers, setCustomLayers] = useState<CustomMapLayer[]>(loadCustomLayers);
   const [queuedSamples, setQueuedSamples] = useState(getQueue);
@@ -203,6 +210,13 @@ export default function MapViewPage() {
   const [addressLookupError, setAddressLookupError] = useState("");
   const [addressSuggestions, setAddressSuggestions] = useState<GeocodeResult[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [exportMode, setExportMode] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [exportImage, setExportImage] = useState<{ blob: Blob; url: string } | null>(null);
+  const exportModeRef = useRef(false);
+  useEffect(() => { exportModeRef.current = exportMode; }, [exportMode]);
+  useEffect(() => () => { if (exportImage) URL.revokeObjectURL(exportImage.url); }, [exportImage]);
   const [mapFullScreen, setMapFullScreen] = useState(false);
   const [layerModalOpen, setLayerModalOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
@@ -240,6 +254,45 @@ export default function MapViewPage() {
   const geologyOpacityRef = useRef(MACROSTRAT_DEFAULT_OPACITY);
   const geologyRequestRef = useRef<AbortController | null>(null);
   const geologyRequestIdRef = useRef(0);
+
+  function startMapExport() {
+    setGeoInfo(null);
+    geologyRequestRef.current?.abort();
+    trailRequestRef.current?.abort();
+    trailPopupRef.current?.remove();
+    popupRef.current?.remove();
+    setExportError("");
+    setExportImage(null);
+    setMapFullScreen(false);
+    setExportMode(true);
+  }
+
+  async function prepareMapExport() {
+    if (!mapRef.current || exportBusy) return;
+    setExportBusy(true);
+    setExportError("");
+    try {
+      const blob = await exportMapImage(mapRef.current);
+      setExportImage({ blob, url: URL.createObjectURL(blob) });
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Could not export this map. Please try again.");
+    } finally { setExportBusy(false); }
+  }
+
+  async function saveMapExport() {
+    if (!exportImage || exportBusy) return;
+    setExportBusy(true);
+    setExportError("");
+    try {
+      await saveFile(exportImage.blob, `GeoField-map-${new Date().toISOString().replace(/[:.]/g, "-")}.png`);
+      setExportImage(null);
+      setExportMode(false);
+    } catch (error) {
+      if (!(error instanceof Error && error.name === "AbortError")) {
+        setExportError("Could not save the image. Please try again.");
+      }
+    } finally { setExportBusy(false); }
+  }
 
   const filteredSamples = (allSamples || []).filter((s) =>
     selectedFolderId === "all" ? true : String(s.folderId ?? "") === String(selectedFolderId)
@@ -300,6 +353,9 @@ export default function MapViewPage() {
   // Keep overlayLayerRef in sync with state
   useEffect(() => {
     overlayLayerRef.current = overlayLayer;
+    trailRequestRef.current?.abort();
+    trailPopupRef.current?.remove();
+    trailPopupRef.current = null;
     if (overlayLayer !== "geology") {
       geologyRequestRef.current?.abort();
       geologyRequestRef.current = null;
@@ -450,8 +506,60 @@ export default function MapViewPage() {
 
       // Click handler — reads overlayLayerRef (never stale)
       map.on("click", async (e: any) => {
+        if (exportModeRef.current) return;
         const over = overlayLayerRef.current;
-        if (over === "none" || over === "trails") return;
+        if (over === "none") return;
+        if (over === "trails") {
+          trailRequestRef.current?.abort();
+          trailPopupRef.current?.remove();
+          const controller = new AbortController();
+          trailRequestRef.current = controller;
+          const content = document.createElement("div");
+          content.style.cssText = "max-height:300px;overflow-y:auto;color:#0f172a;padding:4px;";
+          content.setAttribute("aria-live", "polite");
+          content.textContent = map.getZoom() < 12 ? "Zoom in closer, then tap a hiking trail." : "Loading trail information…";
+          const popup = new L.Popup({ maxWidth: "300px", closeOnClick: false }).setLngLat(e.lngLat).setDOMContent(content).addTo(map);
+          trailPopupRef.current = popup;
+          popup.on("close", () => controller.abort());
+          if (map.getZoom() < 12) return;
+          const corners = [[-10, -10], [-10, 10], [10, -10], [10, 10]].map(([x, y]) => map.unproject([e.point.x + x, e.point.y + y]));
+          const bbox = [Math.min(...corners.map((p) => p.lng)), Math.min(...corners.map((p) => p.lat)), Math.max(...corners.map((p) => p.lng)), Math.max(...corners.map((p) => p.lat))];
+          const timeout = setTimeout(() => {
+            content.textContent = "Trail lookup timed out. Check your connection and tap the trail to retry.";
+            controller.abort();
+          }, 20000);
+          controller.signal.addEventListener("abort", () => clearTimeout(timeout), { once: true });
+          try {
+            const routes = await lookupHikingTrails(bbox, controller.signal);
+            if (controller.signal.aborted || overlayLayerRef.current !== "trails") return;
+            content.replaceChildren();
+            if (!routes.length) content.textContent = "No mapped hiking route found here. Tap closer to a highlighted trail.";
+            for (const route of routes) {
+              const section = document.createElement("section");
+              section.style.marginBottom = "12px";
+              const title = document.createElement("strong");
+              title.textContent = route.name;
+              const distance = document.createElement("p");
+              distance.textContent = `Full route: ${route.distance}`;
+              const link = document.createElement("a");
+              link.textContent = "View route details";
+              link.href = `https://hiking.waymarkedtrails.org/#route?id=${route.id}&type=relation`;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              section.append(title, distance, link);
+              content.append(section);
+            }
+            if (routes.length) {
+              const note = document.createElement("p");
+              note.textContent = "Routes near this point · Full route length, not a planned round trip. Source: Waymarked Trails / OpenStreetMap.";
+              note.style.fontSize = "11px";
+              content.append(note);
+            }
+          } catch {
+            if (!controller.signal.aborted) content.textContent = "Trail information is unavailable. An internet connection is needed; tap the trail to retry.";
+          } finally { clearTimeout(timeout); }
+          return;
+        }
         const { lng, lat } = e.lngLat;
         setGeoInfo({ loading: true, lngLat: [lng, lat] });
 
@@ -495,6 +603,8 @@ export default function MapViewPage() {
     });
 
     return () => {
+      trailRequestRef.current?.abort();
+      trailPopupRef.current?.remove();
       geologyRequestRef.current?.abort();
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
@@ -595,6 +705,7 @@ export default function MapViewPage() {
 
       el.addEventListener("click", (e: Event) => {
         e.stopPropagation();
+        if (exportModeRef.current) return;
         popup
           .setLngLat([coords[1], coords[0]])
           .setHTML(`
@@ -646,6 +757,7 @@ export default function MapViewPage() {
         .addTo(map);
       el.addEventListener("click", (event: Event) => {
         event.stopPropagation();
+        if (exportModeRef.current) return;
         popup
           .setLngLat([coords[1], coords[0]])
           .setHTML(`
@@ -767,6 +879,7 @@ export default function MapViewPage() {
             </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
+            <Button onClick={startMapExport} disabled={exportBusy || exportMode}>Export</Button>
             <form className="relative" onSubmit={handleMapSearch}>
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <Input
@@ -942,13 +1055,23 @@ export default function MapViewPage() {
             <Layers className="w-3.5 h-3.5 text-primary shrink-0" />
             {overlayLayer === "geology"
               ? "Click anywhere to get rock formation and geological age data."
-              : "Click a visible USDA soil map unit to get SSURGO classification data (US coverage)."}
+              : overlayLayer === "trails" ? "Tap a highlighted hiking trail to see its name and full route distance." : "Click a visible USDA soil map unit to get SSURGO classification data (US coverage)."}
           </div>
         )}
 
       </div>
 
       {/* Map + info panel */}
+      {exportMode && (
+        <div className="mb-3 rounded-xl border border-border bg-card p-3 space-y-2">
+          <p className="text-sm">Pan and zoom the map to frame your picture, then select Preview image.</p>
+          <div className="flex gap-2">
+            <Button onClick={prepareMapExport} disabled={exportBusy}>{exportBusy ? "Preparing…" : "Preview image"}</Button>
+            <Button variant="outline" disabled={exportBusy} onClick={() => { setExportMode(false); setExportError(""); }}>Cancel</Button>
+          </div>
+          {exportError && !exportImage && <p role="alert" className="text-sm text-destructive">{exportError}</p>}
+        </div>
+      )}
       <div
         className={mapFullScreen ? "geofield-fullscreen-map absolute inset-0 z-[90] flex bg-background" : "relative flex gap-4"}
         style={{
@@ -992,10 +1115,11 @@ export default function MapViewPage() {
         )}
         <div className="flex-1 relative">
           <div ref={mapContainerRef} className={`h-full w-full overflow-hidden border border-border shadow-lg ${mapFullScreen ? "rounded-none" : "rounded-2xl"}`} />
-          <button type="button" onClick={() => { setGeoInfo(null); setMapFullScreen((value) => !value); }} className="absolute left-3 top-3 z-[110] flex min-h-11 touch-manipulation items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur transition-colors hover:bg-muted" title={mapFullScreen ? "Return to normal map size" : "Make map full screen"} aria-label={mapFullScreen ? "Exit full-screen map" : "Open full-screen map"}>
+          {!exportMode && <button type="button" onClick={() => { setGeoInfo(null); setMapFullScreen((value) => !value); }} className="absolute left-3 top-3 z-[110] flex min-h-11 touch-manipulation items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur transition-colors hover:bg-muted" title={mapFullScreen ? "Return to normal map size" : "Make map full screen"} aria-label={mapFullScreen ? "Exit full-screen map" : "Open full-screen map"}>
             {mapFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             {mapFullScreen ? "Exit Full Screen" : "Full Screen"}
-          </button>
+          </button>}
+          {exportBusy && <div className="absolute inset-0 z-[120] cursor-wait bg-black/10" aria-label="Preparing map image" />}
           {terrain && (
             <div className="pointer-events-none absolute bottom-7 left-3 right-3 mx-auto w-fit max-w-[calc(100%-1.5rem)] rounded-lg bg-black/65 px-3 py-1.5 text-center text-xs text-white shadow backdrop-blur-sm">
               Two-finger drag tilts · twist rotates · use the right-side arrows for precise tilt
@@ -1003,6 +1127,21 @@ export default function MapViewPage() {
           )}
         </div>
       </div>
+
+      {exportImage && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label="Map export preview">
+          <div className="w-full max-w-3xl rounded-xl bg-card p-4 space-y-3 max-h-[90dvh] overflow-auto">
+            <h2 className="text-lg font-semibold">Map export preview</h2>
+            <img src={exportImage.url} alt="Map image ready to export" className="max-h-[60dvh] w-full object-contain" />
+            <p className="text-sm text-muted-foreground">Save as a PNG picture. On iPhone, choose Save to Files in the share menu.</p>
+            {exportError && <p role="alert" className="text-sm text-destructive">{exportError}</p>}
+            <div className="flex gap-2">
+              <Button disabled={exportBusy} onClick={saveMapExport}>Save image</Button>
+              <Button disabled={exportBusy} variant="outline" onClick={() => { setExportImage(null); setExportError(""); }}>Adjust map</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hidden file input for custom map layer upload */}
       <input

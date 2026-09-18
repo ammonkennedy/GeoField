@@ -349,6 +349,18 @@ export default function SampleScreen() {
             {typeInfo.label} Parameters
           </Text>
         </View>
+        {sampleType === "water" && <View style={{ gap: 8, paddingVertical: 12 }}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Water Source</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {["Groundwater", "Surface water"].map((source) => <TouchableOpacity
+              key={source}
+              accessibilityRole="button"
+              accessibilityState={{ selected: fields.waterSource === source }}
+              onPress={() => setField("waterSource", fields.waterSource === source ? "" : source)}
+              style={{ padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.primary, backgroundColor: fields.waterSource === source ? colors.primary : colors.card }}
+            ><Text style={{ color: fields.waterSource === source ? "#fff" : colors.foreground }}>{source}</Text></TouchableOpacity>)}
+          </View>
+        </View>}
         {getFields(sampleType).map((f, i) => (
           <View key={f.key} style={[styles.fieldRow, i > 0 && { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth }]}>
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{f.label}</Text>

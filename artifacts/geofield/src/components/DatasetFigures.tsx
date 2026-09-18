@@ -16,7 +16,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { BarChart2, ChevronDown, Download } from "lucide-react";
+import { BarChart2, ChevronDown, Download, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import type { Sample } from "@workspace/api-client-react";
 import { saveFile } from "@/lib/save-file";
 
@@ -52,10 +52,29 @@ const CHART_OPTIONS: { id: ChartType; label: string }[] = [
   { id: "box", label: "Box Plot" },
 ];
 
-function FigureViewport({ data, children }: { data: any[]; children: React.ReactNode }) {
+function FigureViewport({ data = [], width: explicitWidth, children }: { data?: any[]; width?: number; children: React.ReactNode }) {
+  const [zoom, setZoom] = useState(1);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const width = explicitWidth ?? Math.max(640, data.length * 72);
+  const height = 360;
+  const resetZoom = () => {
+    setZoom(1);
+    viewportRef.current?.scrollTo({ left: 0, top: 0 });
+  };
   return (
-    <div className="w-full overflow-x-auto pb-2">
-      <div style={{ width: Math.max(640, data.length * 72), height: 360 }}>{children}</div>
+    <div className="min-w-0 space-y-2">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Figure zoom controls" data-html2canvas-ignore="true">
+        <Button type="button" variant="outline" size="sm" className="min-h-11 gap-1" disabled={zoom <= 0.5} onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))} aria-label="Zoom out of figure"><ZoomOut className="h-4 w-4" />Zoom out</Button>
+        <span className="min-w-12 text-center text-sm tabular-nums" role="status" aria-live="polite">{Math.round(zoom * 100)}%</span>
+        <Button type="button" variant="outline" size="sm" className="min-h-11 gap-1" disabled={zoom >= 3} onClick={() => setZoom((value) => Math.min(3, value + 0.25))} aria-label="Zoom into figure"><ZoomIn className="h-4 w-4" />Zoom in</Button>
+        <Button type="button" variant="ghost" size="sm" className="min-h-11 gap-1" onClick={resetZoom}><RotateCcw className="h-4 w-4" />Reset view</Button>
+      </div>
+      <p className="text-xs text-muted-foreground">Zoom in to enlarge labels. Swipe or scroll to explore the figure.</p>
+      <div ref={viewportRef} className="w-full overflow-auto overscroll-contain rounded-lg border border-border" style={{ height: 380, maxHeight: "55dvh" }} tabIndex={0} role="region" aria-label="Scrollable figure">
+        <div style={{ width: width * zoom, height: height * zoom }}>
+          <div style={{ width, height, transform: `scale(${zoom})`, transformOrigin: "top left" }}>{children}</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -192,7 +211,7 @@ function BoxFigure({ data, paramLabel, paramUnit }: { data: any[]; paramLabel: s
   const ticks = Array.from({ length: 6 }, (_, index) => domainMin + (domainMax - domainMin) * index / 5);
 
   return (
-    <div className="w-full overflow-x-auto pb-2">
+    <FigureViewport width={width}>
       <div className="recharts-wrapper" style={{ width, height }}>
         <svg className="recharts-surface" width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
           {ticks.map((tick) => (
@@ -221,7 +240,7 @@ function BoxFigure({ data, paramLabel, paramUnit }: { data: any[]; paramLabel: s
           })}
         </svg>
       </div>
-    </div>
+    </FigureViewport>
   );
 }
 
@@ -294,9 +313,9 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
     setIsDownloading(true);
 
     const scale = 2;
-    const rect = svg.getBoundingClientRect();
-    const W = Math.round(rect.width);
-    const H = Math.round(rect.height);
+    // Export the full figure at its original dimensions, independent of zoom/pan.
+    const W = Math.round(svg.viewBox.baseVal.width || svg.width.baseVal.value);
+    const H = Math.round(svg.viewBox.baseVal.height || svg.height.baseVal.value);
     const PAD = 16;
     const HEADER = 88;
 
@@ -525,6 +544,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
 
                     {chartType === "bar" && (
                       <BarFigure
+                        key={selectedParam}
                         data={chartData}
                         paramLabel={paramMeta?.label ?? ""}
                         paramUnit={paramMeta?.unit ?? ""}
@@ -532,11 +552,12 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
                     )}
                     {chartType === "scatter" && (
                       scatterXParam && scatterData.length > 0
-                        ? <ScatterFigure data={scatterData} xLabel={`${scatterXMeta?.label ?? ""}${scatterXMeta?.unit ? ` (${scatterXMeta.unit})` : ""}`} yLabel={`${paramMeta?.label ?? ""}${paramMeta?.unit ? ` (${paramMeta.unit})` : ""}`} />
+                        ? <ScatterFigure key={`${selectedParam}:${scatterXParam}`} data={scatterData} xLabel={`${scatterXMeta?.label ?? ""}${scatterXMeta?.unit ? ` (${scatterXMeta.unit})` : ""}`} yLabel={`${paramMeta?.label ?? ""}${paramMeta?.unit ? ` (${paramMeta.unit})` : ""}`} />
                         : <div className="py-16 text-center text-sm text-muted-foreground">{scatterXParam ? "No samples contain values for both selected parameters." : "Choose an X-axis parameter to generate the scatter plot."}</div>
                     )}
                     {chartType === "box" && (
                       <BoxFigure
+                        key={selectedParam}
                         data={chartData}
                         paramLabel={paramMeta?.label ?? ""}
                         paramUnit={paramMeta?.unit ?? ""}

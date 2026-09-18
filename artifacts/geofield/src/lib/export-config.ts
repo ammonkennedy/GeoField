@@ -66,6 +66,7 @@ export const ZEBRA_COLOR_PRESETS = [
 export const FIELD_LABELS: Record<string, string> = {
   collectionDate: "Collection Date & Time",
   location: "GPS Location",
+  waterSource: "Water Source",
   temperature: "Water Temp (°C)",
   ph: "pH Level",
   do: "Dissolved Oxygen (mg/L)",

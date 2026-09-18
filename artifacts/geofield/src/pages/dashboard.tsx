@@ -1,3 +1,4 @@
+import { resolveDatasetId } from "@/lib/dataset-identity";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useGetCurrentAuthUser, useGetSamples, useGetFolders } from "@workspace/api-client-react";
@@ -43,7 +44,8 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { data: authData } = useGetCurrentAuthUser();
   const { folderId } = useParams();
-  const activeFolderId = parseRouteId(folderId);
+  const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
+  const activeFolderId = resolveDatasetId(parseRouteId(folderId), localDatasets);
   const isLocalFolder = typeof activeFolderId === "number" && activeFolderId < 0;
   const shouldLoadServerSamples = !isLocalFolder;
 
@@ -54,7 +56,6 @@ export default function Dashboard() {
   const [deleteId, setDeleteId] = useState<string | number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [queuedSamples, setQueuedSamples] = useState(getQueue);
-  const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
   const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
 
@@ -102,7 +103,7 @@ export default function Dashboard() {
 
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
-  const activeFolder = allFolders.find((f: any) => String(f.id) === String(activeFolderId));
+  const activeFolder = allFolders.find((f: any) => String(resolveDatasetId(f.id, localDatasets)) === String(activeFolderId));
 
   const localSamples = queuedSamples
     .filter((item) => !activeFolderId || String(item.payload.folderId ?? "") === String(activeFolderId))
@@ -125,7 +126,7 @@ export default function Dashboard() {
     String(s.fields?.location || "").toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
   const datasetMeasurements = activeFolderId
-    ? measurements.filter((measurement) => String(measurement.datasetId ?? "") === String(activeFolderId))
+    ? measurements.filter((measurement) => String(resolveDatasetId(measurement.datasetId, localDatasets) ?? "") === String(activeFolderId))
     : measurements;
   const newSamplePath = activeFolderId
     ? `/sample/new?folderId=${encodeURIComponent(String(activeFolderId))}`

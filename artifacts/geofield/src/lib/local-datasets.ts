@@ -12,6 +12,7 @@ export interface LocalDataset {
   isLocal: true;
   tripId?: string;
   cloudId?: string;
+  syncId?: string;
   syncStatus?: "local" | "syncing" | "synced" | "error";
   syncedAt?: string;
 }
@@ -26,6 +27,17 @@ export function getLocalDatasets(): LocalDataset[] {
 function saveLocalDatasets(datasets: LocalDataset[]) {
   writeDurableArray(LOCAL_DATASETS_KEY, datasets);
   window.dispatchEvent(new CustomEvent(LOCAL_DATASETS_UPDATED_EVENT));
+}
+
+/** Persist before sending so a lost AWS response cannot create duplicate datasets. */
+export function getLocalDatasetSyncId(id: number): string {
+  const datasets = getLocalDatasets();
+  const dataset = datasets.find((item) => item.id === id);
+  if (!dataset) throw new Error("Local dataset no longer exists.");
+  if (dataset.syncId) return dataset.syncId;
+  const syncId = crypto.randomUUID();
+  saveLocalDatasets(datasets.map((item) => item.id === id ? { ...item, syncId } : item));
+  return syncId;
 }
 
 export function getPendingLocalDatasets(): LocalDataset[] {

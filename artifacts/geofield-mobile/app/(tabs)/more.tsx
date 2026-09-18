@@ -18,6 +18,7 @@ import { useColors } from "@/hooks/useColors";
 import { useData } from "@/contexts/DataContext";
 import {
   confirmSignUpUser,
+  resendConfirmationEmail,
   getCurrentAuthUser,
   signInUser,
   signOutUser,
@@ -157,21 +158,47 @@ function AccountModal({ visible, onClose, colors, onChanged }: { visible: boolea
   const [code, setCode] = useState("");
   const [mode, setMode] = useState<"signin" | "signup" | "confirm">("signin");
   const [busy, setBusy] = useState(false);
+  const [resendWait, setResendWait] = useState(0);
+  useEffect(() => {
+    if (resendWait <= 0) return;
+    const timer = setTimeout(() => setResendWait((value) => Math.max(0, value - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [resendWait]);
+  const resendEmail = async () => {
+    if (busy || resendWait > 0) return;
+    setBusy(true);
+    try {
+      const result = await resendConfirmationEmail({ email });
+      setCode("");
+      setResendWait(30);
+      Alert.alert("Verification email sent", `Check ${result.destination || email.trim()} and your spam folder. Enter the latest code.`);
+    } catch (error: any) {
+      if (error?.name === "LimitExceededException" || error?.name === "TooManyRequestsException") setResendWait(30);
+      Alert.alert("Could not resend email", error?.message || "Please check your connection and try again.");
+    } finally { setBusy(false); }
+  };
 
   const submit = async () => {
     setBusy(true);
     try {
-      if (mode === "signin") await signInUser({ email, password });
+      if (mode === "signin") {
+        const result = await signInUser({ email, password });
+        if (result.nextStep.signInStep === "CONFIRM_SIGN_UP") { setMode("confirm"); return; }
+        if (!result.isSignedIn) throw new Error("Complete account verification before signing in.");
+      }
       else if (mode === "signup") {
         const result = await signUpUser({ email, password });
         if (!result.isSignUpComplete) { setMode("confirm"); return; }
       } else {
         await confirmSignUpUser({ email, code });
-        await signInUser({ email, password });
+        setMode("signin");
+        Alert.alert("Email confirmed", "You can sign in now.");
+        return;
       }
       onChanged();
       onClose();
     } catch (error: any) {
+      if (error?.name === "UserNotConfirmedException") setMode("confirm");
       Alert.alert("Account error", error?.message || "Could not connect to your GeoField account.");
     } finally {
       setBusy(false);
@@ -185,13 +212,15 @@ function AccountModal({ visible, onClose, colors, onChanged }: { visible: boolea
         <TouchableOpacity onPress={onClose}><Feather name="x" size={22} color={colors.mutedForeground} /></TouchableOpacity>
       </View>
       <Text style={{ color: colors.mutedForeground }}>Use the same account on your phone and computer.</Text>
-      <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="Email" placeholderTextColor={colors.mutedForeground} style={[styles.accountInput, { color: colors.foreground, backgroundColor: colors.muted }]} />
+      <TextInput editable={!busy} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="Email" placeholderTextColor={colors.mutedForeground} style={[styles.accountInput, { color: colors.foreground, backgroundColor: colors.muted }]} />
       {mode !== "confirm" && <TextInput value={password} onChangeText={setPassword} secureTextEntry placeholder="Password" placeholderTextColor={colors.mutedForeground} style={[styles.accountInput, { color: colors.foreground, backgroundColor: colors.muted }]} />}
       {mode === "confirm" && <TextInput value={code} onChangeText={setCode} keyboardType="number-pad" placeholder="Email confirmation code" placeholderTextColor={colors.mutedForeground} style={[styles.accountInput, { color: colors.foreground, backgroundColor: colors.muted }]} />}
       <TouchableOpacity disabled={busy} onPress={submit} style={[styles.accountButton, { backgroundColor: colors.primary }]}>
-        <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>{busy ? "Connecting…" : mode === "signin" ? "Sign In" : mode === "signup" ? "Create Account" : "Confirm & Sign In"}</Text>
+        <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>{busy ? "Connecting…" : mode === "signin" ? "Sign In" : mode === "signup" ? "Create Account" : "Confirm Email"}</Text>
       </TouchableOpacity>
-      {mode !== "confirm" && <TouchableOpacity onPress={() => setMode(mode === "signin" ? "signup" : "signin")}><Text style={{ color: colors.primary, textAlign: "center" }}>{mode === "signin" ? "Create an account" : "I already have an account"}</Text></TouchableOpacity>}
+      {mode === "confirm" && <TouchableOpacity accessibilityRole="button" disabled={busy || resendWait > 0 || !email.trim()} onPress={resendEmail} style={{ paddingVertical: 12, opacity: busy || resendWait > 0 ? 0.5 : 1 }}><Text style={{ color: colors.primary, textAlign: "center" }}>{resendWait > 0 ? `Resend available in ${resendWait}s` : "Resend verification email"}</Text></TouchableOpacity>}
+      {mode === "signin" && <TouchableOpacity disabled={busy} onPress={() => setMode("confirm")}><Text style={{ color: colors.primary, textAlign: "center" }}>Already registered? Verify your email</Text></TouchableOpacity>}
+      {mode !== "confirm" && <TouchableOpacity disabled={busy} onPress={() => setMode(mode === "signin" ? "signup" : "signin")}><Text style={{ color: colors.primary, textAlign: "center" }}>{mode === "signin" ? "Create an account" : "I already have an account"}</Text></TouchableOpacity>}
     </View>
   </Modal>;
 }

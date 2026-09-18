@@ -29,7 +29,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: folders } = useGetFolders({
     query: { enabled: Boolean(user) }
   });
-  const { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, syncProgress, lastError, sync } = useOfflineSync();
+  const { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, syncProgress, lastError, cloudSignInRequired, retryAt, sync } = useOfflineSync();
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
@@ -457,8 +457,8 @@ export function Layout({ children }: { children: ReactNode }) {
         {lastError && !isSyncing && (
           <div className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
             <AlertCircle className="h-4 w-4 shrink-0" />
-            <span className="flex-1">{lastError}</span>
-            <button type="button" className="font-semibold underline" onClick={sync}>Retry</button>
+            <span className="flex-1">{lastError}{retryAt && " Retrying automatically — pending data remains on this device."}</span>
+            {cloudSignInRequired ? <Link className="font-semibold underline" href="/login?reauth=1">Sign in</Link> : <button type="button" className="font-semibold underline" onClick={sync}>Retry</button>}
           </div>
         )}
 

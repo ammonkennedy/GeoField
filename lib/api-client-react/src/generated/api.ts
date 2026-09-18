@@ -1,3 +1,4 @@
+import { isNetworkError, requireCloudSession } from "../cloud-session";
 import { defaultStorage } from "aws-amplify/utils";
 import { createOfflineAccount } from "../offline-account";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -6,6 +7,7 @@ import type { QueryKey, UseMutationOptions, UseQueryOptions, UseQueryResult } fr
 import { Amplify } from "aws-amplify";
 import {
   confirmSignUp,
+  resendSignUpCode,
   confirmUserAttribute,
   deleteUser,
   fetchAuthSession,
@@ -119,6 +121,14 @@ function normalizeFolderId(folderId: unknown): string | null | undefined {
   return value;
 }
 
+export async function requireCloudSyncSession() {
+  await requireCloudSession(async () => {
+    if (await offlineAccount.isSignedOut()) return false;
+    const session = await fetchAuthSession();
+    return Boolean(session.tokens?.accessToken);
+  });
+}
+
 async function hasCurrentUser() {
   if (await offlineAccount.isSignedOut()) return false;
   try {
@@ -158,15 +168,6 @@ function serializeFields(fields: unknown) {
   return JSON.stringify(cleanFields(fields));
 }
 
-function stripLargeMediaFields(fields: unknown) {
-  const cleaned = cleanFields(fields) as Record<string, unknown>;
-  delete cleaned.photo;
-  delete cleaned.media;
-  delete cleaned.primaryPhoto;
-  delete cleaned.photoCount;
-  delete cleaned.videoCount;
-  return cleaned;
-}
 
 function asFolder(dataset: any): Folder {
   return {
@@ -257,9 +258,17 @@ export async function signInUser(input: { email: string; password: string }) {
     return await authenticate();
   } catch (error: any) {
     if (error?.name === "UserAlreadyAuthenticatedException") {
-      await signOutUser();
-      return authenticate();
+      // Refresh cloud credentials without treating this retry as explicit logout.
+      // If the connection fails, the remembered local account remains available.
+      await signOut();
+      try {
+        return await authenticate();
+      } catch (retryError) {
+        if (isNetworkError(retryError)) throw new Error("Cannot reach AWS sign-in. Check this device's connection and try again. Your local account and data are still available.");
+        throw retryError;
+      }
     }
+    if (isNetworkError(error)) throw new Error("Cannot reach AWS sign-in. Check this device's connection and try again. Your local account and data are still available.");
     throw error;
   }
 }
@@ -272,6 +281,13 @@ export async function signUpUser(input: { email: string; password: string }) {
 export async function confirmSignUpUser(input: { email: string; code: string }) {
   return confirmSignUp({ username: input.email.trim(), confirmationCode: input.code.trim() });
 }
+export async function resendConfirmationEmail(input: { email: string }) {
+  if (!isAuthConfigured()) throw new Error("Cloud sign-in is not configured in this build.");
+  const username = input.email.trim();
+  if (!username) throw new Error("Enter the email address used to create your account.");
+  return resendSignUpCode({ username });
+}
+
 export async function signOutUser() {
   await offlineAccount.clear();
   try {
@@ -521,18 +537,12 @@ export async function createSample({ data, id }: { data: CreateSampleRequest; id
     notes: data.notes || undefined,
   });
 
-  try {
-    return await createSampleWithInput(cleanObject({
-      ...baseInput,
-      fields: serializeFields(data.fields),
-    }));
-  } catch (firstError) {
-    console.warn("GeoField full sample save failed; retrying without large media fields", firstError);
-    return createSampleWithInput(cleanObject({
-      ...baseInput,
-      fields: serializeFields(stripLargeMediaFields(data.fields)),
-    }));
-  }
+  // Never turn an interrupted/full upload into a successful photo-less record.
+  // The caller keeps the durable queue item until the complete write succeeds.
+  return createSampleWithInput(cleanObject({
+    ...baseInput,
+    fields: serializeFields(data.fields),
+  }));
 }
 export function useCreateSample(options?: MutationOptions<Sample, { data: CreateSampleRequest }>) {
   return useMutation<Sample, ErrorType<unknown>, { data: CreateSampleRequest }>({ mutationFn: createSample, ...(options?.mutation as any) });
@@ -661,7 +671,7 @@ function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
 }
 
 function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
-  return cleanObject({
+  const input = cleanObject({
     measurementType: data.measurementType ?? "plane", datasetId: normalizeFolderId(data.datasetId) ?? undefined, label: data.label, strike: data.strike, dip: data.dip,
     dipDir: data.dipDir, strikeDegrees: data.strikeDegrees, dipDegrees: data.dipDegrees,
     trendDegrees: data.trendDegrees, plungeDegrees: data.plungeDegrees, lineVector: encodeMeasurementJson(data.lineVector),
@@ -674,10 +684,14 @@ function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
     utmEasting: data.utmEasting, utmNorthing: data.utmNorthing, date: data.date?.slice(0, 10),
     featureType: data.featureType, rockLayerType: data.rockLayerType, notes: data.notes,
   });
+  // GraphQL needs explicit null to clear an assignment; cleanObject drops nulls.
+  return data.datasetId === null || data.datasetId === ""
+    ? { ...input, datasetId: null }
+    : input;
 }
 
 export async function getStrikeDipMeasurements(): Promise<CloudStrikeDipMeasurement[]> {
-  if (!(await hasCurrentUser())) return [];
+  await requireCloudSyncSession();
   const items: CloudStrikeDipMeasurement[] = [];
   let nextToken: string | null | undefined;
   do {
@@ -690,14 +704,14 @@ export async function getStrikeDipMeasurements(): Promise<CloudStrikeDipMeasurem
 }
 
 export async function createStrikeDipMeasurement(data: CloudStrikeDipMeasurement): Promise<CloudStrikeDipMeasurement> {
-  if (!(await hasCurrentUser())) throw new Error("Sign in before syncing measurements.");
+  await requireCloudSyncSession();
   const result = await client.models.StrikeDipMeasurement.create({ id: data.id, ...strikeDipInput(data), createdAt: data.createdAt, updatedAt: data.updatedAt } as any);
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asStrikeDipMeasurement(result.data);
 }
 
 export async function updateStrikeDipMeasurement(data: CloudStrikeDipMeasurement): Promise<CloudStrikeDipMeasurement> {
-  if (!(await hasCurrentUser())) throw new Error("Sign in before syncing measurements.");
+  await requireCloudSyncSession();
   const result = await client.models.StrikeDipMeasurement.update({ id: data.id, ...strikeDipInput(data), updatedAt: data.updatedAt } as any);
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asStrikeDipMeasurement(result.data);

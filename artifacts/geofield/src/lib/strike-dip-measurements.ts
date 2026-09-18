@@ -1,3 +1,4 @@
+import { reassignMeasurementRecords, type DatasetIdentity } from "./dataset-identity";
 export interface StrikeDipMeasurement {
   id: string;
   measurementType?: "plane" | "lineation";
@@ -61,6 +62,11 @@ export function loadMeasurements(): StrikeDipMeasurement[] {
 }
 
 export function saveMeasurements(items: StrikeDipMeasurement[]) {
+  // A form can still hold a local ID after background dataset creation finishes.
+  const datasets = readDurableArray<DatasetIdentity>("geofield_local_datasets");
+  for (const dataset of datasets) {
+    if (dataset.cloudId) items = reassignMeasurementRecords(items, dataset.id, dataset.cloudId);
+  }
   writeDurableArray(KEY, items);
   window.dispatchEvent(new Event(STRIKE_DIP_UPDATED_EVENT));
 }
@@ -81,11 +87,5 @@ export function restoreMeasurement(item: LocalDeletedItem) {
 }
 
 export function reassignMeasurementsDataset(fromDatasetId: number | string, toDatasetId: number | string | null) {
-  saveMeasurements(
-    loadMeasurements().map((measurement) =>
-      String(measurement.datasetId ?? "") === String(fromDatasetId)
-        ? { ...measurement, datasetId: toDatasetId }
-        : measurement
-    )
-  );
+  saveMeasurements(reassignMeasurementRecords(loadMeasurements(), fromDatasetId, toDatasetId));
 }

@@ -51,6 +51,14 @@ export const BaseFields = ({ register, errors }: any) => (
 
 export const WaterFields = ({ register }: any) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="space-y-2">
+      <Label htmlFor="waterSource">Water Source</Label>
+      <select id="waterSource" className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.waterSource")}>
+        <option value="">Select water source...</option>
+        <option value="Groundwater">Groundwater</option>
+        <option value="Surface water">Surface water</option>
+      </select>
+    </div>
     <div className="space-y-2"><Label>Water Temp (°C)</Label><ParameterInput register={register} name="fields.temperature" /></div>
     <div className="space-y-2"><Label>pH Level</Label><ParameterInput register={register} name="fields.ph" /></div>
     <div className="space-y-2"><Label>Dissolved Oxygen (mg/L)</Label><ParameterInput register={register} name="fields.do" /></div>
