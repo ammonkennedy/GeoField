@@ -1,5 +1,5 @@
 import { isRetryableSyncError, syncRetryDelay } from "@/lib/sync-retry";
-import { mergeMeasurements } from "@/lib/merge-measurements";
+import { syncMeasurementRecords } from "@/lib/sync-measurements";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -38,6 +38,7 @@ import {
 import {
   loadMeasurements,
   saveMeasurements,
+  STRIKE_DIP_UPDATED_EVENT,
   type StrikeDipMeasurement,
 } from "@/lib/strike-dip-measurements";
 
@@ -47,32 +48,13 @@ let syncInFlight = false;
 async function syncStrikeDipMeasurements() {
   // Repair links left with a local ID by older versions before comparing revisions.
   saveMeasurements(loadMeasurements());
-  const local = loadMeasurements();
-  const remote = await getStrikeDipMeasurements();
-  const remoteById = new Map(remote.map((item) => [item.id, item]));
-  for (const measurement of local) {
-    // Upload the dataset first. The API cannot represent a negative local ID.
-    if (isLocalDatasetId(measurement.datasetId)) continue;
-    const existing = remoteById.get(measurement.id);
-    const now = new Date().toISOString();
-    const data = {
-      ...measurement,
-      createdAt: measurement.createdAt ?? now,
-      updatedAt: measurement.updatedAt ?? measurement.createdAt ?? now,
-    } as any;
-    if (!existing) await createStrikeDipMeasurement(data);
-    else if (Date.parse(data.updatedAt) > Date.parse(existing.updatedAt))
-      await updateStrikeDipMeasurement(data);
-  }
-  const fresh = await getStrikeDipMeasurements();
-  // Re-read after the requests so photos/edits added during sync are preserved.
-  const merged = mergeMeasurements(
-    loadMeasurements(),
-    fresh as unknown as StrikeDipMeasurement[],
-    local,
-  );
-  saveMeasurements(merged);
-  return fresh.length;
+  return syncMeasurementRecords<StrikeDipMeasurement>({
+    load: loadMeasurements,
+    save: (items) => saveMeasurements(items, { fromSync: true }),
+    list: async () => await getStrikeDipMeasurements() as unknown as StrikeDipMeasurement[],
+    create: async (item) => await createStrikeDipMeasurement({ ...item, createdAt: item.createdAt ?? new Date().toISOString(), updatedAt: item.updatedAt ?? new Date().toISOString() } as any) as unknown as StrikeDipMeasurement,
+    update: async (item) => await updateStrikeDipMeasurement(item as any) as unknown as StrikeDipMeasurement,
+  });
 }
 
 function isLocalDatasetId(value: unknown) {
@@ -90,7 +72,7 @@ function getSyncableQueue() {
 }
 
 function getPendingSyncCount() {
-  return getPendingLocalDatasets().length + getSyncableQueue().length;
+  return getPendingLocalDatasets().length + getSyncableQueue().length + loadMeasurements().filter((item) => item.localRevision).length;
 }
 
 async function syncLocalDataset(dataset: LocalDataset) {
@@ -178,10 +160,12 @@ export function useOfflineSync() {
   }, []);
 
   useEffect(() => {
+    window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshCount);
     window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
     window.addEventListener("storage", refreshCount);
     return () => {
+      window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
       window.removeEventListener(QUEUE_UPDATED_EVENT, refreshCount);
       window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
       window.removeEventListener("storage", refreshCount);
@@ -338,6 +322,7 @@ export function useOfflineSync() {
         setIsSyncing(false);
         setSyncProgress(null);
         refreshCount();
+        if (!failed && loadMeasurements().some((item) => item.localRevision && !isLocalDatasetId(item.datasetId))) retryNeeded = true;
         if (retryNeeded && !authRequired) scheduleRetry();
       }
     },

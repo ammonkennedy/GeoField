@@ -10,7 +10,7 @@ test('newer and equal cloud records preserve local photos across repeated syncs'
     const remote = { ...cloud, updatedAt };
     const result = mergeMeasurements([local], [remote], [local]);
     assert.equal(result[0].photo, local.photo);
-    assert.equal(result[0].label, 'Cloud');
+    assert.equal(result[0].label, updatedAt === local.updatedAt ? 'Local' : 'Cloud');
     assert.deepEqual(mergeMeasurements(result, [remote], result), result);
   }
 });

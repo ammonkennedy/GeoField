@@ -442,6 +442,9 @@ export default function MapViewPage() {
 
       const map = new L.Map({
         container: mapContainerRef.current!,
+        // iOS may discard WebGL pixels after presenting a frame. Retain them
+        // so export can copy the actual map, not an empty graphics buffer.
+        canvasContextAttributes: { preserveDrawingBuffer: true },
         style: INITIAL_STYLE,
         center: [-98.35, 39.5],
         zoom: 4,

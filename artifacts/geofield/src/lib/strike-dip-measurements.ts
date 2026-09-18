@@ -1,6 +1,7 @@
 import { reassignMeasurementRecords, type DatasetIdentity } from "./dataset-identity";
 export interface StrikeDipMeasurement {
   id: string;
+  localRevision?: string;
   measurementType?: "plane" | "lineation";
   label: string;
   strike: string;
@@ -61,11 +62,17 @@ export function loadMeasurements(): StrikeDipMeasurement[] {
   });
 }
 
-export function saveMeasurements(items: StrikeDipMeasurement[]) {
+export function saveMeasurements(items: StrikeDipMeasurement[], options: { fromSync?: boolean } = {}) {
+  const before = loadMeasurements();
   // A form can still hold a local ID after background dataset creation finishes.
   const datasets = readDurableArray<DatasetIdentity>("geofield_local_datasets");
   for (const dataset of datasets) {
     if (dataset.cloudId) items = reassignMeasurementRecords(items, dataset.id, dataset.cloudId);
+  }
+  if (!options.fromSync) {
+    const previous = new Map(before.map((item) => [item.id, item]));
+    items = items.map((item) => JSON.stringify(previous.get(item.id)) === JSON.stringify(item)
+      ? item : { ...item, localRevision: crypto.randomUUID() });
   }
   writeDurableArray(KEY, items);
   window.dispatchEvent(new Event(STRIKE_DIP_UPDATED_EVENT));

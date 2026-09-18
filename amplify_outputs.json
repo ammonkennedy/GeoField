@@ -226,6 +226,20 @@
               "isRequired": true,
               "attributes": []
             },
+            "measurementType": {
+              "name": "measurementType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "datasetId": {
+              "name": "datasetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
             "label": {
               "name": "label",
               "isArray": false,
@@ -275,6 +289,27 @@
               "isRequired": false,
               "attributes": []
             },
+            "trendDegrees": {
+              "name": "trendDegrees",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "plungeDegrees": {
+              "name": "plungeDegrees",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "lineVector": {
+              "name": "lineVector",
+              "isArray": false,
+              "type": "AWSJSON",
+              "isRequired": false,
+              "attributes": []
+            },
             "convention": {
               "name": "convention",
               "isArray": false,
@@ -291,6 +326,41 @@
             },
             "compassAccuracy": {
               "name": "compassAccuracy",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "magneticHeading": {
+              "name": "magneticHeading",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "trueHeading": {
+              "name": "trueHeading",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "magneticDeclination": {
+              "name": "magneticDeclination",
+              "isArray": false,
+              "type": "Float",
+              "isRequired": false,
+              "attributes": []
+            },
+            "referenceFrame": {
+              "name": "referenceFrame",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "rawMagneticStrikeDegrees": {
+              "name": "rawMagneticStrikeDegrees",
               "isArray": false,
               "type": "Float",
               "isRequired": false,
@@ -380,6 +450,13 @@
               "isRequired": false,
               "attributes": []
             },
+            "rockLayerType": {
+              "name": "rockLayerType",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "notes": {
               "name": "notes",
               "isArray": false,
@@ -396,6 +473,13 @@
             },
             "updatedAt": {
               "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "deletedAt": {
+              "name": "deletedAt",
               "isArray": false,
               "type": "AWSDateTime",
               "isRequired": false,
