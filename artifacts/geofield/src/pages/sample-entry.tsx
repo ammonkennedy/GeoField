@@ -1,3 +1,4 @@
+import { elevationFromCoordinates, formatElevation } from "@/lib/elevation";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
@@ -132,7 +133,7 @@ async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlo
   return empty;
 }
 
-type DevicePosition = { latitude: number; longitude: number; accuracy?: number | null };
+type DevicePosition = { latitude: number; longitude: number; accuracy?: number | null; altitude?: number | null; altitudeAccuracy?: number | null };
 
 function timeoutPromise<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
   return Promise.race([
@@ -232,6 +233,9 @@ export default function SampleEntry() {
       const coords = await getDevicePosition();
       setValue("fields.location", `${coords.latitude.toFixed(7)}, ${coords.longitude.toFixed(7)}`, { shouldDirty: true });
       if (Number.isFinite(coords.accuracy)) setValue("fields.gpsAccuracy", Math.round(coords.accuracy!), { shouldDirty: true });
+      const height = elevationFromCoordinates(coords);
+      setValue("fields.elevation", height.elevation, { shouldDirty: true });
+      setValue("fields.elevationAccuracy", height.elevationAccuracy, { shouldDirty: true });
       setGpsStatus("success");
     } catch (error: any) {
       console.error("[GeoField GPS] Location capture failed", error);
@@ -658,6 +662,10 @@ export default function SampleEntry() {
                   <MapPin className="h-4 w-4" />Try GPS Again
                 </Button>
               )}
+              <div className="rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Elevation (GPS)</p>
+                <p>{gpsStatus === "loading" ? "Reading elevation…" : formatElevation(watch("fields.elevation") ?? watch("fields.altitude"), watch("fields.elevationAccuracy"))}</p>
+              </div>
               {(() => { const coords = parseCoordsUTM(locationValue); if (!coords) return null; const utm = latLngToUTM(coords[0], coords[1]); return <div className="flex items-start gap-2.5 bg-muted/40 border border-border rounded-lg px-3.5 py-2.5 text-sm"><MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" /><div><p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">UTM Coordinates (WGS84)</p><p className="font-mono text-sm text-foreground">{utm.display}</p><p className="text-xs text-muted-foreground mt-0.5">Zone {utm.zone}{utm.letter} · {utm.hemisphere === "N" ? "Northern" : "Southern"} Hemisphere</p></div></div>; })()}
             </div>
 

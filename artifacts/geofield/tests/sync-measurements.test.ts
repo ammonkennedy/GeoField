@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { syncMeasurementRecords } from "../src/lib/sync-measurements.ts";
 
-type Record = { id: string; measurementType: string; datasetId: string | null; updatedAt: string; localRevision?: string; photo?: string; notes?: string };
+type Record = { id: string; measurementType: string; datasetId: string | null; updatedAt: string; localRevision?: string; photo?: string; notes?: string; elevation?: number | null; elevationAccuracy?: number | null };
 const base: Record = { id: "m", measurementType: "plane", datasetId: "dataset-a", updatedAt: "2026-09-17T10:00:00Z", localRevision: "edit-1", photo: "local-photo" };
 function setup(initial = base) {
   let local = [{ ...initial }];
@@ -72,4 +72,13 @@ test("clean records still accept newer edits from another device", async () => {
   await syncMeasurementRecords(scenario.store);
   assert.equal(scenario.writes.length, 0);
   assert.equal(scenario.local()[0].datasetId, "other-device");
+});
+
+ test("elevation and its accuracy survive upload and subsequent stale download", async () => {
+  const scenario = setup({ ...base, elevation: -12.5, elevationAccuracy: 4 });
+  await syncMeasurementRecords(scenario.store);
+  await syncMeasurementRecords(scenario.store);
+  assert.equal(scenario.writes[0].elevation, -12.5);
+  assert.equal(scenario.local()[0].elevation, -12.5);
+  assert.equal(scenario.local()[0].elevationAccuracy, 4);
 });

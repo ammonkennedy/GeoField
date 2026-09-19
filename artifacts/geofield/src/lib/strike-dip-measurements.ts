@@ -36,6 +36,8 @@ export interface StrikeDipMeasurement {
   latitude?: number;
   longitude?: number;
   gpsAccuracy?: number;
+  elevation?: number | null;
+  elevationAccuracy?: number | null;
   utmEasting?: number;
   utmNorthing?: number;
   utmZone?: string;

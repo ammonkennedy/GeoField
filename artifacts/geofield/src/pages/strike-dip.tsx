@@ -1,3 +1,5 @@
+import { stampMeasurementAtSave, toLocalDateTimeInputValue } from "@/lib/measurement-save-time";
+import { elevationFromCoordinates, formatElevation } from "@/lib/elevation";
 import { resolveDatasetId } from "@/lib/dataset-identity";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
@@ -42,11 +44,6 @@ function normalizeAngle(value: string, maximum: number): string {
 function normalizeStrike(value: string): string {
   const number = Number(value);
   return Number.isFinite(number) ? String(((Math.round(number) % 360) + 360) % 360) : "";
-}
-
-function toLocalDateTimeInputValue(date = new Date()): string {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
 }
 
 function blankMeasurement(datasetId?: number | string | null): StrikeDipMeasurement {
@@ -181,7 +178,7 @@ function MeasurementRow({
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
             <span className="text-xs font-mono text-primary">
               {measurement.measurementType === "lineation"
-                ? `Trend ${measurement.trendDegrees?.toFixed(0).padStart(3, "0") ?? "--"}° / Plunge ${measurement.plungeDegrees ?? "--"}°`
+                ? `Azimuth ${measurement.trendDegrees?.toFixed(0).padStart(3, "0") ?? "--"}° / Plunge ${measurement.plungeDegrees ?? "--"}°`
                 : `Strike ${measurement.strike || "--"} / Dip ${measurement.dip || "--"}`}
             </span>
             {measurement.featureType && (
@@ -273,7 +270,7 @@ function MeasurementRow({
               <Input autoFocus={initiallyOpen} value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder="e.g. Outcrop A — bedding plane" className="h-9 text-sm" />
             </div>
             {measurement.measurementType === "lineation" ? <>
-              <div className="space-y-1"><Label className="text-xs">Trend</Label><Input type="text" inputMode="numeric" value={measurement.trendDegrees ?? ""} onChange={(e) => onChange({ ...measurement, trendDegrees: Number(e.target.value) })} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Trend in degrees" /></div>
+              <div className="space-y-1"><Label className="text-xs">Azimuth</Label><Input type="text" inputMode="numeric" value={measurement.trendDegrees ?? ""} onChange={(e) => onChange({ ...measurement, trendDegrees: Number(e.target.value) })} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Azimuth in degrees" /></div>
               <div className="space-y-1"><Label className="text-xs">Plunge</Label><Input type="text" inputMode="decimal" value={measurement.plungeDegrees ?? ""} onChange={(e) => onChange({ ...measurement, plungeDegrees: Number(e.target.value) })} placeholder="0–90°" className="h-10 text-base font-mono" aria-label="Plunge in degrees" /></div>
             </> : <>
               <div className="space-y-1"><Label className="text-xs">Strike</Label><Input type="text" inputMode="numeric" value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} onBlur={() => upd("strike", normalizeStrike(measurement.strike))} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Strike in degrees" /></div>
@@ -341,6 +338,10 @@ function MeasurementRow({
             <div className="space-y-1">
               <Label className="text-xs">Date &amp; Time</Label>
               <Input type="datetime-local" value={measurement.date} onChange={(e) => upd("date", e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="col-span-2 sm:col-span-3 space-y-1">
+              <Label className="text-xs">Elevation (GPS)</Label>
+              <p className="text-sm">{formatElevation(measurement.elevation, measurement.elevationAccuracy)}</p>
             </div>
             {(hasGps || hasUtm) && (
               <div className="col-span-2 sm:col-span-3 rounded-xl border bg-card p-3 text-xs space-y-2">
@@ -445,6 +446,7 @@ function addGpsToMeasurement(measurement: StrikeDipMeasurement, position: Geoloc
     latitude,
     longitude,
     gpsAccuracy: position.coords.accuracy,
+    ...elevationFromCoordinates(position.coords),
     ...latLonToUTM(latitude, longitude),
     location: measurement.location || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`,
   };
@@ -521,6 +523,7 @@ export default function StrikeDipPage() {
 
   const addMeasurementWithGps = (measurement: StrikeDipMeasurement, successTitle?: string, successDescription?: string) => {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
+    measurement = stampMeasurementAtSave(measurement);
     // Save and open the details now; a GPS fix can take ten seconds in the field.
     changeMeasurements((prev) => [...prev, measurement]);
     setNewlyCreatedId(measurement.id);
@@ -562,10 +565,8 @@ export default function StrikeDipPage() {
     const dipDegrees = Number(dip);
     const dipDirectionDegrees = ((strikeDegrees + 90) % 360);
     const measurement: StrikeDipMeasurement = { ...manualDraft, strike, dip, strikeDegrees, dipDegrees, dipDirectionDegrees, dipDir: `${dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(strike)}`, convention: "right-hand-rule", northReference: "magnetic", quality: "manual", updatedAt: new Date().toISOString() };
-    changeMeasurements((prev) => [...prev, measurement]);
-    setNewlyCreatedId(measurement.id);
+    addMeasurementWithGps(measurement, "Measurement saved", `Strike ${strike}° / Dip ${dip}°`);
     setManualOpen(false);
-    toast({ title: "Measurement saved", description: `Strike ${strike}° / Dip ${dip}°` });
   };
 
   const updateMeasurementById = (id: string, m: StrikeDipMeasurement) => {
@@ -726,7 +727,7 @@ export default function StrikeDipPage() {
               label: `Lineation ${capture.trendDegrees.toString().padStart(3, "0")}°/${capture.plungeDegrees}°`,
               featureType: "Lineation",
             };
-            addMeasurementWithGps(m, "Lineation captured", `Trend ${capture.trendDegrees}° / Plunge ${capture.plungeDegrees}°`);
+            addMeasurementWithGps(m, "Lineation captured", `Azimuth ${capture.trendDegrees}° / Plunge ${capture.plungeDegrees}°`);
             return;
           }
           const m: StrikeDipMeasurement = {

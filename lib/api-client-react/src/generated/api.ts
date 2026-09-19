@@ -58,11 +58,13 @@ export async function uploadSampleMedia(input: {
   localUri: string;
   fileName: string;
   mimeType: string;
+  expectedAccountId?: string;
 }): Promise<{ storageKey: string; cloudUrl: string }> {
   if (!isStorageConfigured()) {
     throw new Error("Cloud media storage is not configured in this build. Deploy the Amplify backend and rebuild GeoField.");
   }
   const session = await fetchAuthSession();
+  if (input.expectedAccountId && (await getCurrentUser()).userId !== input.expectedAccountId) throw new Error("Account changed while syncing photos. Please sync again.");
   const identityId = session.identityId;
   if (!identityId) throw new Error("Sign in before uploading sample media.");
   const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -303,7 +305,7 @@ export async function deleteCurrentAccount() {
 
   // Cognito does not cascade account deletion into AppSync records. Remove all
   // owner-scoped data while the user still has permission, then remove the user.
-  for (const modelName of ["Sample", "StrikeDipMeasurement", "Dataset"] as const) {
+  for (const modelName of ["Sample", "StrikeDipMeasurement", "Dataset", "FieldNote"] as const) {
     let nextToken: string | null | undefined;
     do {
       const result = await client.models[modelName].list({ limit: 1000, nextToken });
@@ -356,7 +358,7 @@ export async function getCurrentAccountToken(): Promise<string> {
  */
 export function subscribeToAccountDataChanges(onChange: () => void): () => void {
   const subscriptions: Array<{ unsubscribe: () => void }> = [];
-  for (const modelName of ["Sample", "Dataset", "StrikeDipMeasurement"] as const) {
+  for (const modelName of ["Sample", "Dataset", "StrikeDipMeasurement", "FieldNote"] as const) {
     for (const eventName of ["onCreate", "onUpdate", "onDelete"] as const) {
       try {
         const subscription = client.models[modelName][eventName]().subscribe({
@@ -638,6 +640,8 @@ export interface CloudStrikeDipMeasurement {
   latitude?: number;
   longitude?: number;
   gpsAccuracy?: number;
+  elevation?: number | null;
+  elevationAccuracy?: number | null;
   utmZone?: string;
   utmEasting?: number;
   utmNorthing?: number;
@@ -663,9 +667,10 @@ function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
     rawMagneticStrikeDegrees: record.rawMagneticStrikeDegrees ?? undefined,
     orientationQuaternion: decodeMeasurementJson(record.orientationQuaternion), planeNormal: decodeMeasurementJson(record.planeNormal),
     quality: record.quality ?? undefined, location: record.location ?? "", latitude: record.latitude ?? undefined,
+    elevation: record.elevation ?? null, elevationAccuracy: record.elevationAccuracy ?? null,
     longitude: record.longitude ?? undefined, gpsAccuracy: record.gpsAccuracy ?? undefined, utmZone: record.utmZone ?? undefined,
     utmEasting: record.utmEasting ?? undefined, utmNorthing: record.utmNorthing ?? undefined,
-    date: record.date ?? "", featureType: record.featureType ?? "", rockLayerType: record.rockLayerType ?? "", notes: record.notes ?? "",
+    date: record.measuredAt ?? record.date ?? "", featureType: record.featureType ?? "", rockLayerType: record.rockLayerType ?? "", notes: record.notes ?? "",
     createdAt: record.createdAt ?? nowIso(), updatedAt: record.updatedAt ?? record.createdAt ?? nowIso(),
   };
 }
@@ -680,14 +685,19 @@ function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
     magneticDeclination: data.magneticDeclination, referenceFrame: data.referenceFrame,
     rawMagneticStrikeDegrees: data.rawMagneticStrikeDegrees, orientationQuaternion: encodeMeasurementJson(data.orientationQuaternion),
     planeNormal: encodeMeasurementJson(data.planeNormal), quality: data.quality, location: data.location, latitude: data.latitude,
+    elevation: data.elevation, elevationAccuracy: data.elevationAccuracy,
     longitude: data.longitude, gpsAccuracy: data.gpsAccuracy, utmZone: data.utmZone,
-    utmEasting: data.utmEasting, utmNorthing: data.utmNorthing, date: data.date?.slice(0, 10),
+    utmEasting: data.utmEasting, utmNorthing: data.utmNorthing, date: data.date?.slice(0, 10), measuredAt: data.date,
     featureType: data.featureType, rockLayerType: data.rockLayerType, notes: data.notes,
   });
+  const nullableHeight = {
+    ...(data.elevation === null ? { elevation: null } : {}),
+    ...(data.elevationAccuracy === null ? { elevationAccuracy: null } : {}),
+  };
   // GraphQL needs explicit null to clear an assignment; cleanObject drops nulls.
   return data.datasetId === null || data.datasetId === ""
-    ? { ...input, datasetId: null }
-    : input;
+    ? { ...input, ...nullableHeight, datasetId: null }
+    : { ...input, ...nullableHeight };
 }
 
 export async function getStrikeDipMeasurements(): Promise<CloudStrikeDipMeasurement[]> {
@@ -718,4 +728,43 @@ export async function updateStrikeDipMeasurement(data: CloudStrikeDipMeasurement
 }
 export function useMoveSample(options?: MutationOptions<Sample, { id: string | number; data: MoveSampleRequest }>) {
   return useMutation<Sample, ErrorType<unknown>, { id: string | number; data: MoveSampleRequest }>({ mutationFn: moveSample, ...(options?.mutation as any) });
+}
+
+
+export interface CloudFieldNote {
+  id: string;
+  title: string;
+  body: string;
+  photos: Array<{ id: string; fileName: string; cloudKey: string }>;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+function asFieldNote(record: any): CloudFieldNote {
+  if (!record?.id) throw new Error("Cloud did not confirm the field note.");
+  const photos = parseFields(record.photos);
+  return { id: String(record.id), title: record.title ?? "", body: record.body ?? "", photos: Array.isArray(photos) ? photos : [], createdAt: record.createdAt, updatedAt: record.updatedAt, deletedAt: record.deletedAt ?? null };
+}
+export async function requireFieldNoteAccount(accountId: string) {
+  await requireCloudSyncSession();
+  if ((await getCurrentUser()).userId !== accountId) throw new Error("Account changed while syncing notes. Please sync again.");
+}
+export async function getFieldNotes(accountId: string): Promise<CloudFieldNote[]> {
+  await requireFieldNoteAccount(accountId);
+  const notes: CloudFieldNote[] = [];
+  let nextToken: string | undefined;
+  do {
+    const result = await client.models.FieldNote.list({ limit: 500, nextToken });
+    if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    notes.push(...(result.data ?? []).map(asFieldNote));
+    nextToken = result.nextToken;
+  } while (nextToken);
+  return notes;
+}
+export async function saveCloudFieldNote(note: CloudFieldNote, exists: boolean, accountId: string): Promise<CloudFieldNote> {
+  await requireFieldNoteAccount(accountId);
+  const input = { id: note.id, title: note.title, body: note.body, photos: JSON.stringify(note.photos), createdAt: note.createdAt, updatedAt: note.updatedAt, deletedAt: note.deletedAt ?? null };
+  const result = await client.models.FieldNote[exists ? "update" : "create"](input);
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  return asFieldNote(result.data);
 }

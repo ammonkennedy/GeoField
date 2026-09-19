@@ -1,3 +1,5 @@
+import { addDetailedTrails, removeDetailedTrails, showDetailedTrailPopup } from "@/lib/detailed-trail-overlay";
+import { applyBaseMap } from "@/lib/base-map";
 import { exportMapImage } from "@/lib/export-map";
 import { saveFile } from "@/lib/save-file";
 import { lookupHikingTrails } from "@/lib/hiking-trails";
@@ -154,6 +156,7 @@ const INITIAL_STYLE: any = {
 };
 
 function safeRemoveOverlays(map: any) {
+  removeDetailedTrails(map);
   setMacrostratVisibility(map, false);
   for (const id of ["soil-overlay", "trails-overlay"]) {
     try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
@@ -179,6 +182,7 @@ function safeAddOverlay(map: any, overlay: OverlayLayer, geologyOpacity = MACROS
         minzoom: 5,
       });
       map.addLayer({ id: "trails-overlay", type: "raster", source: "trails-src", paint: { "raster-opacity": 0.9 } });
+      addDetailedTrails(map);
     }
   } catch {}
 }
@@ -196,6 +200,7 @@ export default function MapViewPage() {
   const { data: authData } = useGetCurrentAuthUser();
   const [selectedFolderId, setSelectedFolderId] = useState<number | string | "all">("all");
   const [baseLayer, setBaseLayer] = useState<BaseLayer>("satellite");
+  const baseLayerRef = useRef<BaseLayer>("satellite");
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
   const [geologyOpacity, setGeologyOpacity] = useState(MACROSTRAT_DEFAULT_OPACITY);
   const [terrain, setTerrain] = useState(false);
@@ -497,6 +502,7 @@ export default function MapViewPage() {
 
       map.on("load", () => {
         mapLoadedRef.current = true;
+        applyBaseMap(map, baseLayerRef.current);
         if (terrainRef.current) map.setTerrain({ source: "terrain", exaggeration: 1.5 });
         if (overlayLayerRef.current !== "none") {
           safeAddOverlay(map, overlayLayerRef.current, geologyOpacityRef.current);
@@ -515,6 +521,7 @@ export default function MapViewPage() {
         if (over === "trails") {
           trailRequestRef.current?.abort();
           trailPopupRef.current?.remove();
+          if (showDetailedTrailPopup(map, e.point, e.lngLat, L.Popup)) return;
           const controller = new AbortController();
           trailRequestRef.current = controller;
           const content = document.createElement("div");
@@ -525,7 +532,7 @@ export default function MapViewPage() {
           trailPopupRef.current = popup;
           popup.on("close", () => controller.abort());
           if (map.getZoom() < 12) return;
-          const corners = [[-10, -10], [-10, 10], [10, -10], [10, 10]].map(([x, y]) => map.unproject([e.point.x + x, e.point.y + y]));
+          const corners = [[-20, -20], [-20, 20], [20, -20], [20, 20]].map(([x, y]) => map.unproject([e.point.x + x, e.point.y + y]));
           const bbox = [Math.min(...corners.map((p) => p.lng)), Math.min(...corners.map((p) => p.lat)), Math.max(...corners.map((p) => p.lng)), Math.max(...corners.map((p) => p.lat))];
           const timeout = setTimeout(() => {
             content.textContent = "Trail lookup timed out. Check your connection and tap the trail to retry.";
@@ -536,7 +543,7 @@ export default function MapViewPage() {
             const routes = await lookupHikingTrails(bbox, controller.signal);
             if (controller.signal.aborted || overlayLayerRef.current !== "trails") return;
             content.replaceChildren();
-            if (!routes.length) content.textContent = "No mapped hiking route found here. Tap closer to a highlighted trail.";
+            if (!routes.length) content.textContent = "No named hiking route found here. Zoom in and tap a blue USGS trail for local trail details.";
             for (const route of routes) {
               const section = document.createElement("section");
               section.style.marginBottom = "12px";
@@ -622,12 +629,9 @@ export default function MapViewPage() {
 
   // ── BASE LAYER ─────────────────────────────────────────────────────────────
   useEffect(() => {
+    baseLayerRef.current = baseLayer;
     if (!mapRef.current || !mapLoadedRef.current) return;
-    try {
-      mapRef.current.setLayoutProperty("satellite-layer", "visibility", baseLayer === "satellite" ? "visible" : "none");
-      mapRef.current.setLayoutProperty("street-layer", "visibility", baseLayer === "street" ? "visible" : "none");
-      mapRef.current.setLayoutProperty("topographic-layer", "visibility", baseLayer === "topographic" ? "visible" : "none");
-    } catch {}
+    applyBaseMap(mapRef.current, baseLayer);
   }, [baseLayer]);
 
   // ── TERRAIN ────────────────────────────────────────────────────────────────
@@ -770,7 +774,7 @@ export default function MapViewPage() {
                 <div><strong style="font-size:13px;">${escapeHtml(measurement.label || (isLineation ? "Lineation" : "Strike & Dip"))}</strong><div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Structural measurement</div></div>
               </div>
               ${isLineation
-                ? `<div style="font-size:12px;margin-bottom:4px;"><strong>Trend:</strong> ${Math.round(measurement.trendDegrees ?? 0)}° &nbsp; <strong>Plunge:</strong> ${Math.round(measurement.plungeDegrees ?? 0)}°</div>`
+                ? `<div style="font-size:12px;margin-bottom:4px;"><strong>Azimuth:</strong> ${Math.round(measurement.trendDegrees ?? 0)}° &nbsp; <strong>Plunge:</strong> ${Math.round(measurement.plungeDegrees ?? 0)}°</div>`
                 : `<div style="font-size:12px;margin-bottom:4px;"><strong>Strike:</strong> ${escapeHtml(measurement.strike)} &nbsp; <strong>Dip:</strong> ${escapeHtml(measurement.dip)}</div>`}
               ${!isLineation && measurement.dipDir ? `<div style="font-size:11px;color:#666;margin-bottom:4px;"><strong>Dip direction:</strong> ${escapeHtml(measurement.dipDir)}</div>` : ""}
               ${measurement.featureType ? `<div style="font-size:11px;color:#666;margin-bottom:4px;"><strong>Feature:</strong> ${escapeHtml(measurement.featureType)}</div>` : ""}
@@ -1058,7 +1062,7 @@ export default function MapViewPage() {
             <Layers className="w-3.5 h-3.5 text-primary shrink-0" />
             {overlayLayer === "geology"
               ? "Click anywhere to get rock formation and geological age data."
-              : overlayLayer === "trails" ? "Tap a highlighted hiking trail to see its name and full route distance." : "Click a visible USDA soil map unit to get SSURGO classification data (US coverage)."}
+              : overlayLayer === "trails" ? "Zoom in for smaller U.S. trails. Tap blue trails for segment details or marked routes for route information." : "Click a visible USDA soil map unit to get SSURGO classification data (US coverage)."}
           </div>
         )}
 

@@ -1,3 +1,5 @@
+import { addDetailedTrails, removeDetailedTrails, showDetailedTrailPopup } from "@/lib/detailed-trail-overlay";
+import { applyBaseMap } from "@/lib/base-map";
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useParams } from "wouter";
@@ -33,6 +35,7 @@ const SOIL_WMS     =
   "https://SDMDataAccess.sc.egov.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=TRUE&LAYERS=mapunitpoly&STYLES=default&WIDTH=256&HEIGHT=256&SRS=EPSG%3A3857&BBOX={bbox-epsg-3857}";
 
 function safeRemoveOverlays(map: any) {
+  removeDetailedTrails(map);
   for (const id of ["geology-overlay", "soil-overlay", "trails-overlay"]) {
     try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
   }
@@ -58,6 +61,7 @@ function safeAddOverlay(map: any, overlay: OverlayLayer) {
         minzoom: 5,
       });
       map.addLayer({ id: "trails-overlay", type: "raster", source: "trails-src", paint: { "raster-opacity": 0.9 } }, "labels");
+      addDetailedTrails(map, "labels");
     }
   } catch {}
 }
@@ -252,6 +256,7 @@ export default function TripPlannerPage() {
   const mapInstanceRef   = useRef<any>(null);
   const mapMarkersRef    = useRef<any[]>([]);
   const mapLoadedRef     = useRef(false);
+  const baseLayerRef = useRef<BaseLayer>("satellite");
   const overlayLayerRef  = useRef<OverlayLayer>("none");
   const terrainRef       = useRef(false);
   const pinModeRef       = useRef(false);
@@ -604,13 +609,7 @@ export default function TripPlannerPage() {
             if (cancelled) return;
             mapLoadedRef.current = true;
 
-            // Apply base layer state that may have been set before map loaded
-            try {
-              map.setLayoutProperty("satellite-layer", "visibility", baseLayer === "satellite" ? "visible" : "none");
-              map.setLayoutProperty("street-layer",    "visibility", baseLayer === "street"    ? "visible" : "none");
-              map.setLayoutProperty("topographic-layer", "visibility", baseLayer === "topographic" ? "visible" : "none");
-              map.setLayoutProperty("labels",          "visibility", baseLayer === "satellite" ? "visible" : "none");
-            } catch {}
+            applyBaseMap(map, baseLayerRef.current);
 
             if (terrainRef.current) {
               try { map.setTerrain({ source: "terrain", exaggeration: 1.5 }); } catch {}
@@ -651,7 +650,13 @@ export default function TripPlannerPage() {
 
             // Query overlay info (mirrors map-view click handler)
             const over = overlayLayerRef.current;
-            if (over === "none" || over === "trails") return;
+            if (over === "none") return;
+            if (over === "trails") {
+              if (!showDetailedTrailPopup(map, e.point, e.lngLat, L.Popup)) {
+                setGeoInfo({ loading: false, lngLat: [lng, lat], data: { Trails: "Zoom in and tap a blue trail to see its name and mapped segment distance. Smaller trail coverage is provided by USGS in the United States." } });
+              } else setGeoInfo(null);
+              return;
+            }
             setGeoInfo({ loading: true, lngLat: [lng, lat] });
 
             if (over === "geology") {
@@ -711,14 +716,9 @@ export default function TripPlannerPage() {
 
   // ── Base layer ─────────────────────────────────────────────────────────────
   useEffect(() => {
+    baseLayerRef.current = baseLayer;
     if (!mapInstanceRef.current || !mapLoadedRef.current) return;
-    try {
-      mapInstanceRef.current.setLayoutProperty("satellite-layer", "visibility", baseLayer === "satellite" ? "visible" : "none");
-      mapInstanceRef.current.setLayoutProperty("street-layer",    "visibility", baseLayer === "street"    ? "visible" : "none");
-      mapInstanceRef.current.setLayoutProperty("topographic-layer", "visibility", baseLayer === "topographic" ? "visible" : "none");
-      // Esri reference labels only make sense over satellite; OSM street tiles include their own labels
-      mapInstanceRef.current.setLayoutProperty("labels",          "visibility", baseLayer === "satellite" ? "visible" : "none");
-    } catch {}
+    applyBaseMap(mapInstanceRef.current, baseLayer);
   }, [baseLayer]);
 
   // ── Terrain ────────────────────────────────────────────────────────────────

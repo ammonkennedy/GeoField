@@ -30,6 +30,17 @@ const schema = a.schema({
     })
     .authorization((allow) => [allow.owner()]),
 
+  FieldNote: a
+    .model({
+      title: a.string(),
+      body: a.string(),
+      photos: a.json(),
+      createdAt: a.datetime(),
+      updatedAt: a.datetime(),
+      deletedAt: a.datetime(),
+    })
+    .authorization((allow) => [allow.owner()]),
+
   StrikeDipMeasurement: a
     .model({
       measurementType: a.string(),
@@ -59,10 +70,13 @@ const schema = a.schema({
       latitude: a.float(),
       longitude: a.float(),
       gpsAccuracy: a.float(),
+      elevation: a.float(),
+      elevationAccuracy: a.float(),
       utmZone: a.string(),
       utmEasting: a.float(),
       utmNorthing: a.float(),
       date: a.date(),
+      measuredAt: a.string(),
       featureType: a.string(),
       rockLayerType: a.string(),
       notes: a.string(),

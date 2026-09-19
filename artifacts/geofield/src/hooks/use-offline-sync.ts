@@ -1,9 +1,12 @@
+import { syncFieldNotes } from "@/lib/sync-field-notes";
+import { loadFieldNotes, FIELD_NOTES_UPDATED } from "@/lib/field-notes";
 import { isRetryableSyncError, syncRetryDelay } from "@/lib/sync-retry";
 import { syncMeasurementRecords } from "@/lib/sync-measurements";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   requireCloudSyncSession,
+  useGetCurrentAuthUser,
   createFolder,
   createSample,
   getFolders,
@@ -71,8 +74,8 @@ function getSyncableQueue() {
   );
 }
 
-function getPendingSyncCount() {
-  return getPendingLocalDatasets().length + getSyncableQueue().length + loadMeasurements().filter((item) => item.localRevision).length;
+function getPendingSyncCount(accountId = "") {
+  return loadFieldNotes(accountId).filter((note) => note.localRevision).length + getPendingLocalDatasets().length + getSyncableQueue().length + loadMeasurements().filter((item) => item.localRevision).length;
 }
 
 async function syncLocalDataset(dataset: LocalDataset) {
@@ -107,9 +110,11 @@ async function syncLocalDataset(dataset: LocalDataset) {
 }
 
 export function useOfflineSync() {
+  const { data: authData } = useGetCurrentAuthUser();
+  const accountId = authData?.user ? String(authData.user.id) : "";
   const queryClient = useQueryClient();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [queueCount, setQueueCount] = useState(getPendingSyncCount);
+  const [queueCount, setQueueCount] = useState(() => getPendingSyncCount(accountId));
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncedCount, setSyncedCount] = useState(0);
   const [downloadedCount, setDownloadedCount] = useState(0);
@@ -156,15 +161,18 @@ export function useOfflineSync() {
   }, []);
 
   const refreshCount = useCallback(() => {
-    setQueueCount(getPendingSyncCount());
-  }, []);
+    setQueueCount(getPendingSyncCount(accountId));
+  }, [accountId]);
 
   useEffect(() => {
+    refreshCount();
+    window.addEventListener(FIELD_NOTES_UPDATED, refreshCount);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshCount);
     window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
     window.addEventListener("storage", refreshCount);
     return () => {
+      window.removeEventListener(FIELD_NOTES_UPDATED, refreshCount);
       window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
       window.removeEventListener(QUEUE_UPDATED_EVENT, refreshCount);
       window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
@@ -281,6 +289,7 @@ export function useOfflineSync() {
             ),
             getFolders(),
             syncStrikeDipMeasurements(),
+            syncFieldNotes(accountId),
           ]);
           // Wait for every operation before releasing the sync lock. An early
           // Promise.all rejection previously left uploads running behind retries.
@@ -322,14 +331,24 @@ export function useOfflineSync() {
         setIsSyncing(false);
         setSyncProgress(null);
         refreshCount();
-        if (!failed && loadMeasurements().some((item) => item.localRevision && !isLocalDatasetId(item.datasetId))) retryNeeded = true;
+        if (!failed && (loadMeasurements().some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
         if (retryNeeded && !authRequired) scheduleRetry();
       }
     },
-    [queryClient, refreshCount, cancelRetry, scheduleRetry],
+    [queryClient, refreshCount, cancelRetry, scheduleRetry, accountId],
   );
 
   const sync = useCallback(() => runSync(false), [runSync]);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const changed = () => {
+      if (!loadFieldNotes(accountId).some((note) => note.localRevision)) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (navigator.onLine) void sync(); }, 1500);
+    };
+    window.addEventListener(FIELD_NOTES_UPDATED, changed);
+    return () => { clearTimeout(timer); window.removeEventListener(FIELD_NOTES_UPDATED, changed); };
+  }, [accountId, sync]);
   const rebuildCloudCache = useCallback(() => runSync(true), [runSync]);
   useEffect(() => {
     syncRef.current = sync;

@@ -220,7 +220,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 divide-x divide-y divide-border/70 md:grid-cols-4 md:divide-y-0">
           {[
             { label: "Samples", value: totalSamples, icon: Database },
-            { label: "Strike/Dip", value: totalMeasurements, icon: Compass },
+            { label: "Measurements", value: totalMeasurements, icon: Compass },
             { label: "Mapped", value: mappedSamples, icon: MapPin },
             activeFolder
               ? { label: "Pending Sync", value: pendingSamples, icon: Cloud }
@@ -331,7 +331,7 @@ export default function Dashboard() {
             <div>
               <h2 className="flex items-center gap-2 text-lg font-semibold">
                 <Compass className="h-5 w-5 text-primary" />
-                Strike &amp; Dip Measurements
+                Structural Measurements
               </h2>
               <p className="text-sm text-muted-foreground">
                 {datasetMeasurements.length} structural measurement{datasetMeasurements.length !== 1 ? "s" : ""} in this dataset
@@ -344,7 +344,7 @@ export default function Dashboard() {
 
           {datasetMeasurements.length === 0 ? (
             <div className="px-5 py-8 text-sm text-muted-foreground">
-              No strike and dip measurements are assigned to this dataset yet.
+              No structural measurements are assigned to this dataset yet.
             </div>
           ) : (
             <div className="divide-y divide-border">
@@ -354,7 +354,9 @@ export default function Dashboard() {
                     <p className="truncate font-medium">{measurement.label || "Untitled measurement"}</p>
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                       <span className="font-mono text-primary">
-                        Strike {measurement.strike || "--"} / Dip {measurement.dip || "--"}{measurement.dipDir ? ` ${measurement.dipDir}` : ""}
+                        {measurement.measurementType === "lineation"
+                          ? `Azimuth ${measurement.trendDegrees ?? "--"}° / Plunge ${measurement.plungeDegrees ?? "--"}°`
+                          : `Strike ${measurement.strike || "--"} / Dip ${measurement.dip || "--"}${measurement.dipDir ? ` ${measurement.dipDir}` : ""}`}
                       </span>
                       {measurement.rockLayerType && <span>{measurement.rockLayerType}</span>}
                       {measurement.location && <span className="truncate">{measurement.location}</span>}

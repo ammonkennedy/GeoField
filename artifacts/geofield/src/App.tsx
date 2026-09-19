@@ -9,6 +9,7 @@ import Dashboard from "@/pages/dashboard";
 import SampleEntry from "@/pages/sample-entry";
 import MapViewPage from "@/pages/map-view";
 import TripPlannerPage from "@/pages/trip-planner";
+import FieldNotesPage from "@/pages/field-notes";
 import StrikeDipPage from "@/pages/strike-dip";
 import AccountSettingsPage from "@/pages/account-settings";
 import FiguresPage from "@/pages/figures";
@@ -57,6 +58,9 @@ function Router() {
       </Route>
       <Route path="/strike-dip">
         <AccessibleRoute component={StrikeDipPage} />
+      </Route>
+      <Route path="/notes">
+        <AccessibleRoute component={FieldNotesPage} />
       </Route>
       <Route path="/figures">
         <AccessibleRoute component={FiguresPage} />

@@ -19,6 +19,7 @@ export interface GeoLocation {
   lat: number;
   lon: number;
   altitude: number | null;
+  altitudeAccuracy?: number | null;
 }
 
 export interface Sample {
@@ -43,6 +44,8 @@ export interface Folder {
 }
 
 export interface StrikeDipMeasurement {
+  elevation?: number | null;
+  elevationAccuracy?: number | null;
   id: string;
   measurementType?: "plane" | "lineation";
   label: string;
@@ -306,6 +309,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           ...sample.fields,
           location: sample.location ? `${sample.location.lat.toFixed(7)}, ${sample.location.lon.toFixed(7)}` : undefined,
           altitude: sample.location?.altitude ?? undefined,
+          elevation: sample.location?.altitude ?? null,
+          elevationAccuracy: sample.location?.altitudeAccuracy ?? null,
           media: media.map((item) => ({ ...item, type: item.kind, syncStatus: "synced" })),
           photoCount: media.filter((item) => item.kind === "photo").length,
           videoCount: media.filter((item) => item.kind === "video").length,
@@ -337,7 +342,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           fields: Object.fromEntries(Object.entries(cloudFields).filter(([key, value]) => key !== "media" && key !== "location" && typeof value === "string")) as Record<string, string>,
           location: (() => {
             const match = typeof cloudFields.location === "string" ? cloudFields.location.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/) : null;
-            return match ? { lat: Number(match[1]), lon: Number(match[2]), altitude: Number.isFinite(Number(cloudFields.altitude)) ? Number(cloudFields.altitude) : null } : null;
+            const height = cloudFields.elevation ?? cloudFields.altitude;
+            return match ? { lat: Number(match[1]), lon: Number(match[2]), altitude: typeof height === "number" && Number.isFinite(height) ? height : null, altitudeAccuracy: cloudFields.elevationAccuracy ?? null } : null;
           })(),
           photos: cloudMedia.map((item: any) => item.cloudUrl || item.dataUrl).filter(Boolean),
           media: cloudMedia.map((item: any) => ({ ...item, kind: item.kind || item.type })),
@@ -375,6 +381,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const mergedMeasurements = [...measurements];
       for (const cloud of freshMeasurements) {
         const mapped: StrikeDipMeasurement = {
+          elevation: cloud.elevation, elevationAccuracy: cloud.elevationAccuracy,
           id: cloud.id, datasetId: cloud.datasetId ?? null, label: cloud.label, strike: cloud.strike,
           dip: cloud.dip, dipDir: cloud.dipDir, strikeDegrees: cloud.strikeDegrees,
           dipDegrees: cloud.dipDegrees, dipDirectionDegrees: cloud.dipDirectionDegrees,

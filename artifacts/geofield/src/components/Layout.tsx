@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { isAuthConfigured, signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Check, Compass, Cloud, ShieldCheck, Settings, X, BarChart2, AlertCircle } from "lucide-react";
+import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Compass, Cloud, ShieldCheck, Settings, X, BarChart2, AlertCircle, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/pages/trip-planner";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
@@ -29,7 +29,9 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: folders } = useGetFolders({
     query: { enabled: Boolean(user) }
   });
-  const { isOnline, queueCount, isSyncing, syncedCount, downloadedCount, syncProgress, lastError, cloudSignInRequired, retryAt, sync } = useOfflineSync();
+  const { isOnline, queueCount, isSyncing, syncProgress, lastError, cloudSignInRequired, retryAt, sync } = useOfflineSync();
+  const [syncErrorDismissed, setSyncErrorDismissed] = useState(false);
+  useEffect(() => { setSyncErrorDismissed(false); }, [lastError]);
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
@@ -234,6 +236,41 @@ export function Layout({ children }: { children: ReactNode }) {
             </nav>
           </div>
 
+          {/* Measurements */}
+          <div className="px-4">
+            <Link
+              href="/strike-dip"
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 font-medium",
+                location === "/strike-dip"
+                  ? "bg-primary text-primary-foreground shadow-md"
+                  : "text-foreground hover:bg-muted"
+              )}
+              onClick={() => setSidebarOpen(false)}
+            >
+              <Compass className="w-4 h-4 opacity-80 shrink-0" />
+              <span className="flex-1">Measurements</span>
+              {location === "/strike-dip" && <ChevronRight className="w-4 h-4 shrink-0" />}
+            </Link>
+            <Link href="/notes" onClick={() => setSidebarOpen(false)} className={cn("mt-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium", location === "/notes" ? "bg-primary text-primary-foreground shadow-md" : "text-foreground hover:bg-muted")}>
+              <NotebookPen className="h-4 w-4 shrink-0 opacity-80" />
+              <span className="flex-1">Notes</span>
+              {location === "/notes" && <ChevronRight className="h-4 w-4 shrink-0" />}
+            </Link>
+            <Link
+              href="/figures"
+              className={cn(
+                "mt-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+                location === "/figures" ? "bg-primary text-primary-foreground shadow-md" : "text-foreground hover:bg-muted"
+              )}
+              onClick={() => setSidebarOpen(false)}
+            >
+              <BarChart2 className="h-4 w-4 shrink-0 opacity-80" />
+              <span className="flex-1">Generate Figures</span>
+              {location === "/figures" && <ChevronRight className="h-4 w-4 shrink-0" />}
+            </Link>
+          </div>
+
           {/* Trips */}
           <div className="px-4">
             <div className="flex items-center justify-between mb-3">
@@ -270,36 +307,6 @@ export function Layout({ children }: { children: ReactNode }) {
                 <p className="text-xs text-muted-foreground italic px-3 py-2">No trips yet</p>
               )}
             </nav>
-          </div>
-
-          {/* Measurements */}
-          <div className="px-4">
-            <Link
-              href="/strike-dip"
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 font-medium",
-                location === "/strike-dip"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "text-foreground hover:bg-muted"
-              )}
-              onClick={() => setSidebarOpen(false)}
-            >
-              <Compass className="w-4 h-4 opacity-80 shrink-0" />
-              <span className="flex-1">Measurements</span>
-              {location === "/strike-dip" && <ChevronRight className="w-4 h-4 shrink-0" />}
-            </Link>
-            <Link
-              href="/figures"
-              className={cn(
-                "mt-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
-                location === "/figures" ? "bg-primary text-primary-foreground shadow-md" : "text-foreground hover:bg-muted"
-              )}
-              onClick={() => setSidebarOpen(false)}
-            >
-              <BarChart2 className="h-4 w-4 shrink-0 opacity-80" />
-              <span className="flex-1">Generate Figures</span>
-              {location === "/figures" && <ChevronRight className="h-4 w-4 shrink-0" />}
-            </Link>
           </div>
 
           {/* Datasets */}
@@ -424,41 +431,13 @@ export function Layout({ children }: { children: ReactNode }) {
         inert={sidebarOpen ? true : undefined}
         aria-hidden={sidebarOpen ? true : undefined}
       >
-        {/* Offline / sync banners */}
-        {!isOnline && (
-          <div className="flex items-center gap-2.5 px-4 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm sticky top-0 z-20">
-            <WifiOff className="w-4 h-4 shrink-0" />
-            <span className="flex-1">You're offline. New samples will be saved on this device and synced when connected.</span>
-            {queueCount > 0 && (
-              <span className="font-semibold bg-amber-200 text-amber-900 rounded-full px-2 py-0.5 text-xs">
-                {queueCount} pending
-              </span>
-            )}
-          </div>
-        )}
-        {isOnline && isSyncing && (
-          <div className="flex items-center gap-2.5 px-4 py-2.5 bg-blue-50 border-b border-blue-200 text-blue-800 text-sm sticky top-0 z-20">
-            <RefreshCw className="w-4 h-4 shrink-0 animate-spin" />
-            <span>{syncProgress || `Syncing ${queueCount} offline item${queueCount !== 1 ? "s" : ""} to your account…`}</span>
-          </div>
-        )}
-        {isOnline && syncedCount > 0 && !isSyncing && (
-          <div className="flex items-center gap-2.5 px-4 py-2.5 bg-green-50 border-b border-green-200 text-green-800 text-sm sticky top-0 z-20">
-            <Check className="w-4 h-4 shrink-0" />
-            <span>{syncedCount} offline item{syncedCount !== 1 ? "s" : ""} synced successfully.</span>
-          </div>
-        )}
-        {isOnline && downloadedCount > 0 && syncedCount === 0 && !isSyncing && (
-          <div className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-green-200 bg-green-50 px-4 py-2.5 text-sm text-green-800">
-            <Cloud className="h-4 w-4 shrink-0" />
-            <span>{downloadedCount} cloud sample{downloadedCount === 1 ? "" : "s"} available on this device.</span>
-          </div>
-        )}
-        {lastError && !isSyncing && (
-          <div className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
-            <AlertCircle className="h-4 w-4 shrink-0" />
-            <span className="flex-1">{lastError}{retryAt && " Retrying automatically — pending data remains on this device."}</span>
-            {cloudSignInRequired ? <Link className="font-semibold underline" href="/login?reauth=1">Sign in</Link> : <button type="button" className="font-semibold underline" onClick={sync}>Retry</button>}
+        {/* Keep background sync quiet and errors outside the page layout. */}
+        {lastError && !isSyncing && !syncErrorDismissed && (
+          <div role="alert" className="absolute inset-x-3 top-3 z-50 mx-auto flex max-w-3xl items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span className="min-w-0 flex-1 break-words">{lastError}{retryAt && " Retrying automatically — pending data remains on this device."}</span>
+            {cloudSignInRequired ? <Link className="py-1 font-semibold underline" href="/login?reauth=1">Sign in</Link> : <button type="button" className="py-1 font-semibold underline" onClick={sync}>Retry</button>}
+            <button type="button" className="-my-2 -mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-red-100" aria-label="Dismiss sync error" onClick={() => setSyncErrorDismissed(true)}><X className="h-4 w-4" /></button>
           </div>
         )}
 

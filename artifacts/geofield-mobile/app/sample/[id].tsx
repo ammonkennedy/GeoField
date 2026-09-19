@@ -117,6 +117,10 @@ export default function SampleScreen() {
     navigation.setOptions({ title: isNew ? "New Sample" : existing?.sampleId ?? "Sample" });
   }, [isNew, existing?.sampleId]);
 
+  useEffect(() => {
+    if (isNew) void getLocation();
+  }, []);
+
   const setField = (key: string, val: string) => {
     setFields((prev) => ({ ...prev, [key]: val }));
   };
@@ -167,6 +171,7 @@ export default function SampleScreen() {
         lat: loc.coords.latitude,
         lon: loc.coords.longitude,
         altitude: loc.coords.altitude,
+        altitudeAccuracy: loc.coords.altitudeAccuracy,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
@@ -317,7 +322,7 @@ export default function SampleScreen() {
               </Text>
               {location.altitude != null && (
                 <Text style={[styles.locAlt, { color: colors.mutedForeground }]}>
-                  Altitude: {location.altitude.toFixed(1)} m
+                  Elevation (GPS): {location.altitude.toFixed(1)} m ({(location.altitude * 3.280839895).toFixed(0)} ft)
                 </Text>
               )}
             </View>

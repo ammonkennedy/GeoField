@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { lookupHikingTrails, trailDistance } from '../src/lib/hiking-trails.ts';
+import { lookupHikingTrails, trailDistance, trailApiBounds } from '../src/lib/hiking-trails.ts';
 
 test('route lengths are converted from metres into km and miles', () => {
   assert.equal(trailDistance({ route: { length: 1609.344 } }), '1.6 km (1.0 mi)');
@@ -17,7 +17,7 @@ test('lookup uses the clicked area and fetches the matching route details', asyn
   }) as typeof fetch;
   try {
     assert.deepEqual(await lookupHikingTrails([-105, 39, -104.99, 39.01], new AbortController().signal), [{ id: 123, name: 'Test trail', distance: '2.0 km (1.2 mi)' }]);
-    assert.equal(new URL(urls[0]).searchParams.get('bbox'), '-105,39,-104.99,39.01');
+    assert.equal(new URL(urls[0]).searchParams.get('bbox'), trailApiBounds([-105,39,-104.99,39.01]).join(','));
     assert.match(urls[1], /details\/relation\/123$/);
   } finally { globalThis.fetch = original; }
 });
@@ -34,4 +34,13 @@ test('failed lookup stays an error so the popup can offer retry', async () => {
   globalThis.fetch = (async () => new Response('', { status: 503 })) as typeof fetch;
   try { await assert.rejects(lookupHikingTrails([0, 0, 1, 1], new AbortController().signal), /503/); }
   finally { globalThis.fetch = original; }
+});
+
+test('marked-route lookup projects click bounds into Web Mercator metres', () => {
+  const bounds = trailApiBounds([0, 0, 1, 1]);
+  assert.ok(Math.abs(bounds[0]) < 0.001);
+  assert.ok(Math.abs(bounds[1]) < 0.001);
+  assert.ok(Math.abs(bounds[2] - 111319.490793) < 0.001);
+  assert.ok(Math.abs(bounds[3] - 111325.142866) < 0.001);
+  assert.ok(trailApiBounds([-180,-90,180,90]).every(Number.isFinite));
 });
