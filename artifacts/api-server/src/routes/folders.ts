@@ -1,8 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, foldersTable } from "@workspace/db";
-import { eq, and, isNull, isNotNull, lt } from "drizzle-orm";
-
-const RETENTION_DAYS = 20;
+import { eq, and, isNull, isNotNull } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -74,8 +72,6 @@ router.put("/folders/:id", async (req, res) => {
 
 router.get("/folders/recently-deleted", async (req, res) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
-  const expiresBefore = new Date(Date.now() - RETENTION_DAYS * 86400000);
-  await db.delete(foldersTable).where(and(eq(foldersTable.userId, req.user!.id), lt(foldersTable.deletedAt, expiresBefore)));
   const rows = await db.select().from(foldersTable)
     .where(and(eq(foldersTable.userId, req.user!.id), isNotNull(foldersTable.deletedAt)))
     .orderBy(foldersTable.deletedAt);

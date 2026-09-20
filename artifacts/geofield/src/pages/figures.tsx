@@ -12,12 +12,12 @@ export default function FiguresPage() {
   const { data: cloudSamples } = useGetSamples();
   const { data: cloudDatasets } = useGetFolders();
   const [selection, setSelection] = useState("all");
-  const [queuedSamples, setQueuedSamples] = useState(getQueue);
+  const [queuedSamples, setQueuedSamples] = useState(() => getQueue(true));
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
 
   useEffect(() => {
-    const refreshQueue = () => setQueuedSamples(getQueue());
+    const refreshQueue = () => setQueuedSamples(getQueue(true));
     const refreshDatasets = () => setLocalDatasets(getLocalDatasets());
     const refreshCloud = () => setCachedCloudSamples(getCachedCloudSamples());
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
@@ -38,13 +38,15 @@ export default function FiguresPage() {
     () => [...(cloudDatasets || []), ...getVisibleLocalDatasets(localDatasets, cloudDatasets)],
     [cloudDatasets, localDatasets],
   );
-  const localSamples = queuedSamples.map((item) => ({
+  const localSamples = queuedSamples.filter((item) => !item.deletedAt).map((item) => ({
     id: item.queuedId,
+    targetId: item.targetId,
+    isOffline: true,
     ...item.payload,
     createdAt: item.queuedAt,
     updatedAt: item.queuedAt,
   }));
-  const allSamples = mergeCloudAndLocal((cloudSamples ?? cachedCloudSamples) as any[], localSamples as any[]) as any[];
+  const allSamples = mergeCloudAndLocal((mergeCloudAndLocal(cloudSamples ?? [], cachedCloudSamples) as any[]).filter((sample) => !queuedSamples.some((item) => String(item.targetId ?? item.queuedId) === String(sample.id))), localSamples as any[]) as any[];
   const selectedSamples = selection === "all"
     ? allSamples
     : allSamples.filter((sample) => String(sample.folderId ?? "") === selection);

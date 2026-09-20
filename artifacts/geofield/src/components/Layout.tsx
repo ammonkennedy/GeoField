@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
 import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Compass, Cloud, ShieldCheck, Settings, X, BarChart2, AlertCircle, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { loadTrips, type Trip } from "@/pages/trip-planner";
+import { loadTrips, type Trip } from "@/lib/trips";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { GeoFieldLogo } from "@/components/GeoFieldLogo";

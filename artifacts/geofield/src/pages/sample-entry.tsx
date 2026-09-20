@@ -1,5 +1,7 @@
+import { getCachedCloudSamples } from "@/lib/cloud-samples";
+import { loadTrips, saveTrips } from "@/lib/trips";
 import { elevationFromCoordinates, formatElevation } from "@/lib/elevation";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,6 +17,7 @@ import { useSamplesMutations } from "@/hooks/use-geofield";
 import { useGetCurrentAuthUser, useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { enqueue, getQueue, updateQueuedSample } from "@/lib/offline-queue";
+import { assertStorageAccount } from "@/lib/storage-account";
 import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { AirFields, BaseFields, WaterFields, RockFields, SoilFields } from "@/components/fields/SchemaForms";
@@ -105,9 +108,9 @@ async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlo
   if (Array.isArray(fields.media)) {
     const loaded = await Promise.all(
       (fields.media as any[]).slice(0, 3).map(async (m: any) => {
-        if (m?.dataUrl && m?.type) return { type: m.type as "photo" | "video", dataUrl: m.dataUrl };
+        if (m?.dataUrl?.startsWith("data:") && m?.type && !m?.storageKey) return { type: m.type as "photo" | "video", dataUrl: m.dataUrl };
         if (m?.storageKey) {
-          const dataUrl = await getStoredMediaDataUrl(m.storageKey);
+          const dataUrl = await getStoredMediaDataUrl(m.localKey || m.storageKey).catch(() => null);
           if (dataUrl) {
             return {
               type: (m.kind || m.type) as "photo" | "video",
@@ -122,7 +125,7 @@ async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlo
         if (m?.cloudUrl && (m?.kind || m?.type)) {
           return { type: (m.kind || m.type) as "photo" | "video", dataUrl: m.cloudUrl, stored: m };
         }
-        return null;
+        return m?.storageKey ? { type: (m.kind || m.type) as "photo" | "video", dataUrl: "", stored: m } : null;
       })
     );
     while (loaded.length < 3) loaded.push(null);
@@ -174,7 +177,8 @@ export default function SampleEntry() {
   const [location, setLocation] = useLocation();
   const { id } = useParams();
   const isEdit = Boolean(id && id !== "new");
-  const isOfflineEdit = Boolean(id?.startsWith("q_"));
+  const queuedAtOpen = useMemo(() => getQueue().find((item) => item.queuedId === id), [id]);
+  const isOfflineEdit = Boolean(queuedAtOpen);
   const sampleLookupId = isEdit && !isOfflineEdit && id ? id : "";
   const initialFolderId = !isEdit
     ? new URLSearchParams(location.split("?")[1] ?? "").get("folderId") || ""
@@ -182,9 +186,11 @@ export default function SampleEntry() {
   const { toast } = useToast();
   const { data: authData } = useGetCurrentAuthUser();
 
-  const { data: existingSample, isLoading: loadingSample } = useGetSample(sampleLookupId, {
+  const { data: remoteSample, isLoading: loadingSample } = useGetSample(sampleLookupId, {
     query: { enabled: isEdit && !isOfflineEdit && Boolean(id) }
   });
+  const cachedSample = useMemo(() => getCachedCloudSamples().find((sample) => String(sample.id) === id), [id]);
+  const existingSample = remoteSample ?? cachedSample;
   const { data: folders } = useGetFolders();
   const { createSample, updateSample } = useSamplesMutations();
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
@@ -196,6 +202,9 @@ export default function SampleEntry() {
   const [customParams, setCustomParams] = useState<CustomParam[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isSavingMedia, setIsSavingMedia] = useState(false);
+  const [isLoadingMedia, setIsLoadingMedia] = useState(isEdit);
+  const initializedSample = useRef<string | undefined>(undefined);
+  const sampleBaseline = useRef<typeof existingSample>(undefined);
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photoCaptureInputRef = useRef<HTMLInputElement>(null);
@@ -262,8 +271,9 @@ export default function SampleEntry() {
 
   useEffect(() => {
     if (!isOfflineEdit || !id) return;
-    const queued = getQueue().find((item) => item.queuedId === id);
+    const queued = queuedAtOpen;
     if (!queued) return;
+    initializedSample.current = id;
     const fields = queued.payload.fields || {};
     reset({
       sampleType: queued.payload.sampleType as any,
@@ -279,13 +289,17 @@ export default function SampleEntry() {
         value: p.value ?? "",
       })));
     }
-    hydrateMediaSlots(fields).then(setMediaSlots);
+    setIsLoadingMedia(true);
+    hydrateMediaSlots(fields).then((slots) => { setMediaSlots(slots); setIsLoadingMedia(false); }).catch(() => toast({ title: "Could not load sample photos", description: "Keep this sheet open and try again before saving.", variant: "destructive" }));
   }, [isOfflineEdit, id, reset]);
 
   useEffect(() => {
-    if (existingSample && isEdit && !isOfflineEdit) {
+    if (existingSample && isEdit && !isOfflineEdit && initializedSample.current !== id) {
+      initializedSample.current = id;
+      sampleBaseline.current = existingSample;
       const fields = existingSample.fields as Record<string, any> || {};
-      hydrateMediaSlots(fields).then(setMediaSlots);
+      setIsLoadingMedia(true);
+      hydrateMediaSlots(fields).then((slots) => { setMediaSlots(slots); setIsLoadingMedia(false); }).catch(() => toast({ title: "Could not load sample photos", description: "Keep this sheet open and try again before saving.", variant: "destructive" }));
       if (Array.isArray(fields.customParams)) {
         setCustomParams(fields.customParams.map((p: any, i: number) => ({
           id: `cp_${i}_${Date.now()}`,
@@ -305,7 +319,7 @@ export default function SampleEntry() {
 
   const currentType = watch("sampleType");
   const locationValue = watch("fields.location") as string | undefined;
-  const isPending = createSample.isPending || updateSample.isPending || isSavingMedia;
+  const isPending = createSample.isPending || updateSample.isPending || isSavingMedia || isLoadingMedia;
 
   const prevTypeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -503,6 +517,11 @@ export default function SampleEntry() {
 
   const onSubmit = async (data: FormValues) => {
     if (!requireAccountForSave(authData?.user, setLocation, location)) return;
+    const savingAccountId = authData?.user?.id;
+    if (isLoadingMedia || (isEdit && initializedSample.current !== id)) {
+      toast({ title: "Sample is still loading", description: "Wait for the saved sample and attachments before saving changes.", variant: "destructive" });
+      return;
+    }
     const invalidField = Object.entries(data.fields).find(([, value]) => exceedsSevenDecimalPlaces(value));
     const invalidCustomParameter = customParams.find((parameter) => exceedsSevenDecimalPlaces(parameter.value));
     if (invalidField || invalidCustomParameter) {
@@ -516,9 +535,9 @@ export default function SampleEntry() {
 
     const processedFields: Record<string, any> = {};
     Object.entries(data.fields).forEach(([k, v]) => {
-      if (v === "") return;
+      if (v === "") { processedFields[k] = ""; return; }
       const num = Number(v);
-      processedFields[k] = !isNaN(num) && typeof v === "string" && v.trim() !== "" ? num : v;
+      processedFields[k] = Number.isFinite(num) && typeof v === "string" && v.trim() !== "" ? num : v;
     });
 
     const plannedSiteId = typeof data.fields.plannedSiteId === "string" ? data.fields.plannedSiteId : null;
@@ -526,24 +545,15 @@ export default function SampleEntry() {
       const collectedAt = new Date().toISOString();
       processedFields.collectionStatus = "collected";
       processedFields.collectedAt = collectedAt;
-      // Keep the Trip Planner representation in step with its queued sample.
-      try {
-        const trips = JSON.parse(localStorage.getItem("geofield_trips") || "[]");
-        const updatedTrips = trips.map((trip: any) => ({
-          ...trip,
-          sites: Array.isArray(trip.sites) ? trip.sites.map((site: any) => site.id === plannedSiteId ? { ...site, collectedAt } : site) : [],
-          updatedAt: trip.sites?.some((site: any) => site.id === plannedSiteId) ? collectedAt : trip.updatedAt,
-        }));
-        localStorage.setItem("geofield_trips", JSON.stringify(updatedTrips));
-        window.dispatchEvent(new CustomEvent("trips-updated"));
-      } catch {}
+
     }
 
-    const filledSlots = mediaSlots.some(Boolean);
+    const originalMedia = (queuedAtOpen?.payload.fields ?? sampleBaseline.current?.fields as any)?.media;
+    const filledSlots = mediaSlots.some(Boolean) || (Array.isArray(originalMedia) && originalMedia.length > 3);
     if (filledSlots) {
       try {
         setIsSavingMedia(true);
-        const storedMedia = await prepareMediaForSave(mediaSlots);
+        const storedMedia = [...await prepareMediaForSave(mediaSlots), ...(Array.isArray(originalMedia) ? originalMedia.slice(3) : [])];
         processedFields.media = storedMedia;
         processedFields.photoCount = storedMedia.filter((m) => m.kind === "photo").length;
         processedFields.videoCount = storedMedia.filter((m) => m.kind === "video").length;
@@ -566,56 +576,45 @@ export default function SampleEntry() {
       (dataset) => String(dataset.id) === String(selectedFolderId) && dataset.cloudId
     );
     const folderId = syncedLocalDataset?.cloudId ?? selectedFolderId;
-    const shouldSaveOffline =
-      !navigator.onLine ||
-      isLocalDatasetId(folderId);
     const payload = {
       sampleType: data.sampleType,
       sampleId: data.sampleId,
       folderId,
       notes: data.notes,
-      fields: processedFields,
+      fields: { ...((sampleBaseline.current?.fields as Record<string, any>) ?? {}), ...processedFields, customParams: processedFields.customParams ?? [], media: processedFields.media ?? [], photoCount: processedFields.photoCount ?? 0, videoCount: processedFields.videoCount ?? 0, primaryPhoto: processedFields.primaryPhoto ?? null },
     };
 
-    if (isOfflineEdit && id) {
-      updateQueuedSample(id, payload);
-      toast({ title: "Sample updated", description: "Your offline sample edits were saved on this device." });
+    try {
+      if (!isEdit && data.sampleType === "air") {
+        toast({ title: "Air samples are read-only", variant: "destructive" });
+        return;
+      }
+      assertStorageAccount(savingAccountId);
+      if (isOfflineEdit && id) updateQueuedSample(id, payload);
+      else enqueue(payload, isEdit && id ? id : undefined, sampleBaseline.current?.updatedAt);
+      // Update the trip only after the complete sample is durable.
+      if (plannedSiteId && processedFields.collectedAt) try {
+        const collectedAt = processedFields.collectedAt;
+        const trips = loadTrips();
+        const updatedTrips = trips.map((trip: any) => ({
+          ...trip,
+          sites: Array.isArray(trip.sites) ? trip.sites.map((site: any) => site.id === plannedSiteId ? { ...site, collectedAt } : site) : [],
+          updatedAt: trip.sites?.some((site: any) => site.id === plannedSiteId) ? collectedAt : trip.updatedAt,
+        }));
+        saveTrips(updatedTrips);
+        window.dispatchEvent(new CustomEvent("trips-updated"));
+      } catch {
+        toast({ title: "Sample saved; trip update pending", description: "The sample is safe. Reopen the trip after syncing to refresh its collection status." });
+      }
+      toast({ title: "Sample saved", description: "Saved on this device. Changes and photos will sync when connected." });
       setLocation("/");
-    } else if (isEdit && id) {
-      updateSample.mutate({ id, data: payload }, { onSuccess: () => setLocation("/") });
-    } else if (data.sampleType === "air") {
-      toast({
-        title: "Air samples are read-only",
-        description: "Existing air samples can be viewed and edited, but new air samples cannot be created.",
-        variant: "destructive",
-      });
-    } else if (shouldSaveOffline) {
-      enqueue(payload);
-      toast({
-        title: "Saved offline",
-        description: isLocalDatasetId(folderId)
-          ? "This dataset is local to this device. Create a cloud dataset to sync it across devices."
-          : filledSlots
-            ? "Your sample is stored on this device. Photos/videos are kept in local media storage until cloud sync is added."
-            : "Your sample is stored on this device and will sync automatically when you're back online."
-      });
-      setLocation("/");
-    } else {
-      createSample.mutate({ data: { ...payload, sampleType: data.sampleType } }, {
-        onSuccess: () => setLocation("/"),
-        onError: () => {
-          enqueue(payload);
-          toast({
-            title: "Saved offline",
-            description: "GeoField could not reach your account data service, so this sample was saved on this device and will sync later."
-          });
-          setLocation("/");
-        }
-      });
+    } catch (error) {
+      toast({ title: "Sample could not be saved", description: error instanceof Error ? error.message : "Keep this page open and try again.", variant: "destructive" });
     }
+
   };
 
-  if (isEdit && !isOfflineEdit && loadingSample) return (
+  if (isEdit && !isOfflineEdit && loadingSample && !existingSample) return (
     <Layout>
       <div className="animate-pulse space-y-4">
         <div className="h-8 bg-muted rounded w-48" />

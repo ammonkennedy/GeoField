@@ -22,3 +22,11 @@ for (const field of ["measuredAt", "elevation", "elevationAccuracy", "datasetId"
     assert.throws(() => checkAmplifyModel(stale), new RegExp(field));
   });
 }
+
+test("trip sync and measurement photos require deployed response metadata", () => {
+  for (const [model, field] of [["Trip", "sites"], ["Trip", "datasetId"], ["Trip", "deletedAt"], ["StrikeDipMeasurement", "photoKey"]]) {
+    const stale = structuredClone(outputs);
+    delete stale.data.model_introspection.models[model].fields[field];
+    assert.throws(() => checkAmplifyModel(stale), new RegExp(field));
+  }
+});

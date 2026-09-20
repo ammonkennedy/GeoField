@@ -5,10 +5,9 @@ export type LocalDeletedItem = {
   deletedAt: string;
   data: any;
 };
-import { readDurableArray, writeDurableArray } from "@/lib/durable-storage";
+import { readDurableArray, writeDurableArray } from "./durable-storage.ts";
 
 const KEY = "geofield_recently_deleted";
-const RETENTION_MS = 20 * 24 * 60 * 60 * 1000;
 export const RECENTLY_DELETED_UPDATED_EVENT = "recently-deleted-updated";
 
 function save(items: LocalDeletedItem[]) {
@@ -17,10 +16,7 @@ function save(items: LocalDeletedItem[]) {
 }
 
 export function getLocalDeletedItems(): LocalDeletedItem[] {
-  const items = readDurableArray<LocalDeletedItem>(KEY);
-  const active = items.filter((item) => Date.now() - new Date(item.deletedAt).getTime() < RETENTION_MS);
-  if (active.length !== items.length) save(active);
-  return active;
+  return readDurableArray<LocalDeletedItem>(KEY);
 }
 
 export function archiveLocalItem(kind: LocalDeletedItem["kind"], name: string, data: any) {

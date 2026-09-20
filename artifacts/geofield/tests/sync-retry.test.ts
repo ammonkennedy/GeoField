@@ -44,3 +44,10 @@ test("retry delays back off, vary across devices, and remain capped", () => {
     96000,
   );
 });
+test("batch failures preserve retryable network errors but stop retrying when reauthentication is needed", async () => {
+ const { requiresCloudSignIn } = await import("../src/lib/sync-retry.ts");
+ assert.equal(isRetryableSyncError(new AggregateError([new Error("invalid record"),{name:"NetworkError"}],"Some changes remain pending")),true);
+ const expired=Object.assign(new Error("Reconnect account"),{name:"CloudSignInRequired"});
+ const mixed=new AggregateError([expired,{name:"NetworkError"}],"Some changes remain pending");
+ assert.equal(requiresCloudSignIn(mixed),true);assert.equal(isRetryableSyncError(mixed),false);
+});

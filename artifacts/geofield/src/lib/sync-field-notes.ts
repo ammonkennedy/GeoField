@@ -1,4 +1,4 @@
-import { getFieldNotes, saveCloudFieldNote, uploadSampleMedia, resolveSampleMediaUrl, requireFieldNoteAccount, type CloudFieldNote } from "@workspace/api-client-react";
+import { getFieldNote, getFieldNotes, saveCloudFieldNote, uploadSampleMedia, resolveSampleMediaUrl, requireFieldNoteAccount, type CloudFieldNote } from "@workspace/api-client-react";
 import { loadFieldNotes, storeFieldNotes } from "./field-notes";
 import { getStoredMediaDataUrl, storeMediaDataUrl } from "./media-storage";
 import { syncNoteRecords } from "./field-note-sync";
@@ -9,6 +9,7 @@ export async function syncFieldNotes(accountId: string) {
     load: () => loadFieldNotes(accountId),
     save: (notes) => storeFieldNotes(accountId, notes),
     list: () => getFieldNotes(accountId),
+    get: (id) => getFieldNote(id, accountId),
     write: (note, exists) => saveCloudFieldNote({ ...note, photos: note.photos.map(({ id, fileName, cloudKey }) => ({ id, fileName, cloudKey: cloudKey! })) } as CloudFieldNote, exists, accountId),
     uploadPhoto: async (noteId, photo) => {
       const dataUrl = photo.localKey ? await getStoredMediaDataUrl(photo.localKey) : null;
@@ -18,6 +19,7 @@ export async function syncFieldNotes(accountId: string) {
     },
     cachePhoto: async (photo) => {
       await requireFieldNoteAccount(accountId);
+      if (photo.localKey && await getStoredMediaDataUrl(photo.localKey)) return photo;
       const url = await resolveSampleMediaUrl(photo.cloudKey!);
       const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
       if (!response.ok) throw new Error("Network error while downloading note photos. They will retry when connected.");

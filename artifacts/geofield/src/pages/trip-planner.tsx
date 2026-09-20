@@ -1,3 +1,4 @@
+import { loadTrips, saveTrips, deleteTripRecord, TRIPS_UPDATED, type Trip, type PlannedSite } from "@/lib/trips";
 import { addDetailedTrails, removeDetailedTrails, showDetailedTrailPopup } from "@/lib/detailed-trail-overlay";
 import { applyBaseMap } from "@/lib/base-map";
 import { useState, useEffect, useRef } from "react";
@@ -64,43 +65,6 @@ function safeAddOverlay(map: any, overlay: OverlayLayer) {
       addDetailedTrails(map, "labels");
     }
   } catch {}
-}
-
-// ── Trip data types ───────────────────────────────────────────────────────────
-export interface PlannedSite {
-  id: string;
-  name: string;
-  description: string;
-  sampleType?: "water" | "rock" | "soil_sand" | "air" | "other";
-  lat: number;
-  lng: number;
-  addedAt: string;
-  queuedSampleId?: string;
-  collectedAt?: string;
-}
-
-export interface Trip {
-  id: string;
-  name: string;
-  notes: string;
-  sites: PlannedSite[];
-  createdAt: string;
-  updatedAt: string;
-  datasetId?: number;
-}
-
-const TRIPS_KEY = "geofield_trips";
-
-export function loadTrips(): Trip[] {
-  try {
-    const raw = localStorage.getItem(TRIPS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-export function saveTrips(trips: Trip[]) {
-  localStorage.setItem(TRIPS_KEY, JSON.stringify(trips));
-  window.dispatchEvent(new CustomEvent("trips-updated"));
 }
 
 const MAP_MODAL_HEIGHT = "90vh";
@@ -328,7 +292,7 @@ export default function TripPlannerPage() {
   useEffect(() => {
     if (tripId === "new") {
       if (!requireAccountForSave(authData?.user, setLocation, "/trip/new")) return;
-      const tripIdValue = `trip_${Date.now()}`;
+      const tripIdValue = `trip_${crypto.randomUUID()}`;
       const dataset = createTripDataset({
         tripId: tripIdValue,
         name: "New Trip",
@@ -350,11 +314,19 @@ export default function TripPlannerPage() {
     }
   }, [tripId, authData?.user, setLocation]);
 
+  useEffect(() => {
+    const refresh = () => setTrips(loadTrips());
+    window.addEventListener(TRIPS_UPDATED, refresh);
+    window.addEventListener("storage", refresh);
+    return () => { window.removeEventListener(TRIPS_UPDATED, refresh); window.removeEventListener("storage", refresh); };
+  }, []);
+
   const activeTrip = tripId && tripId !== "new" ? trips.find((t) => t.id === tripId) : null;
 
   const ensureTripDataset = (trip: Trip): { trip: Trip; datasetId: number } => {
     const dataset = createTripDataset({
       tripId: trip.id,
+      cloudId: trip.cloudDatasetId,
       name: trip.name || "New Trip",
       description: "Planned sample sites from Trip Planner",
     });
@@ -370,7 +342,7 @@ export default function TripPlannerPage() {
   };
 
   const upsertPlannedSiteSample = (trip: Trip, site: PlannedSite, datasetId: number, siteIndex: number): PlannedSite => {
-    const queue = getQueue();
+    const queue = getQueue(true);
     // Once field information has been recorded, this queue item is a normal
     // sample. Editing the trip must never turn it back into a planned site.
     if (site.collectedAt) return site;
@@ -395,6 +367,7 @@ export default function TripPlannerPage() {
       payload,
     };
     const existingIndex = queue.findIndex((q) => q.queuedId === queuedId || q.payload.fields?.plannedSiteId === site.id);
+    if (existingIndex >= 0 && queue[existingIndex].payload.fields?.collectionStatus !== "planned") return { ...site, queuedSampleId: queue[existingIndex].queuedId };
     const nextQueue = [...queue];
     if (existingIndex >= 0) nextQueue[existingIndex] = { ...nextQueue[existingIndex], ...item };
     else nextQueue.push(item);
@@ -404,15 +377,15 @@ export default function TripPlannerPage() {
 
   const removePlannedSiteSample = (site: PlannedSite) => {
     setQueue(
-      getQueue().filter((item) =>
-        item.queuedId !== site.queuedSampleId && item.payload.fields?.plannedSiteId !== site.id
+      getQueue(true).filter((item) =>
+        item.payload.fields?.collectionStatus !== "planned" || (item.queuedId !== site.queuedSampleId && item.payload.fields?.plannedSiteId !== site.id)
       )
     );
   };
 
   const updateTrip = (updates: Partial<Trip>) => {
     if (!requireAccountForSave(authData?.user, setLocation)) return;
-    const updated = trips.map((t) => {
+    const updated = loadTrips().map((t) => {
       if (t.id !== activeTrip?.id) return t;
       const nextTrip = { ...t, ...updates, updatedAt: new Date().toISOString() };
       if (nextTrip.datasetId) {
@@ -443,8 +416,8 @@ export default function TripPlannerPage() {
     if (!confirm(`Delete "${activeTrip.name}"? This cannot be undone.`)) return;
     activeTrip.sites.forEach(removePlannedSiteSample);
     if (activeTrip.datasetId) deleteLocalDataset(activeTrip.datasetId);
-    const updated = trips.filter((t) => t.id !== activeTrip.id);
-    saveTrips(updated);
+    deleteTripRecord(activeTrip.id);
+    const updated = loadTrips();
     setTrips(updated);
     setLocation(updated.length > 0 ? `/trip/${updated[updated.length - 1].id}` : "/");
   };
@@ -454,10 +427,10 @@ export default function TripPlannerPage() {
     if (!requireAccountForSave(authData?.user, setLocation)) return;
     const { trip, datasetId } = ensureTripDataset(activeTrip);
     const siteIndex = trip.sites.length;
-    const newSiteBase: PlannedSite = { ...site, id: `site_${Date.now()}`, addedAt: new Date().toISOString() };
+    const newSiteBase: PlannedSite = { ...site, id: `site_${crypto.randomUUID()}`, addedAt: new Date().toISOString() };
     const newSite = upsertPlannedSiteSample(trip, newSiteBase, datasetId, siteIndex);
     const updatedTrip = { ...trip, sites: [...trip.sites, newSite], updatedAt: new Date().toISOString() };
-    const updated = trips.map((t) => t.id === updatedTrip.id ? updatedTrip : t);
+    const updated = loadTrips().map((t) => t.id === updatedTrip.id ? updatedTrip : t);
     saveTrips(updated);
     setTrips(updated);
     return newSite;
@@ -472,13 +445,13 @@ export default function TripPlannerPage() {
       const siteIndex = trip.sites.length + index;
       const newSiteBase: PlannedSite = {
         ...site,
-        id: `site_${Date.now()}_${index}`,
+        id: `site_${crypto.randomUUID()}`,
         addedAt,
       };
       return upsertPlannedSiteSample(trip, newSiteBase, datasetId, siteIndex);
     });
     const updatedTrip = { ...trip, sites: [...trip.sites, ...newSites], updatedAt: new Date().toISOString() };
-    const updated = trips.map((t) => t.id === updatedTrip.id ? updatedTrip : t);
+    const updated = loadTrips().map((t) => t.id === updatedTrip.id ? updatedTrip : t);
     saveTrips(updated);
     setTrips(updated);
     return newSites;

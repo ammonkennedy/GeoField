@@ -1,3 +1,4 @@
+import { removeAccountLocalData } from "@/lib/storage-account";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -75,7 +76,7 @@ export default function AccountSettingsPage() {
       if (item.kind === "dataset") await restoreLocalDataset(item);
       else if (item.kind === "measurement") restoreMeasurement(item);
       else {
-        if (!getQueue().some((queued) => queued.queuedId === item.data.queuedId)) setQueue([...getQueue(), item.data]);
+        setQueue([...getQueue(true).filter((queued) => queued.queuedId !== item.data.queuedId), { ...item.data, deletedAt: null, restore: true }]);
         removeLocalDeletedItem(item.trashId);
       }
     } else {
@@ -91,8 +92,7 @@ export default function AccountSettingsPage() {
     setDeleteAccountError("");
     try {
       await deleteCurrentAccount();
-      Object.keys(localStorage).filter((key) => key.startsWith("geofield_")).forEach((key) => localStorage.removeItem(key));
-      indexedDB.deleteDatabase("geofield_media_store");
+      if (user?.id) removeAccountLocalData(String(user.id));
       queryClient.clear();
       window.location.assign("/login");
     } catch (error: any) {
@@ -236,7 +236,7 @@ export default function AccountSettingsPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold">Recently Deleted</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Datasets, samples, and measurements can be recovered for 20 days, then are permanently deleted.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Deleted datasets, samples, and measurements can be restored here.</p>
                 </div>
               </div>
               {trashLoading ? <p className="text-sm text-muted-foreground">Loading deleted items…</p> : deletedItems.length === 0 ? (

@@ -1,7 +1,14 @@
 export interface MeasurementRecord {
   localRevision?: string;
+  cloudUpdatedAt?: string;
+  deletedAt?: string | null;
+  label?: string;
   id: string;
   photo?: string;
+  photoKey?: string | null;
+  photoLocalKey?: string;
+  photoUploadId?: string;
+  photoUploadOnly?: boolean;
   datasetId?: number | string | null;
   updatedAt?: string;
 }
@@ -20,7 +27,7 @@ export function mergeMeasurements<T extends MeasurementRecord>(
     const before = beforeById.get(cloud.id);
     if (!local) {
       // A measurement deleted during the request must not be brought back.
-      if (!before) merged.push(cloud);
+      if (!before) merged.push({ ...cloud, cloudUpdatedAt: cloud.updatedAt });
       continue;
     }
     // A dataset that has not uploaded yet cannot be represented by the cloud.
@@ -31,9 +38,8 @@ export function mergeMeasurements<T extends MeasurementRecord>(
     if (!before || JSON.stringify(local) !== JSON.stringify(before)) continue;
     if (!local.updatedAt || Date.parse(cloud.updatedAt ?? '') > Date.parse(local.updatedAt)) {
       const position = merged.findIndex((item) => item.id === cloud.id);
-      // Photos are currently local-only. A cloud record's missing photo field
-      // is not a deletion instruction, even when its timestamp is newer.
-      merged[position] = { ...cloud, photo: local.photo };
+      const samePhoto = cloud.photoKey === undefined || cloud.photoKey === local.photoKey;
+      merged[position] = { ...cloud, cloudUpdatedAt: cloud.updatedAt, photo: samePhoto ? local.photo : undefined, photoLocalKey: samePhoto ? local.photoLocalKey : undefined };
     }
   }
   return merged;

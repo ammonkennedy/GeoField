@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { useSamplesMutations, useFoldersMutations } from "@/hooks/use-geofield";
 import { ExportDialog } from "@/components/ExportDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { getQueue, removeFromQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
+import { getQueue, deleteQueuedSample, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { loadMeasurements, reassignMeasurementsDataset, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { archiveLocalItem } from "@/lib/recently-deleted";
@@ -55,14 +55,14 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  const [queuedSamples, setQueuedSamples] = useState(getQueue);
+  const [queuedSamples, setQueuedSamples] = useState(() => getQueue(true));
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
   const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
 
   const { deleteSample } = useSamplesMutations();
   const { deleteFolder } = useFoldersMutations();
   useEffect(() => {
-    const refreshQueue = () => setQueuedSamples(getQueue());
+    const refreshQueue = () => setQueuedSamples(getQueue(true));
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
     window.addEventListener("storage", refreshQueue);
     return () => {
@@ -106,9 +106,11 @@ export default function Dashboard() {
   const activeFolder = allFolders.find((f: any) => String(resolveDatasetId(f.id, localDatasets)) === String(activeFolderId));
 
   const localSamples = queuedSamples
+    .filter((item) => !item.deletedAt)
     .filter((item) => !activeFolderId || String(item.payload.folderId ?? "") === String(activeFolderId))
     .map((item, index) => ({
       id: item.queuedId,
+      targetId: item.targetId,
       ...(item.payload || {}),
       sampleId: item.payload.sampleId || `offline-${index + 1}`,
       createdAt: item.queuedAt,
@@ -116,8 +118,8 @@ export default function Dashboard() {
     }));
 
   const cachedForView = cachedCloudSamples.filter((sample) => !activeFolderId || String(sample.folderId ?? "") === String(activeFolderId));
-  const serverSamples = isLocalFolder ? [] : (samples ?? cachedForView);
-  const allSamples = mergeCloudAndLocal(serverSamples as any[], localSamples as any[]);
+  const serverSamples = isLocalFolder ? [] : mergeCloudAndLocal(samples ?? [], cachedForView);
+  const allSamples = mergeCloudAndLocal((serverSamples as any[]).filter((sample) => !queuedSamples.some((item) => String(item.targetId ?? item.queuedId) === String(sample.id))), localSamples as any[]);
 
   const filteredSamples = allSamples.filter((s: any) =>
     String(s.sampleId || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -153,10 +155,10 @@ export default function Dashboard() {
   const handleDeleteSample = () => {
     if (!requireAccountForSave(authData?.user, setLocation)) return;
     if (!deleteId) return;
-    if (typeof deleteId === "string" && deleteId.startsWith("q_")) {
+    if (getQueue().some((item) => item.queuedId === deleteId)) {
       const queued = getQueue().find((item) => item.queuedId === deleteId);
       if (queued) archiveLocalItem("sample", queued.payload.sampleId || "Offline sample", queued);
-      removeFromQueue(deleteId);
+      deleteQueuedSample(String(deleteId));
       setDeleteId(null);
       return;
     }
@@ -388,7 +390,7 @@ export default function Dashboard() {
           <DialogTitle>Delete Sample</DialogTitle>
         </DialogHeader>
         <DialogContent>
-          <p className="py-4">Delete this sample? You can restore it from Settings for 20 days.</p>
+          <p className="py-4">Delete this sample? You can restore it from Settings.</p>
           <div className="flex justify-end gap-3 pt-4 border-t">
             <Button variant="outline" onClick={() => setDeleteId(null)}>Cancel</Button>
             <Button variant="destructive" onClick={handleDeleteSample} disabled={deleteSample.isPending}>

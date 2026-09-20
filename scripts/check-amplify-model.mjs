@@ -5,6 +5,7 @@ import path from "node:path";
 // These fields are read/written by the measurement API. Amplify generates its
 // default response selection from this metadata, not amplify/data/resource.ts.
 const measurementFields = {
+  photoKey: "String",
   measuredAt: "String",
   elevation: "Float", elevationAccuracy: "Float",
   datasetId: "ID", measurementType: "String", trendDegrees: "Float",
@@ -14,6 +15,10 @@ const measurementFields = {
 };
 
 export function checkAmplifyModel(outputs) {
+  const tripFields = outputs?.data?.model_introspection?.models?.Trip?.fields;
+  for (const [name, type] of Object.entries({ name: "String", notes: "String", sites: "AWSJSON", datasetId: "ID", deletedAt: "AWSDateTime" })) {
+    if (tripFields?.[name]?.type !== type) throw new Error(`Outdated amplify_outputs.json: Trip.${name} is missing or incompatible. Refresh outputs from the deployed backend before building.`);
+  }
   const noteFields = outputs?.data?.model_introspection?.models?.FieldNote?.fields;
   for (const [name, type] of Object.entries({ title: "String", body: "String", photos: "AWSJSON", deletedAt: "AWSDateTime" })) {
     if (noteFields?.[name]?.type !== type) throw new Error(`Outdated amplify_outputs.json: FieldNote.${name} is missing or incompatible. Refresh outputs from the deployed backend before building.`);
@@ -29,5 +34,5 @@ export function checkAmplifyModel(outputs) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   checkAmplifyModel(JSON.parse(readFileSync(new URL("../amplify_outputs.json", import.meta.url), "utf8")));
-  console.log("Amplify measurement and notes model configuration verified.");
+  console.log("Amplify measurement, trip, and notes model configuration verified.");
 }

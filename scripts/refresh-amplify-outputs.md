@@ -13,5 +13,5 @@ URL, Cognito user pool, and app client match the existing environment. Then copy
 the file and run the web build/Xcode asset copy. Never switch account environments
 to work around missing model fields.
 
-The web build and workspace typecheck validate the measurement fields, preventing
+The web build and workspace typecheck validate measurement photo references, trip fields, and note fields, preventing
 a stale configuration from silently omitting dataset and lineation data again.

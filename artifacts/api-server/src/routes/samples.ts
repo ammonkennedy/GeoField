@@ -1,8 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, foldersTable, sampleTypeEnum, samplesTable } from "@workspace/db";
-import { eq, and, isNull, isNotNull, lt } from "drizzle-orm";
-
-const RETENTION_DAYS = 20;
+import { eq, and, isNull, isNotNull } from "drizzle-orm";
 
 const router: IRouter = Router();
 const creatableSampleTypes = new Set<string>(sampleTypeEnum.filter((type) => type !== "air"));
@@ -187,8 +185,6 @@ router.put("/samples/:id", async (req, res) => {
 
 router.get("/samples/recently-deleted", async (req, res) => {
   if (!req.isAuthenticated()) return void res.status(401).json({ error: "Unauthorized" });
-  const expiresBefore = new Date(Date.now() - RETENTION_DAYS * 86400000);
-  await db.delete(samplesTable).where(and(eq(samplesTable.userId, req.user!.id), lt(samplesTable.deletedAt, expiresBefore)));
   const rows = await db.select().from(samplesTable)
     .where(and(eq(samplesTable.userId, req.user!.id), isNotNull(samplesTable.deletedAt)))
     .orderBy(samplesTable.deletedAt);

@@ -1,13 +1,23 @@
+import { syncTrips } from "@/lib/sync-trips";
+import { loadTrips, TRIPS_UPDATED } from "@/lib/trips";
+import { preparePhotoForMeasurement, downloadMeasurementPhotos } from "@/lib/sync-measurement-photos";
+import { getStorageAccountId } from "@/lib/storage-account";
+import { syncQueuedSample } from "@/lib/sync-sample-queue";
+import { prepareSampleUpload, cacheSamplePhotos } from "@/lib/sync-sample-media";
 import { syncFieldNotes } from "@/lib/sync-field-notes";
 import { loadFieldNotes, FIELD_NOTES_UPDATED } from "@/lib/field-notes";
-import { isRetryableSyncError, syncRetryDelay } from "@/lib/sync-retry";
+import { isRetryableSyncError, requiresCloudSignIn, syncRetryDelay } from "@/lib/sync-retry";
 import { syncMeasurementRecords } from "@/lib/sync-measurements";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   requireCloudSyncSession,
+  requireFieldNoteAccount,
   useGetCurrentAuthUser,
   createFolder,
+  updateFolder,
+  deleteFolder,
+  restoreFolder,
   createSample,
   getFolders,
   getSamples,
@@ -15,18 +25,24 @@ import {
   getGetSamplesQueryKey,
   getSample,
   updateSample,
+  deleteSample,
+  restoreSample,
   subscribeToAccountDataChanges,
   createStrikeDipMeasurement,
   getStrikeDipMeasurements,
+  getStrikeDipMeasurement,
   updateStrikeDipMeasurement,
 } from "@workspace/api-client-react";
 import {
   getQueue,
+  reconcileQueuedDatasetIds,
   removeFromQueue,
   QUEUE_UPDATED_EVENT,
 } from "@/lib/offline-queue";
 import {
   getPendingLocalDatasets,
+  getLocalDatasets,
+  reconcileLocalDatasets,
   getLocalDatasetSyncId,
   markLocalDatasetSynced,
   setLocalDatasetSyncStatus,
@@ -35,6 +51,7 @@ import {
 } from "@/lib/local-datasets";
 import {
   cacheCloudSamples,
+  getCachedCloudSamples,
   markCloudBackfillComplete,
   needsCloudBackfill,
 } from "@/lib/cloud-samples";
@@ -48,16 +65,26 @@ import {
 // Layouts can unmount while requests are in flight; serialize across instances.
 let syncInFlight = false;
 
-async function syncStrikeDipMeasurements() {
+async function syncStrikeDipMeasurements(accountId: string) {
+  const check = () => { if (getStorageAccountId() !== accountId) throw new Error("Account changed during sync. Local data has been preserved."); };
+  check();
   // Repair links left with a local ID by older versions before comparing revisions.
-  saveMeasurements(loadMeasurements());
-  return syncMeasurementRecords<StrikeDipMeasurement>({
-    load: loadMeasurements,
-    save: (items) => saveMeasurements(items, { fromSync: true }),
-    list: async () => await getStrikeDipMeasurements() as unknown as StrikeDipMeasurement[],
-    create: async (item) => await createStrikeDipMeasurement({ ...item, createdAt: item.createdAt ?? new Date().toISOString(), updatedAt: item.updatedAt ?? new Date().toISOString() } as any) as unknown as StrikeDipMeasurement,
-    update: async (item) => await updateStrikeDipMeasurement(item as any) as unknown as StrikeDipMeasurement,
-  });
+  saveMeasurements(loadMeasurements(true));
+  let count = 0;
+  let syncError: unknown;
+  try { count = await syncMeasurementRecords<StrikeDipMeasurement>({
+    prepare: (item) => preparePhotoForMeasurement(item, accountId),
+    load: () => { check(); return loadMeasurements(true); },
+    save: (items) => { check(); saveMeasurements(items, { fromSync: true }); },
+    get: async (id) => await getStrikeDipMeasurement(id, accountId) as unknown as StrikeDipMeasurement | null,
+    list: async () => { await requireFieldNoteAccount(accountId); return await getStrikeDipMeasurements(true, accountId) as unknown as StrikeDipMeasurement[]; },
+    create: async (item) => { await requireFieldNoteAccount(accountId); return await createStrikeDipMeasurement({ ...item, createdAt: item.createdAt ?? new Date().toISOString(), updatedAt: item.updatedAt ?? new Date().toISOString() } as any, accountId) as unknown as StrikeDipMeasurement; },
+    update: async (item) => { await requireFieldNoteAccount(accountId); return await updateStrikeDipMeasurement(item as any, accountId) as unknown as StrikeDipMeasurement; },
+  }); } catch (error) { syncError = error; }
+  try { await downloadMeasurementPhotos(accountId); }
+  catch (error) { if (syncError) throw new AggregateError([syncError, error], `${syncError instanceof Error ? syncError.message : "Measurement sync failed."} ${error instanceof Error ? error.message : "Photo download failed."}`); throw error; }
+  if (syncError) throw syncError;
+  return count;
 }
 
 function isLocalDatasetId(value: unknown) {
@@ -67,7 +94,7 @@ function isLocalDatasetId(value: unknown) {
 }
 
 function getSyncableQueue() {
-  return getQueue().filter(
+  return getQueue(true).filter(
     (item) =>
       item.payload.fields?.collectionStatus !== "planned" &&
       item.payload.sampleType !== "air",
@@ -75,18 +102,28 @@ function getSyncableQueue() {
 }
 
 function getPendingSyncCount(accountId = "") {
-  return loadFieldNotes(accountId).filter((note) => note.localRevision).length + getPendingLocalDatasets().length + getSyncableQueue().length + loadMeasurements().filter((item) => item.localRevision).length;
+  return loadTrips(true).filter((trip) => trip.localRevision).length + loadFieldNotes(accountId).filter((note) => note.localRevision).length + getPendingLocalDatasets().length + getSyncableQueue().length + loadMeasurements(true).filter((item) => item.localRevision).length;
 }
 
-async function syncLocalDataset(dataset: LocalDataset) {
-  if (dataset.cloudId) return dataset.cloudId;
+async function syncLocalDataset(dataset: LocalDataset, checkAccount: () => void, accountId: string) {
+  if (dataset.cloudId) {
+    if (dataset.deletedAt) await deleteFolder({ id: dataset.cloudId, accountId });
+    else {
+      await updateFolder({ id: dataset.cloudId, accountId, data: { name: dataset.name, description: dataset.description } });
+      checkAccount();
+      await restoreFolder(dataset.cloudId, accountId);
+    }
+    checkAccount();
+    markLocalDatasetSynced(dataset.id, dataset.cloudId, dataset.localRevision);
+    return dataset.cloudId;
+  }
   setLocalDatasetSyncStatus(dataset.id, "syncing");
   try {
     const id = getLocalDatasetSyncId(dataset.id);
     let created;
     try {
       created = await createFolder({
-        id,
+        id, accountId,
         data: {
           name: dataset.name,
           description: dataset.description || null,
@@ -94,16 +131,24 @@ async function syncLocalDataset(dataset: LocalDataset) {
       });
     } catch (error) {
       // A lost response may hide a successful create. Reuse its durable ID.
-      const existing = (await getFolders()).find(
+      const existing = (await getFolders(false, accountId)).find(
         (folder) => String(folder.id) === id,
       );
       if (!existing) throw error;
       created = existing;
+      checkAccount();
+      if (existing.name !== dataset.name || (existing.description ?? "") !== (dataset.description ?? "")) {
+        created = await updateFolder({ id, accountId, data: { name: dataset.name, description: dataset.description } });
+      }
     }
     const cloudId = String(created.id);
-    markLocalDatasetSynced(dataset.id, cloudId);
+    checkAccount();
+    if (dataset.deletedAt) await deleteFolder({ id: cloudId, accountId });
+    checkAccount();
+    markLocalDatasetSynced(dataset.id, cloudId, dataset.localRevision);
     return cloudId;
   } catch (error) {
+    checkAccount();
     setLocalDatasetSyncStatus(dataset.id, "error");
     throw error;
   }
@@ -167,12 +212,14 @@ export function useOfflineSync() {
   useEffect(() => {
     refreshCount();
     window.addEventListener(FIELD_NOTES_UPDATED, refreshCount);
+    window.addEventListener(TRIPS_UPDATED, refreshCount);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshCount);
     window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
     window.addEventListener("storage", refreshCount);
     return () => {
       window.removeEventListener(FIELD_NOTES_UPDATED, refreshCount);
+      window.removeEventListener(TRIPS_UPDATED, refreshCount);
       window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
       window.removeEventListener(QUEUE_UPDATED_EVENT, refreshCount);
       window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
@@ -182,7 +229,8 @@ export function useOfflineSync() {
 
   const runSync = useCallback(
     async (rebuild: boolean) => {
-      if (syncingRef.current || !navigator.onLine) return;
+      if (!accountId || syncingRef.current || !navigator.onLine) return;
+      const checkAccount = () => { if (getStorageAccountId() !== accountId) throw new Error("Account changed during sync. Local data has been preserved."); };
       if (syncInFlight) { scheduleRetry(); return; }
       cancelRetry();
       const pendingDatasets = getPendingLocalDatasets();
@@ -196,7 +244,7 @@ export function useOfflineSync() {
       let authRequired = false;
       const reportFailure = (error: any) => {
         failed = true;
-        if (error?.name === "CloudSignInRequired") {
+        if (requiresCloudSignIn(error)) {
           authRequired = true;
           setCloudSignInRequired(true);
         }
@@ -208,7 +256,8 @@ export function useOfflineSync() {
       };
       try {
         setSyncProgress("Connecting to cloud…");
-        await requireCloudSyncSession();
+        await requireFieldNoteAccount(accountId);
+        checkAccount();
         // Keep the old cache until a complete replacement has actually downloaded.
         const fullBackfill = rebuild || needsCloudBackfill();
         setSyncProgress(
@@ -218,16 +267,20 @@ export function useOfflineSync() {
         );
         let synced = 0;
 
-        try {
-          for (const dataset of pendingDatasets) {
-            await syncLocalDataset(dataset);
+        for (const dataset of pendingDatasets) {
+          try {
+            await requireFieldNoteAccount(accountId);
+            checkAccount();
+            await syncLocalDataset(dataset, checkAccount, accountId);
             synced++;
+          } catch (error) {
+            reportFailure(error);
+            refreshCount();
           }
-        } catch (error: any) {
-          reportFailure(error);
-          refreshCount();
         }
 
+        checkAccount();
+        reconcileQueuedDatasetIds(getLocalDatasets(true));
         const queue = getSyncableQueue();
         for (const item of queue) {
           if (
@@ -235,47 +288,28 @@ export function useOfflineSync() {
             isLocalDatasetId(item.payload.folderId)
           ) {
             if (isLocalDatasetId(item.payload.folderId)) {
-              setLastError(
-                "A sample is still assigned to a local dataset. Try syncing again.",
-              );
-              break;
+              reportFailure(new Error("A sample is still assigned to a local dataset. Try syncing again."));
             }
             continue;
           }
           try {
-            try {
-              // Reuse the durable queue ID as the cloud ID. If connectivity drops
-              // after AWS accepts the write, retrying cannot create a second copy.
-              await createSample({
-                data: item.payload as any,
-                id: item.queuedId,
-              });
-            } catch (createError) {
-              // A previous attempt may have succeeded even though its response
-              // never reached this device. Confirm that record before retrying.
-              try {
-                await getSample(item.queuedId);
-                await updateSample({
-                  id: item.queuedId,
-                  data: item.payload as any,
-                });
-              } catch {
-                throw createError;
-              }
-            }
-            // Do not acknowledge an edit made while this upload was in flight.
-            const current = getQueue().find(
-              (queued) => queued.queuedId === item.queuedId,
-            );
-            if (
-              JSON.stringify(current?.payload) === JSON.stringify(item.payload)
-            )
-              removeFromQueue(item.queuedId);
-            else if (current) retryNeeded = true;
+            await requireFieldNoteAccount(accountId);
+            checkAccount();
+            const changed = await syncQueuedSample(item, {
+              load: () => { checkAccount(); return getQueue(true); },
+              prepare: (sample) => prepareSampleUpload(sample, accountId),
+              create: async (id, payload) => { await requireFieldNoteAccount(accountId); return createSample({ id, data: payload as any, accountId }); },
+              update: async (id, payload) => { await requireFieldNoteAccount(accountId); return updateSample({ id, data: payload as any, accountId }); },
+              get: (id) => getSample(id, accountId),
+              delete: async (id) => { await requireFieldNoteAccount(accountId); await deleteSample({ id, accountId }); return getSample(id, accountId); },
+              restore: async (id) => { await requireFieldNoteAccount(accountId); await restoreSample(id, accountId); return getSample(id, accountId); },
+              cache: (saved) => { checkAccount(); cacheCloudSamples([...getCachedCloudSamples().filter((sample) => String(sample.id) !== String(saved.id)), saved]); },
+              remove: (id) => { checkAccount(); removeFromQueue(id); },
+            });
+            if (changed) retryNeeded = true;
             synced++;
           } catch (error: any) {
             reportFailure(error);
-            break;
           }
         }
 
@@ -286,13 +320,17 @@ export function useOfflineSync() {
               setSyncProgress(
                 `Downloading cloud samples: ${downloaded} received (page ${page})…`,
               ),
+              true, accountId,
             ),
-            getFolders(),
-            syncStrikeDipMeasurements(),
+            getFolders(true, accountId),
+            syncStrikeDipMeasurements(accountId),
             syncFieldNotes(accountId),
+            syncTrips(accountId),
           ]);
           // Wait for every operation before releasing the sync lock. An early
           // Promise.all rejection previously left uploads running behind retries.
+          checkAccount();
+          await requireFieldNoteAccount(accountId);
           const [samplesResult, foldersResult] = results;
           for (const result of results)
             if (result.status === "rejected") reportFailure(result.reason);
@@ -302,12 +340,20 @@ export function useOfflineSync() {
             setDownloadedCount(mergedRemote.length);
             setTimeout(() => setDownloadedCount(0), 5000);
             queryClient.setQueryData(getGetSamplesQueryKey(), mergedRemote);
+            for (const sample of mergedRemote) {
+              checkAccount();
+              const cached = await cacheSamplePhotos(sample);
+              checkAccount();
+              if (cached !== sample) cacheCloudSamples([cached], true);
+            }
           }
-          if (foldersResult.status === "fulfilled")
+          if (foldersResult.status === "fulfilled") {
+            reconcileLocalDatasets(foldersResult.value);
             queryClient.setQueryData(
               getGetFoldersQueryKey(),
-              foldersResult.value,
+              foldersResult.value.filter((item: any) => !item.deletedAt),
             );
+          }
         } catch (error) {
           reportFailure(error);
         }
@@ -331,7 +377,7 @@ export function useOfflineSync() {
         setIsSyncing(false);
         setSyncProgress(null);
         refreshCount();
-        if (!failed && (loadMeasurements().some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
+        if (!failed && (loadTrips(true).some((trip) => trip.localRevision) || getPendingLocalDatasets().length > 0 || loadMeasurements(true).some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
         if (retryNeeded && !authRequired) scheduleRetry();
       }
     },
@@ -342,12 +388,14 @@ export function useOfflineSync() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const changed = () => {
-      if (!loadFieldNotes(accountId).some((note) => note.localRevision)) return;
+      if (!loadFieldNotes(accountId).some((note) => note.localRevision) && !loadTrips(true).some((trip) => trip.localRevision) && !loadMeasurements(true).some((item) => item.localRevision)) return;
       clearTimeout(timer);
       timer = setTimeout(() => { if (navigator.onLine) void sync(); }, 1500);
     };
     window.addEventListener(FIELD_NOTES_UPDATED, changed);
-    return () => { clearTimeout(timer); window.removeEventListener(FIELD_NOTES_UPDATED, changed); };
+    window.addEventListener(TRIPS_UPDATED, changed);
+    window.addEventListener(STRIKE_DIP_UPDATED_EVENT, changed);
+    return () => { clearTimeout(timer); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
   }, [accountId, sync]);
   const rebuildCloudCache = useCallback(() => runSync(true), [runSync]);
   useEffect(() => {

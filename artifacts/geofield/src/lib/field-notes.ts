@@ -14,6 +14,7 @@ export interface FieldNote {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
+  cloudUpdatedAt?: string;
   localRevision?: string;
 }
 export const FIELD_NOTES_UPDATED = "field-notes-updated";
@@ -36,7 +37,7 @@ export function editFieldNote(accountId: string, id: string, update: (note: Fiel
   let saved: FieldNote | undefined;
   const notes = loadFieldNotes(accountId).map((note) => {
     if (note.id !== id) return note;
-    saved = { ...update(note), id, updatedAt: new Date().toISOString(), localRevision: crypto.randomUUID() };
+    saved = { ...update(note), id, cloudUpdatedAt: note.cloudUpdatedAt ?? (!note.localRevision ? note.updatedAt : undefined), updatedAt: new Date().toISOString(), localRevision: crypto.randomUUID() };
     return saved;
   });
   if (!saved) throw new Error("This field note is no longer available.");

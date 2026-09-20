@@ -33,5 +33,5 @@ test('deletions during sync are not resurrected; new local records are retained'
 test('new remote measurements are added and older cloud data cannot replace newer local data', () => {
   const remoteNew = { ...cloud, id: 'lineation' };
   const newerLocal = { ...local, updatedAt: '2026-09-03T00:00:00Z' };
-  assert.deepEqual(mergeMeasurements([newerLocal], [cloud, remoteNew], [newerLocal]), [newerLocal, remoteNew]);
+  assert.deepEqual(mergeMeasurements([newerLocal], [cloud, remoteNew], [newerLocal]), [newerLocal, { ...remoteNew, cloudUpdatedAt: remoteNew.updatedAt }]);
 });

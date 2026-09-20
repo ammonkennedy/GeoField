@@ -67,6 +67,7 @@ export async function storeMediaDataUrl(input: {
     tx.objectStore(STORE_NAME).put({ ...metadata, dataUrl: input.dataUrl });
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error("Photo storage was interrupted. Please try saving again."));
   });
   db.close();
 
@@ -80,6 +81,7 @@ export async function getStoredMediaDataUrl(storageKey: string): Promise<string 
     const request = tx.objectStore(STORE_NAME).get(storageKey);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
+    tx.onabort = () => reject(tx.error ?? new Error("Photo storage read was interrupted."));
   });
   db.close();
 

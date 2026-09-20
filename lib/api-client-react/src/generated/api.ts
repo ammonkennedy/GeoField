@@ -1,3 +1,4 @@
+import { captureAccountAuthorization } from "../account-authorization";
 import { isNetworkError, requireCloudSession } from "../cloud-session";
 import { defaultStorage } from "aws-amplify/utils";
 import { createOfflineAccount } from "../offline-account";
@@ -35,6 +36,11 @@ import type {
 } from "./api.schemas";
 
 Amplify.configure(outputs);
+// Bind the web app's local collections to this build's configured user pool.
+if (typeof localStorage !== "undefined") {
+  try { localStorage.setItem("geofield-active-account-profile", `geofield-account:${outputs.auth.user_pool_client_id}`); } catch { /* Storage failures are surfaced by durable saves. */ }
+}
+
 
 const client: any = generateClient();
 const offlineAccount = createOfflineAccount(defaultStorage, `geofield-account:${outputs.auth.user_pool_client_id}`);
@@ -99,15 +105,10 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-const DELETED_RETENTION_MS = 20 * 24 * 60 * 60 * 1000;
-
 function isActive(record: { deletedAt?: string | null }) {
   return !record.deletedAt;
 }
 
-function isExpired(record: { deletedAt?: string | null }) {
-  return Boolean(record.deletedAt) && Date.now() - Date.parse(record.deletedAt as string) >= DELETED_RETENTION_MS;
-}
 
 function errorMessage(errors: Array<{ message?: string }> = []) {
   return errors.map((e) => e.message || "Unknown Amplify error").join("; ");
@@ -129,6 +130,11 @@ export async function requireCloudSyncSession() {
     const session = await fetchAuthSession();
     return Boolean(session.tokens?.accessToken);
   });
+}
+
+async function accountRequestOptions(expectedAccountId?: string) {
+  const accountId = expectedAccountId ?? (await getCurrentUser()).userId;
+  return captureAccountAuthorization(accountId, fetchAuthSession, () => offlineAccount.isSignedOut());
 }
 
 async function hasCurrentUser() {
@@ -173,6 +179,7 @@ function serializeFields(fields: unknown) {
 
 function asFolder(dataset: any): Folder {
   return {
+    deletedAt: dataset.deletedAt ?? null,
     id: dataset.id,
     name: dataset.name,
     description: dataset.description ?? null,
@@ -183,6 +190,7 @@ function asFolder(dataset: any): Folder {
 
 function asSample(sample: any): Sample {
   return {
+    deletedAt: sample.deletedAt ?? null,
     id: sample.id,
     sampleType: sample.sampleType,
     sampleId: sample.sampleId,
@@ -199,7 +207,7 @@ async function hydrateSampleMedia(sample: Sample): Promise<Sample> {
   const fields = (sample.fields ?? {}) as Record<string, any>;
   if (!Array.isArray(fields.media)) return sample;
   const media = await Promise.all(fields.media.map(async (item: any) => {
-    if (!item?.storageKey) return item;
+    if (!item?.storageKey?.startsWith("media/")) return item;
     try {
       const cloudUrl = await resolveSampleMediaUrl(item.storageKey);
       return { ...item, cloudUrl, dataUrl: cloudUrl, syncStatus: "synced" };
@@ -305,7 +313,7 @@ export async function deleteCurrentAccount() {
 
   // Cognito does not cascade account deletion into AppSync records. Remove all
   // owner-scoped data while the user still has permission, then remove the user.
-  for (const modelName of ["Sample", "StrikeDipMeasurement", "Dataset", "FieldNote"] as const) {
+  for (const modelName of ["Sample", "StrikeDipMeasurement", "Dataset", "FieldNote", "Trip"] as const) {
     let nextToken: string | null | undefined;
     do {
       const result = await client.models[modelName].list({ limit: 1000, nextToken });
@@ -358,7 +366,7 @@ export async function getCurrentAccountToken(): Promise<string> {
  */
 export function subscribeToAccountDataChanges(onChange: () => void): () => void {
   const subscriptions: Array<{ unsubscribe: () => void }> = [];
-  for (const modelName of ["Sample", "Dataset", "StrikeDipMeasurement", "FieldNote"] as const) {
+  for (const modelName of ["Sample", "Dataset", "StrikeDipMeasurement", "FieldNote", "Trip"] as const) {
     for (const eventName of ["onCreate", "onUpdate", "onDelete"] as const) {
       try {
         const subscription = client.models[modelName][eventName]().subscribe({
@@ -386,33 +394,34 @@ export function useBeginBrowserLogin<TData = unknown>(options?: QueryOptions<any
 }
 
 export const getGetFoldersQueryKey = () => ["datasets"] as const;
-export async function getFolders(): Promise<Folder[]> {
+export async function getFolders(includeDeleted = false, expectedAccountId?: string): Promise<Folder[]> {
   if (!(await hasCurrentUser())) return [];
+  const readingAccount = (await getCurrentUser()).userId;
+  if (expectedAccountId && readingAccount !== expectedAccountId) throw new Error("Account changed before downloading data. Please sync again.");
   const folders: Folder[] = [];
   let nextToken: string | null | undefined;
   do {
-    const result = await client.models.Dataset.list({ limit: 1000, nextToken });
+    const result = await client.models.Dataset.list({ limit: 1000, nextToken, ...await accountRequestOptions(readingAccount) });
     if (result.errors?.length) throw new Error(errorMessage(result.errors));
     for (const record of result.data ?? []) {
-      if (isExpired(record)) {
-        await client.models.Dataset.delete({ id: String(record.id) });
-      } else if (isActive(record)) {
+      if (includeDeleted === true || isActive(record)) {
         folders.push(asFolder(record));
       }
     }
+    if ((await getCurrentUser()).userId !== readingAccount) throw new Error("Account changed during download. Please sync again.");
     nextToken = result.nextToken;
   } while (nextToken);
   return folders;
 }
 export function useGetFolders<TData = Folder[]>(options?: QueryOptions<any>): UseQueryResult<TData, ErrorType<unknown>> & { queryKey: QueryKey } {
   const queryKey = getGetFoldersQueryKey();
-  const query = useQuery({ queryKey, queryFn: getFolders, retry: false, ...(options?.query as any) }) as any;
+  const query = useQuery({ queryKey, queryFn: () => getFolders(), retry: false, ...(options?.query as any) }) as any;
   return { ...query, queryKey };
 }
 
-export async function createFolder({ data, id }: { data: CreateFolderRequest; id?: string }): Promise<Folder> {
+export async function createFolder({ data, id, accountId }: { data: CreateFolderRequest; id?: string; accountId?: string }): Promise<Folder> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before creating datasets.");
-  const result = await client.models.Dataset.create({ id, name: data.name, description: data.description ?? "", createdAt: nowIso(), updatedAt: nowIso() });
+  const result = await client.models.Dataset.create({ id, name: data.name, description: data.description ?? "", createdAt: nowIso(), updatedAt: nowIso() }, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFolder(result.data);
 }
@@ -420,9 +429,9 @@ export function useCreateFolder(options?: MutationOptions<Folder, { data: Create
   return useMutation<Folder, ErrorType<unknown>, { data: CreateFolderRequest }>({ mutationFn: createFolder, ...(options?.mutation as any) });
 }
 
-export async function updateFolder({ id, data }: { id: string | number; data: CreateFolderRequest }): Promise<Folder> {
+export async function updateFolder({ id, data, accountId }: { id: string | number; data: CreateFolderRequest; accountId?: string }): Promise<Folder> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before updating datasets.");
-  const result = await client.models.Dataset.update(cleanObject({ id: String(id), name: data.name, description: data.description ?? "", updatedAt: nowIso() }));
+  const result = await client.models.Dataset.update(cleanObject({ id: String(id), name: data.name, description: data.description ?? "", updatedAt: nowIso() }), await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFolder(result.data);
 }
@@ -430,18 +439,21 @@ export function useUpdateFolder(options?: MutationOptions<Folder, { id: string |
   return useMutation<Folder, ErrorType<unknown>, { id: string | number; data: CreateFolderRequest }>({ mutationFn: updateFolder, ...(options?.mutation as any) });
 }
 
-export async function deleteFolder({ id }: { id: string | number }): Promise<void> {
+export async function deleteFolder({ id, accountId }: { id: string | number; accountId?: string }): Promise<void> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before deleting datasets.");
-  const samples = await getSamples({ folderId: id });
-  await Promise.all(
-    samples.map((sample) =>
-      client.models.Sample.update({
-        id: String(sample.id),
-        datasetId: null,
-      } as any),
-    ),
-  );
-  const result = await client.models.Dataset.update({ id: String(id), deletedAt: nowIso(), updatedAt: nowIso() });
+  const deletingAccount = accountId ?? (await getCurrentUser()).userId;
+  const authorization = await accountRequestOptions(deletingAccount);
+  const samples = await getSamples({ folderId: id }, undefined, false, deletingAccount);
+  const measurements = (await getStrikeDipMeasurements(false, deletingAccount)).filter((item) => String(item.datasetId) === String(id));
+  const detachments = await Promise.all([
+    ...samples.map((sample) => client.models.Sample.update({ id: String(sample.id), datasetId: null, updatedAt: nowIso() }, authorization)),
+    ...measurements.map((measurement) => client.models.StrikeDipMeasurement.update({ id: measurement.id, datasetId: null, updatedAt: nowIso() }, authorization)),
+  ]);
+  for (const detached of detachments) {
+    if (detached.errors?.length) throw new Error(errorMessage(detached.errors));
+    if (!detached.data) throw new Error("Cloud did not confirm that the dataset contents were preserved. Please retry.");
+  }
+  const result = await client.models.Dataset.update({ id: String(id), deletedAt: nowIso(), updatedAt: nowIso() }, authorization);
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
 
@@ -454,16 +466,15 @@ export async function getRecentlyDeletedFolders(): Promise<Array<Folder & { dele
     if (result.errors?.length) throw new Error(errorMessage(result.errors));
     for (const record of result.data ?? []) {
       if (!record.deletedAt) continue;
-      if (isExpired(record)) await client.models.Dataset.delete({ id: String(record.id) });
-      else items.push({ ...asFolder(record), deletedAt: record.deletedAt });
+      items.push({ ...asFolder(record), deletedAt: record.deletedAt });
     }
     nextToken = result.nextToken;
   } while (nextToken);
   return items;
 }
 
-export async function restoreFolder(id: string | number): Promise<void> {
-  const result = await client.models.Dataset.update({ id: String(id), deletedAt: null, updatedAt: nowIso() });
+export async function restoreFolder(id: string | number, accountId?: string): Promise<void> {
+  const result = await client.models.Dataset.update({ id: String(id), deletedAt: null, updatedAt: nowIso() }, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
 export function useDeleteFolder(options?: MutationOptions<void, { id: string | number }>) {
@@ -474,23 +485,26 @@ export const getGetSamplesQueryKey = (params?: GetSamplesParams) => params?.fold
 export async function getSamples(
   params?: GetSamplesParams,
   onPage?: (progress: { page: number; downloaded: number }) => void,
+  includeDeleted = false,
+  expectedAccountId?: string,
 ): Promise<Sample[]> {
   if (!(await hasCurrentUser())) return [];
+  const readingAccount = (await getCurrentUser()).userId;
+  if (expectedAccountId && readingAccount !== expectedAccountId) throw new Error("Account changed before downloading data. Please sync again.");
   const samples: Sample[] = [];
   let nextToken: string | null | undefined;
   let page = 0;
   do {
-    const result = await client.models.Sample.list({ limit: 1000, nextToken });
+    const result = await client.models.Sample.list({ limit: 1000, nextToken, ...await accountRequestOptions(readingAccount) });
     if (result.errors?.length) throw new Error(errorMessage(result.errors));
     for (const record of result.data ?? []) {
-      if (isExpired(record)) {
-        await client.models.Sample.delete({ id: String(record.id) });
-      } else if (isActive(record)) {
+      if (includeDeleted === true || isActive(record)) {
         samples.push(await hydrateSampleMedia(asSample(record)));
       }
     }
     page += 1;
     onPage?.({ page, downloaded: samples.length });
+    if ((await getCurrentUser()).userId !== readingAccount) throw new Error("Account changed during download. Please sync again.");
     nextToken = result.nextToken;
   } while (nextToken);
   if (params?.folderId == null) return samples;
@@ -503,10 +517,10 @@ export function useGetSamples<TData = Sample[]>(params?: GetSamplesParams, optio
 }
 
 export const getGetSampleQueryKey = (id: string | number) => ["sample", String(id)] as const;
-export async function getSample(id: string | number): Promise<Sample> {
+export async function getSample(id: string | number, accountId?: string): Promise<Sample> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before loading samples.");
   const sampleId = currentSampleIdFallback(id);
-  const result = await client.models.Sample.get({ id: String(sampleId) });
+  const result = await client.models.Sample.get({ id: String(sampleId) }, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   if (!result.data) throw new Error("Sample not found");
   return hydrateSampleMedia(asSample(result.data));
@@ -522,13 +536,13 @@ export function useGetSample<TData = Sample>(id: string | number, options?: Quer
   return { ...query, queryKey };
 }
 
-async function createSampleWithInput(input: Record<string, unknown>) {
-  const result = await client.models.Sample.create(input as any);
+async function createSampleWithInput(input: Record<string, unknown>, accountId?: string) {
+  const result = await client.models.Sample.create(input as any, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asSample(result.data);
 }
 
-export async function createSample({ data, id }: { data: CreateSampleRequest; id?: string }): Promise<Sample> {
+export async function createSample({ data, id, accountId }: { data: CreateSampleRequest; id?: string; accountId?: string }): Promise<Sample> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before saving samples.");
   const folderId = normalizeFolderId(data.folderId);
   const baseInput = cleanObject({
@@ -544,24 +558,24 @@ export async function createSample({ data, id }: { data: CreateSampleRequest; id
   return createSampleWithInput(cleanObject({
     ...baseInput,
     fields: serializeFields(data.fields),
-  }));
+  }), accountId);
 }
 export function useCreateSample(options?: MutationOptions<Sample, { data: CreateSampleRequest }>) {
   return useMutation<Sample, ErrorType<unknown>, { data: CreateSampleRequest }>({ mutationFn: createSample, ...(options?.mutation as any) });
 }
 
-export async function updateSample({ id, data }: { id: string | number; data: UpdateSampleRequest }): Promise<Sample> {
+export async function updateSample({ id, data, accountId }: { id: string | number; data: UpdateSampleRequest; accountId?: string }): Promise<Sample> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before updating samples.");
   const folderId = normalizeFolderId(data.folderId);
   const sampleId = currentSampleIdFallback(id);
-  const result = await client.models.Sample.update(cleanObject({
+  const result = await client.models.Sample.update({ ...cleanObject({
     id: String(sampleId),
     sampleId: data.sampleId,
-    datasetId: data.folderId === undefined ? undefined : folderId,
-    notes: data.notes || undefined,
+    ...(data.folderId === undefined ? {} : { datasetId: folderId }),
+    notes: data.notes,
     fields: data.fields === undefined ? undefined : serializeFields(data.fields),
     updatedAt: nowIso(),
-  }));
+  }), ...(data.folderId !== undefined && folderId === null ? { datasetId: null } : {}) }, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asSample(result.data);
 }
@@ -569,10 +583,10 @@ export function useUpdateSample(options?: MutationOptions<Sample, { id: string |
   return useMutation<Sample, ErrorType<unknown>, { id: string | number; data: UpdateSampleRequest }>({ mutationFn: updateSample, ...(options?.mutation as any) });
 }
 
-export async function deleteSample({ id }: { id: string | number }): Promise<void> {
+export async function deleteSample({ id, accountId }: { id: string | number; accountId?: string }): Promise<void> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before deleting samples.");
   const sampleId = currentSampleIdFallback(id);
-  const result = await client.models.Sample.update({ id: String(sampleId), deletedAt: nowIso(), updatedAt: nowIso() });
+  const result = await client.models.Sample.update({ id: String(sampleId), deletedAt: nowIso(), updatedAt: nowIso() }, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
 
@@ -591,16 +605,15 @@ export async function getRecentlyDeletedSamples(): Promise<Array<Sample & { dele
     if (result.errors?.length) throw new Error(errorMessage(result.errors));
     for (const record of result.data ?? []) {
       if (!record.deletedAt) continue;
-      if (isExpired(record)) await client.models.Sample.delete({ id: String(record.id) });
-      else items.push({ ...asSample(record), deletedAt: record.deletedAt });
+      items.push({ ...asSample(record), deletedAt: record.deletedAt });
     }
     nextToken = result.nextToken;
   } while (nextToken);
   return items;
 }
 
-export async function restoreSample(id: string | number): Promise<void> {
-  const result = await client.models.Sample.update({ id: String(id), deletedAt: null, updatedAt: nowIso() });
+export async function restoreSample(id: string | number, accountId?: string): Promise<void> {
+  const result = await client.models.Sample.update({ id: String(id), deletedAt: null, updatedAt: nowIso() }, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
 }
 export function useDeleteSample(options?: MutationOptions<void, { id: string | number }>) {
@@ -612,6 +625,8 @@ export async function moveSample({ id, data }: { id: string | number; data: Move
 }
 
 export interface CloudStrikeDipMeasurement {
+  photoKey?: string | null;
+  deletedAt?: string | null;
   id: string;
   measurementType?: "plane" | "lineation";
   datasetId?: string | null;
@@ -655,7 +670,7 @@ export interface CloudStrikeDipMeasurement {
 
 function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
   return {
-    id: String(record.id), measurementType: record.measurementType === "lineation" ? "lineation" : "plane", datasetId: record.datasetId ?? null,
+    id: String(record.id), photoKey: record.photoKey ?? null, measurementType: record.measurementType === "lineation" ? "lineation" : "plane", datasetId: record.datasetId ?? null,
     label: record.label ?? "", strike: record.strike ?? "", dip: record.dip ?? "", dipDir: record.dipDir ?? "",
     strikeDegrees: record.strikeDegrees ?? undefined, dipDegrees: record.dipDegrees ?? undefined,
     dipDirectionDegrees: record.dipDirectionDegrees ?? undefined, convention: record.convention ?? undefined,
@@ -671,7 +686,7 @@ function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
     longitude: record.longitude ?? undefined, gpsAccuracy: record.gpsAccuracy ?? undefined, utmZone: record.utmZone ?? undefined,
     utmEasting: record.utmEasting ?? undefined, utmNorthing: record.utmNorthing ?? undefined,
     date: record.measuredAt ?? record.date ?? "", featureType: record.featureType ?? "", rockLayerType: record.rockLayerType ?? "", notes: record.notes ?? "",
-    createdAt: record.createdAt ?? nowIso(), updatedAt: record.updatedAt ?? record.createdAt ?? nowIso(),
+    deletedAt: record.deletedAt ?? null, createdAt: record.createdAt ?? nowIso(), updatedAt: record.updatedAt ?? record.createdAt ?? nowIso(),
   };
 }
 
@@ -691,6 +706,8 @@ function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
     featureType: data.featureType, rockLayerType: data.rockLayerType, notes: data.notes,
   });
   const nullableHeight = {
+    ...(data.photoKey !== undefined ? { photoKey: data.photoKey } : {}),
+    deletedAt: data.deletedAt ?? null,
     ...(data.elevation === null ? { elevation: null } : {}),
     ...(data.elevationAccuracy === null ? { elevationAccuracy: null } : {}),
   };
@@ -700,29 +717,38 @@ function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
     : { ...input, ...nullableHeight };
 }
 
-export async function getStrikeDipMeasurements(): Promise<CloudStrikeDipMeasurement[]> {
+export async function getStrikeDipMeasurements(includeDeleted = false, expectedAccountId?: string): Promise<CloudStrikeDipMeasurement[]> {
   await requireCloudSyncSession();
+  const readingAccount = (await getCurrentUser()).userId;
+  if (expectedAccountId && readingAccount !== expectedAccountId) throw new Error("Account changed before downloading data. Please sync again.");
   const items: CloudStrikeDipMeasurement[] = [];
   let nextToken: string | null | undefined;
   do {
-    const result = await client.models.StrikeDipMeasurement.list({ limit: 1000, nextToken });
+    const result = await client.models.StrikeDipMeasurement.list({ limit: 1000, nextToken, ...await accountRequestOptions(readingAccount) });
     if (result.errors?.length) throw new Error(errorMessage(result.errors));
-    for (const record of result.data ?? []) if (!record.deletedAt) items.push(asStrikeDipMeasurement(record));
+    for (const record of result.data ?? []) if (includeDeleted === true || !record.deletedAt) items.push(asStrikeDipMeasurement(record));
+    if ((await getCurrentUser()).userId !== readingAccount) throw new Error("Account changed during download. Please sync again.");
     nextToken = result.nextToken;
   } while (nextToken);
   return items;
 }
 
-export async function createStrikeDipMeasurement(data: CloudStrikeDipMeasurement): Promise<CloudStrikeDipMeasurement> {
+export async function getStrikeDipMeasurement(id: string, accountId?: string): Promise<CloudStrikeDipMeasurement | null> {
+  const result = await client.models.StrikeDipMeasurement.get({ id }, await accountRequestOptions(accountId));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  return result.data ? asStrikeDipMeasurement(result.data) : null;
+}
+
+export async function createStrikeDipMeasurement(data: CloudStrikeDipMeasurement, accountId?: string): Promise<CloudStrikeDipMeasurement> {
   await requireCloudSyncSession();
-  const result = await client.models.StrikeDipMeasurement.create({ id: data.id, ...strikeDipInput(data), createdAt: data.createdAt, updatedAt: data.updatedAt } as any);
+  const result = await client.models.StrikeDipMeasurement.create({ id: data.id, ...strikeDipInput(data), createdAt: data.createdAt } as any, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asStrikeDipMeasurement(result.data);
 }
 
-export async function updateStrikeDipMeasurement(data: CloudStrikeDipMeasurement): Promise<CloudStrikeDipMeasurement> {
+export async function updateStrikeDipMeasurement(data: CloudStrikeDipMeasurement, accountId?: string): Promise<CloudStrikeDipMeasurement> {
   await requireCloudSyncSession();
-  const result = await client.models.StrikeDipMeasurement.update({ id: data.id, ...strikeDipInput(data), updatedAt: data.updatedAt } as any);
+  const result = await client.models.StrikeDipMeasurement.update({ id: data.id, ...strikeDipInput(data) } as any, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asStrikeDipMeasurement(result.data);
 }
@@ -754,17 +780,65 @@ export async function getFieldNotes(accountId: string): Promise<CloudFieldNote[]
   const notes: CloudFieldNote[] = [];
   let nextToken: string | undefined;
   do {
-    const result = await client.models.FieldNote.list({ limit: 500, nextToken });
+    const result = await client.models.FieldNote.list({ limit: 500, nextToken, ...await accountRequestOptions(accountId) });
     if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    await requireFieldNoteAccount(accountId);
     notes.push(...(result.data ?? []).map(asFieldNote));
     nextToken = result.nextToken;
   } while (nextToken);
   return notes;
 }
+export async function getFieldNote(id: string, accountId: string): Promise<CloudFieldNote | null> {
+  const result = await client.models.FieldNote.get({ id }, await accountRequestOptions(accountId));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  return result.data ? asFieldNote(result.data) : null;
+}
+
 export async function saveCloudFieldNote(note: CloudFieldNote, exists: boolean, accountId: string): Promise<CloudFieldNote> {
   await requireFieldNoteAccount(accountId);
-  const input = { id: note.id, title: note.title, body: note.body, photos: JSON.stringify(note.photos), createdAt: note.createdAt, updatedAt: note.updatedAt, deletedAt: note.deletedAt ?? null };
-  const result = await client.models.FieldNote[exists ? "update" : "create"](input);
+  const input = { id: note.id, title: note.title, body: note.body, photos: JSON.stringify(note.photos), createdAt: note.createdAt, deletedAt: note.deletedAt ?? null };
+  const result = await client.models.FieldNote[exists ? "update" : "create"](input, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFieldNote(result.data);
+}
+
+export interface CloudTrip {
+  id: string;
+  name: string;
+  notes: string;
+  sites: Array<{ id: string; name: string; description: string; lat: number; lng: number; addedAt: string; sampleType?: "water" | "rock" | "soil_sand" | "air" | "other"; collectedAt?: string }>;
+  datasetId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+function asTrip(record: any): CloudTrip {
+  if (!record?.id) throw new Error("Cloud did not confirm the trip.");
+  const sites = parseFields(record.sites);
+  if (!Array.isArray(sites)) throw new Error("Cloud trip sites could not be read. Your local trip is preserved.");
+  return { id: String(record.id), name: record.name, notes: record.notes ?? "", sites, datasetId: record.datasetId ?? null, createdAt: record.createdAt, updatedAt: record.updatedAt, deletedAt: record.deletedAt ?? null };
+}
+export async function getCloudTrips(accountId: string): Promise<CloudTrip[]> {
+  await requireFieldNoteAccount(accountId);
+  const trips: CloudTrip[] = [];
+  let nextToken: string | undefined;
+  do {
+    const result = await client.models.Trip.list({ limit: 500, nextToken, ...await accountRequestOptions(accountId) });
+    if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    await requireFieldNoteAccount(accountId);
+    trips.push(...(result.data ?? []).map(asTrip));
+    nextToken = result.nextToken;
+  } while (nextToken);
+  return trips;
+}
+export async function getCloudTrip(id: string, accountId: string): Promise<CloudTrip | null> {
+  const result = await client.models.Trip.get({ id }, await accountRequestOptions(accountId));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  return result.data ? asTrip(result.data) : null;
+}
+export async function saveCloudTrip(trip: CloudTrip, exists: boolean, accountId: string): Promise<CloudTrip> {
+  const input = { id: trip.id, name: trip.name, notes: trip.notes, sites: JSON.stringify(trip.sites), datasetId: trip.datasetId ?? null, createdAt: trip.createdAt, deletedAt: trip.deletedAt ?? null };
+  const result = await client.models.Trip[exists ? "update" : "create"](input, await accountRequestOptions(accountId));
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  return asTrip(result.data);
 }

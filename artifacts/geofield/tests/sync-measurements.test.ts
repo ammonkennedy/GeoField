@@ -82,3 +82,57 @@ test("clean records still accept newer edits from another device", async () => {
   assert.equal(scenario.local()[0].elevation, -12.5);
   assert.equal(scenario.local()[0].elevationAccuracy, 4);
 });
+
+test("cloud deletion is downloaded as a tombstone instead of recreating a measurement", async () => {
+ const scenario=setup({...base,localRevision:undefined});
+ scenario.setRemote({...base,localRevision:undefined,updatedAt:"2026-09-19T00:00:00Z",deletedAt:"2026-09-19T00:00:00Z"} as any);
+ await syncMeasurementRecords(scenario.store);
+ assert.equal(scenario.writes.length,0);assert.equal((scenario.local()[0] as any).deletedAt,"2026-09-19T00:00:00Z");
+});
+test("concurrent edits preserve the other device's measurement before uploading this edit", async () => {
+ const scenario=setup({...base,cloudUpdatedAt:"2026-09-17T09:00:00Z"} as any);
+ await syncMeasurementRecords(scenario.store);
+ assert.equal(scenario.writes.length,2);assert.match(scenario.writes[0].id,/recovered/);assert.equal(scenario.writes[1].id,base.id);
+});
+test("a later failed measurement does not discard an earlier durable acknowledgment", async () => {
+ const scenario=setup(); scenario.setLocal([base,{...base,id:"second",localRevision:"second-edit"}]);
+ scenario.store.create=async()=>{throw new Error("Network error on second measurement");};
+ await assert.rejects(syncMeasurementRecords(scenario.store),/second measurement/);
+ assert.equal(scenario.local()[0].localRevision,undefined);assert.equal(scenario.local()[1].localRevision,"second-edit");
+});
+test("a failed final download cannot make an acknowledged measurement upload again", async () => {
+ const scenario=setup();const list=scenario.store.list;let calls=0;
+ scenario.store.list=async()=>{if(++calls===2)throw new Error("download disconnected");return list();};
+ await assert.rejects(syncMeasurementRecords(scenario.store),/disconnected/);
+ assert.equal(scenario.local()[0].localRevision,undefined);assert.equal(scenario.local()[0].datasetId,"dataset-a");
+});
+test("an invalid measurement cannot block later valid measurements", async () => {
+ const scenario=setup();scenario.setLocal([base,{...base,id:"healthy",localRevision:"healthy-edit"}]);
+ scenario.store.update=async()=>{throw new Error("invalid first record");};
+ await assert.rejects(syncMeasurementRecords(scenario.store),/invalid first/);
+ assert.equal(scenario.local().find((item)=>item.id==="m")?.localRevision,"edit-1");assert.equal(scenario.local().find((item)=>item.id==="healthy")?.localRevision,undefined);
+});
+test("a stale list omission uses a direct read instead of repeatedly trying to create an existing measurement", async () => {
+ const scenario=setup();scenario.store.list=async()=>[];
+ let updates=0;await syncMeasurementRecords({...scenario.store,get:async()=>({...base,datasetId:null,localRevision:undefined}),update:async(item)=>{updates++;return item;},create:async()=>{throw new Error("duplicate create");}});
+ assert.equal(updates,1);assert.equal(scenario.local()[0].localRevision,undefined);
+});
+test("a lost measurement write response is confirmed by reading the saved record", async () => {
+ const scenario=setup();let cloud:any={...base,datasetId:null,localRevision:undefined};
+ await syncMeasurementRecords({...scenario.store,get:async()=>cloud,update:async(item)=>{cloud={...item,updatedAt:"2026-09-20T12:00:00Z"};throw new Error("response lost");}});
+ assert.equal(scenario.local()[0].localRevision,undefined);assert.equal(scenario.local()[0].datasetId,"dataset-a");
+});
+
+test("migrating an old local photo retains newer remote measurement fields", async () => {
+  let local: any[] = [{ ...base, notes: "Old notes", photoUploadOnly: true, photoUploadId: "legacy" }];
+  const remote: any = { ...base, photo: undefined, photoKey: null, notes: "New notes on other phone", localRevision: undefined };
+  const writes: any[] = [];
+  await syncMeasurementRecords({
+    load: () => structuredClone(local), save: (items) => { local = items; }, list: async () => [remote],
+    prepare: async (item: any) => ({ ...item, photo: undefined, photoLocalKey: "cached", photoKey: "media/legacy-photo" }),
+    create: async (item: any) => { writes.push(item); return item; },
+    update: async (item: any) => { writes.push(item); return item; },
+  });
+  assert.equal(writes[0].notes, remote.notes); assert.equal(local[0].photoKey, "media/legacy-photo");
+  assert.equal(local[0].photoLocalKey, "cached"); assert.equal(local[0].localRevision, undefined);
+});

@@ -1,3 +1,4 @@
+import { getStoredMediaDataUrl, storeMediaDataUrl } from "@/lib/media-storage";
 import { stampMeasurementAtSave, toLocalDateTimeInputValue } from "@/lib/measurement-save-time";
 import { elevationFromCoordinates, formatElevation } from "@/lib/elevation";
 import { resolveDatasetId } from "@/lib/dataset-identity";
@@ -25,6 +26,7 @@ import {
 import { format as fmtDate } from "date-fns";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { deleteMeasurement, loadMeasurements, saveMeasurements, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
+import { getStorageAccountId } from "@/lib/storage-account";
 import { SavePhotoButton } from "@/components/SavePhotoButton";
 import { requireAccountForSave } from "@/lib/guest-access";
 
@@ -119,6 +121,13 @@ function MeasurementRow({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
+  const [photoUrl, setPhotoUrl] = useState(measurement.photo);
+  useEffect(() => {
+    let cancelled = false;
+    setPhotoUrl(measurement.photo);
+    if (measurement.photoLocalKey) void getStoredMediaDataUrl(measurement.photoLocalKey).then((url) => { if (!cancelled) setPhotoUrl(url ?? undefined); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [measurement.photo, measurement.photoLocalKey]);
   const rowRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!initiallyOpen) return;
@@ -150,8 +159,12 @@ function MeasurementRow({
     if (!file) return;
     e.target.value = "";
     try {
+      const accountId = getStorageAccountId();
       const dataUrl = await compressImage(file);
-      onChange({ ...measurement, photo: dataUrl });
+      const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: file.name, mimeType: "image/jpeg" });
+      if (!accountId || getStorageAccountId() !== accountId) return;
+      const latest = loadMeasurements().find((item) => item.id === measurement.id);
+      if (latest) onChange({ ...latest, photo: undefined, photoKey: null, photoLocalKey: stored.storageKey, photoUploadId: crypto.randomUUID() });
     } catch {}
   };
 
@@ -160,9 +173,9 @@ function MeasurementRow({
       {/* Collapsed header */}
       <div className="flex items-center gap-3 px-4 py-3">
         {/* Photo thumbnail or index badge */}
-        {measurement.photo ? (
+        {photoUrl ? (
           <img
-            src={measurement.photo}
+            src={photoUrl}
             alt="outcrop"
             className="w-10 h-10 rounded-lg object-cover shrink-0 border border-border cursor-pointer"
             onClick={() => setOpen((o) => !o)}
@@ -207,22 +220,23 @@ function MeasurementRow({
           {/* Photo slot */}
           <div className="space-y-1">
             <Label className="text-xs">Outcrop / Field Photo</Label>
-            {measurement.photo ? (
+            {!photoUrl && measurement.photoKey && <p className="text-xs text-muted-foreground">Photo saved to your account. Sync when connected to download it here.</p>}
+            {photoUrl ? (
               <div className="relative inline-block">
                 <img
-                  src={measurement.photo}
+                  src={photoUrl}
                   alt="outcrop"
                   className="w-full max-w-xs h-40 object-cover rounded-xl border border-border shadow-sm"
                 />
                 <button
                   type="button"
-                  onClick={() => onChange({ ...measurement, photo: undefined })}
+                  onClick={() => onChange({ ...measurement, photo: undefined, photoKey: null, photoLocalKey: undefined, photoUploadId: undefined })}
                   className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 shadow"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
                 <SavePhotoButton
-                  src={measurement.photo}
+                  src={photoUrl}
                   fileName={`geofield-${measurement.label || `strike-dip-${index + 1}`}`}
                 />
               </div>
@@ -523,6 +537,7 @@ export default function StrikeDipPage() {
 
   const addMeasurementWithGps = (measurement: StrikeDipMeasurement, successTitle?: string, successDescription?: string) => {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
+    const savingAccountId = getStorageAccountId();
     measurement = stampMeasurementAtSave(measurement);
     // Save and open the details now; a GPS fix can take ten seconds in the field.
     changeMeasurements((prev) => [...prev, measurement]);
@@ -532,6 +547,7 @@ export default function StrikeDipPage() {
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (!savingAccountId || getStorageAccountId() !== savingAccountId) return;
         // Merge into the latest saved record so typing, photos, dataset changes,
         // or deletion while GPS is pending cannot be overwritten or resurrected.
         changeMeasurements((current) => current.map((item) => {
@@ -577,7 +593,7 @@ export default function StrikeDipPage() {
   const deleteMeasurementById = (id: string) => {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
     const measurement = measurements.find((item) => item.id === id);
-    if (!measurement || !confirm(`Delete "${measurement.label || "this measurement"}"? You can restore it from Settings for 20 days.`)) return;
+    if (!measurement || !confirm(`Delete "${measurement.label || "this measurement"}"? You can restore it from Settings.`)) return;
     deleteMeasurement(id);
     setMeasurements(loadMeasurements());
   };
@@ -611,7 +627,7 @@ export default function StrikeDipPage() {
   };
 
   const clearAll = () => {
-    if (!confirm(`Delete all ${measurements.length} measurements? You can restore them from Settings for 20 days.`)) return;
+    if (!confirm(`Delete all ${measurements.length} measurements? You can restore them from Settings.`)) return;
     measurements.forEach((measurement) => deleteMeasurement(measurement.id));
     setMeasurements(loadMeasurements());
   };

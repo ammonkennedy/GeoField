@@ -1,5 +1,12 @@
+export function requiresCloudSignIn(error: unknown): boolean {
+  if (error instanceof AggregateError) return error.errors.some(requiresCloudSignIn);
+  return (error as { name?: string } | null)?.name === "CloudSignInRequired";
+}
+
 /** Retry connectivity, throttling, and service failures, never invalid data/auth. */
 export function isRetryableSyncError(error: unknown): boolean {
+  if (requiresCloudSignIn(error)) return false;
+  if (error instanceof AggregateError) return error.errors.some((item) => isRetryableSyncError(item));
   const e = error as {
     name?: string;
     message?: string;

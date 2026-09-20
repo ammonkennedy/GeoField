@@ -208,7 +208,7 @@ export default function MapViewPage() {
   const trailPopupRef = useRef<any>(null);
   const [geoInfo, setGeoInfo] = useState<GeoInfo | null>(null);
   const [customLayers, setCustomLayers] = useState<CustomMapLayer[]>(loadCustomLayers);
-  const [queuedSamples, setQueuedSamples] = useState(getQueue);
+  const [queuedSamples, setQueuedSamples] = useState(() => getQueue(true));
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const [sampleSearch, setSampleSearch] = useState("");
   const [addressLookupLoading, setAddressLookupLoading] = useState(false);
@@ -235,13 +235,15 @@ export default function MapViewPage() {
 
   const { data: folders } = useGetFolders();
   const { data: serverSamples } = useGetSamples();
-  const offlineSamples = useMemo(() => queuedSamples.map((item: any, index: number) => ({
+  const offlineSamples = useMemo(() => queuedSamples.filter((item) => !item.deletedAt).map((item: any, index: number) => ({
     id: item.queuedId || `offline-${index}`,
     ...item.payload,
+    targetId: item.targetId,
+    isOffline: true,
     offline: true,
     queuedAt: item.queuedAt,
   })), [queuedSamples]);
-  const allSamples = useMemo(() => mergeCloudAndLocal((serverSamples ?? cachedCloudSamples) as any[], offlineSamples as any[]), [serverSamples, cachedCloudSamples, offlineSamples]);
+  const allSamples = useMemo(() => mergeCloudAndLocal((mergeCloudAndLocal(serverSamples ?? [], cachedCloudSamples) as any[]).filter((sample) => !queuedSamples.some((item) => String(item.targetId ?? item.queuedId) === String(sample.id))), offlineSamples as any[]), [serverSamples, cachedCloudSamples, offlineSamples, queuedSamples]);
   const hasLegacyAirSamples = allSamples.some((sample: any) => sample.sampleType === "air");
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
@@ -377,7 +379,7 @@ export default function MapViewPage() {
   }, [terrain]);
 
   useEffect(() => {
-    const refreshQueue = () => setQueuedSamples(getQueue());
+    const refreshQueue = () => setQueuedSamples(getQueue(true));
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
     window.addEventListener("storage", refreshQueue);
     return () => {
