@@ -99,7 +99,7 @@ export default function Login() {
       <div
         className="absolute inset-0 z-0 opacity-[0.03] pointer-events-none"
         style={{
-          backgroundImage: `url('${import.meta.env.BASE_URL}images/topo-bg.png')`,
+          backgroundImage: `url('${import.meta.env.BASE_URL}images/topo-bg.svg')`,
           backgroundSize: "cover",
           backgroundPosition: "center",
         }}

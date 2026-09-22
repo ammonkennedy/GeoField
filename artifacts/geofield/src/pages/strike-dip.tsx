@@ -313,6 +313,15 @@ function MeasurementRow({
                 <option>Unconformity</option></>}
                 <option>Other</option>
               </select>
+              {measurement.measurementType === "lineation" && (
+                <Input
+                  value={measurement.featureType ?? ""}
+                  onChange={(e) => upd("featureType", e.target.value)}
+                  placeholder="Or type your own lineation feature type"
+                  aria-label="Custom lineation feature type"
+                  className="h-8 text-sm"
+                />
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Rock / Layer Type</Label>

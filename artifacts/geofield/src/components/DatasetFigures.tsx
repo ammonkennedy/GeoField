@@ -418,7 +418,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen} panelClassName="max-w-5xl">
-        <DialogContent className="max-w-3xl w-full">
+        <DialogContent className="w-full p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display text-xl">
               <BarChart2 className="w-5 h-5 text-primary" />

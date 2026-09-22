@@ -10,7 +10,7 @@ export default function SupportPage() {
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.035]"
         style={{
-          backgroundImage: `url('${import.meta.env.BASE_URL}images/topo-bg.png')`,
+          backgroundImage: `url('${import.meta.env.BASE_URL}images/topo-bg.svg')`,
           backgroundPosition: "center",
           backgroundSize: "cover",
         }}

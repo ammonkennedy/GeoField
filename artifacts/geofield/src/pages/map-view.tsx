@@ -495,7 +495,22 @@ export default function MapViewPage() {
             return button;
           };
 
-          container.append(makeTiltButton("up"), makeTiltButton("down"));
+          const makeRotateButton = (direction: "left" | "right") => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.title = `Rotate view ${direction} 15°`;
+            button.setAttribute("aria-label", button.title);
+            button.innerHTML = `<span aria-hidden="true" style="display:block;font-size:20px;line-height:20px;font-weight:700">${direction === "left" ? "←" : "→"}</span>`;
+            button.addEventListener("click", () => {
+              controlMap.easeTo({
+                bearing: controlMap.getBearing() + (direction === "left" ? -15 : 15),
+                duration: 250,
+              });
+            });
+            return button;
+          };
+
+          container.append(makeTiltButton("up"), makeTiltButton("down"), makeRotateButton("left"), makeRotateButton("right"));
           return container;
         },
         onRemove() {},
@@ -1131,7 +1146,7 @@ export default function MapViewPage() {
           {exportBusy && <div className="absolute inset-0 z-[120] cursor-wait bg-black/10" aria-label="Preparing map image" />}
           {terrain && (
             <div className="pointer-events-none absolute bottom-7 left-3 right-3 mx-auto w-fit max-w-[calc(100%-1.5rem)] rounded-lg bg-black/65 px-3 py-1.5 text-center text-xs text-white shadow backdrop-blur-sm">
-              Two-finger drag tilts · twist rotates · use the right-side arrows for precise tilt
+              Two-finger drag tilts · twist rotates · use the right-side arrows to tilt and rotate
             </div>
           )}
         </div>

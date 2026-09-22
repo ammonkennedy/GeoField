@@ -1,4 +1,5 @@
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
@@ -20,7 +21,10 @@ export function Dialog({ open, onOpenChange, children, panelClassName }: DialogP
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [open, onOpenChange]);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  // Mount outside page containers so clipping and sidebar stacking cannot hide dialogs.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -29,9 +33,9 @@ export function Dialog({ open, onOpenChange, children, panelClassName }: DialogP
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => onOpenChange(false)}
-            className="fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-50 bg-black/60 backdrop-blur-sm md:inset-0"
+            className="fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-[200] bg-black/60 backdrop-blur-sm md:inset-0"
           />
-          <div className="pointer-events-none fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-50 flex min-h-0 items-center justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:inset-0 md:p-4">
+          <div className="pointer-events-none fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-[200] flex min-h-0 items-center justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:inset-0 md:p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -53,7 +57,8 @@ export function Dialog({ open, onOpenChange, children, panelClassName }: DialogP
           </div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 
