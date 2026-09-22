@@ -138,8 +138,8 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
         }
       if (
         saved.id !== item.id ||
-        String(saved.datasetId ?? "") !== String(item.datasetId ?? "") ||
-        (saved.deletedAt ?? null) !== (item.deletedAt ?? null)
+        String(saved.datasetId ?? "") !== String(payload.datasetId ?? "") ||
+        (saved.deletedAt ?? null) !== (payload.deletedAt ?? null)
       ) {
         throw new Error(
           "Cloud did not confirm the measurement's dataset assignment. Your edit is still saved on this device. Please try syncing again.",

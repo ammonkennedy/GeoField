@@ -7,7 +7,8 @@ import type { SyncTrip } from "./trip-sync.ts";
 export function loadSyncTrips(): SyncTrip[] {
   const datasets = getLocalDatasets(true);
   return loadTrips(true).map((trip): SyncTrip => {
-    const dataset = datasets.find((item) => item.id === trip.datasetId);
+    const dataset = datasets.find((item) => String(item.id) === String(trip.datasetId))
+      ?? (trip.datasetId != null ? datasets.find((item) => item.tripId === trip.id) : undefined);
     const { datasetId: localId, cloudDatasetId, ...record } = trip;
     return {
       ...record,

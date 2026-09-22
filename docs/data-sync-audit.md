@@ -66,3 +66,16 @@ Implemented and deployed the account-owned Trip model and optional StrikeDipMeas
 Validation: 151 automated tests passed, including simulated two-device trip/photo transfers, migration, deletion, lost responses, conflict copies, missing photos, cached offline reads, and incomplete acknowledgments. All workspace TypeScript checks and the GeoField web build/iOS asset copy passed. This is not a live two-iPhone acceptance test or an App Store release. The separate Expo client has not acquired the Capacitor trip/photo UI. Atomic simultaneous-write limitations described above remain.
 
 Use the updated app on both devices. On the device containing existing local trips/photos, sign into their account and allow Sync to finish while connected. Then sync the other device. GitHub push and an App Store/TestFlight release are separate from this backend deployment; neither was performed for this change.
+
+## Missing trips/photos follow-up — September 21, 2026
+
+Read-only inspection confirmed the running iPhone 17 Pro Max simulator had the September 20 trip/photo-sync JavaScript bundle. A paginated query to the existing AppSync API, authenticated as that simulator's signed-in account, returned two active trips and 53 active measurements, with zero measurement photo references. The simulator's current account storage matched those counts. This confirms the missing records/photos had not reached that account's cloud data; it does not establish which build is installed on the original physical phone.
+
+Additional fixes:
+- Photo-only migration now validates acknowledgment against the actual payload, including newer cloud dataset/deletion state, instead of rejecting a successful upload because the older local record differs.
+- A pending dataset upload no longer blocks a trip's contents from reaching another device. The trip uploads with the previously confirmed cloud link (or none yet); the local dataset assignment stays pending and a specific error reports that remaining work. The real cloud link replaces it after the dataset sync succeeds.
+- Legacy trip dataset references can resolve through the matching trip's local dataset alias, while explicit unlinks stay cleared.
+- Downloaded photo caches can attach to measurements with pending text edits when the photo identity and cache pointer are unchanged.
+- Storage events emitted during sync no longer trigger a continuous immediate retry loop for a failed dataset link.
+
+The original phone must run the updated app and complete Sync before device-only records/photos become downloadable elsewhere. Running Xcode on a simulator does not update the physical phone. No production record mutations, AWS deployment, GitHub push, or App Store release were performed during this follow-up diagnosis. Validation: 155 regression tests, workspace typecheck, and web build/iOS asset copy.

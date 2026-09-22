@@ -51,3 +51,9 @@ test("an explicit cloud dataset unlink clears the local trip link", () => {
   storeSyncTrips([{ ...trip, datasetId: null, cloudUpdatedAt: trip.updatedAt }]);
   assert.equal(loadTrips()[0].datasetId, undefined); assert.equal(loadSyncTrips()[0].datasetId, null);
 });
+
+test("legacy trips resolve dataset aliases by trip identity when their numeric ID is stale", () => {
+  setup(); storeSyncTrips([{ ...trip, datasetId: "cloud-dataset", cloudUpdatedAt: trip.updatedAt }]);
+  saveTrips([{ ...loadTrips()[0], datasetId: -999, cloudDatasetId: undefined }]);
+  assert.equal(loadSyncTrips()[0].datasetId, "cloud-dataset");
+});

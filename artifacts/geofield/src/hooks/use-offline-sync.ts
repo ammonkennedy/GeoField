@@ -388,6 +388,9 @@ export function useOfflineSync() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const changed = () => {
+      // Sync writes also emit storage events; do not turn a pending failed link
+      // into an unbounded immediate retry loop. runSync schedules safe retries.
+      if (syncingRef.current) return;
       if (!loadFieldNotes(accountId).some((note) => note.localRevision) && !loadTrips(true).some((trip) => trip.localRevision) && !loadMeasurements(true).some((item) => item.localRevision)) return;
       clearTimeout(timer);
       timer = setTimeout(() => { if (navigator.onLine) void sync(); }, 1500);

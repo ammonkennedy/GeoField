@@ -74,7 +74,7 @@ export async function downloadMeasurementPhotos(accountId: string) {
         loadMeasurements(true).map((latest) =>
           latest.id === item.id &&
           latest.photoKey === item.photoKey &&
-          !latest.localRevision
+          latest.photoLocalKey === item.photoLocalKey
             ? {
                 ...latest,
                 photo: undefined,

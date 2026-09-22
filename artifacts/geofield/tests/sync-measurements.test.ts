@@ -136,3 +136,21 @@ test("migrating an old local photo retains newer remote measurement fields", asy
   assert.equal(writes[0].notes, remote.notes); assert.equal(local[0].photoKey, "media/legacy-photo");
   assert.equal(local[0].photoLocalKey, "cached"); assert.equal(local[0].localRevision, undefined);
 });
+
+for (const deletedAt of [null, "2026-09-21T12:00:00Z"]) {
+  test(`legacy photo migration acknowledges a changed cloud dataset and deletion state (${deletedAt})`, async () => {
+    let local: any[] = [{ ...base, photoUploadOnly: true, photoUploadId: "legacy" }];
+    let cloud: any = { ...base, datasetId: "different-dataset", deletedAt, photo: undefined, photoKey: null, localRevision: undefined };
+    let writes = 0;
+    const store = {
+      load: () => structuredClone(local), save: (items: any[]) => { local = items; }, list: async () => [cloud],
+      prepare: async (item: any) => ({ ...item, photo: undefined, photoLocalKey: "cached", photoKey: "media/legacy" }),
+      create: async () => { throw new Error("Unexpected create"); },
+      update: async (item: any) => { writes++; cloud = item; return item; },
+    };
+    await syncMeasurementRecords(store); await syncMeasurementRecords(store);
+    assert.equal(writes, 1); assert.equal(local[0].localRevision, undefined);
+    assert.equal(local[0].datasetId, "different-dataset"); assert.equal(local[0].deletedAt, deletedAt);
+    assert.equal(local[0].photoLocalKey, "cached"); assert.equal(cloud.photoKey, "media/legacy");
+  });
+}

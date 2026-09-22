@@ -1,3 +1,4 @@
+import { orderMeasurements } from "@/lib/measurement-order";
 import { getStoredMediaDataUrl, storeMediaDataUrl } from "@/lib/media-storage";
 import { stampMeasurementAtSave, toLocalDateTimeInputValue } from "@/lib/measurement-save-time";
 import { elevationFromCoordinates, formatElevation } from "@/lib/elevation";
@@ -277,11 +278,12 @@ function MeasurementRow({
             />
           </div>
 
+          <h3 className="text-sm font-semibold">{measurement.measurementType === "lineation" ? "Lineation Measurement" : "Strike & Dip Measurement"}</h3>
           {/* Fields grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="col-span-2 sm:col-span-3 space-y-1">
               <Label className="text-xs">Label / Name</Label>
-              <Input autoFocus={initiallyOpen} value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder="e.g. Outcrop A — bedding plane" className="h-9 text-sm" />
+              <Input autoFocus={initiallyOpen} value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder={measurement.measurementType === "lineation" ? "e.g. Outcrop A — mineral lineation" : "e.g. Outcrop A — bedding plane"} className="h-9 text-sm" />
             </div>
             {measurement.measurementType === "lineation" ? <>
               <div className="space-y-1"><Label className="text-xs">Azimuth</Label><Input type="text" inputMode="numeric" value={measurement.trendDegrees ?? ""} onChange={(e) => onChange({ ...measurement, trendDegrees: Number(e.target.value) })} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Azimuth in degrees" /></div>
@@ -298,14 +300,17 @@ function MeasurementRow({
                 onChange={(e) => upd("featureType", e.target.value)}
               >
                 <option value="">Select...</option>
-                <option>Bedding plane</option>
+                {measurement.measurementType === "lineation" ? <>
+                  <option>Lineation</option><option>Mineral lineation</option><option>Stretching lineation</option><option>Slickenline</option><option>Intersection lineation</option><option>Fold axis</option>
+                  {measurement.featureType && !["Lineation", "Mineral lineation", "Stretching lineation", "Slickenline", "Intersection lineation", "Fold axis", "Other"].includes(measurement.featureType) && <option>{measurement.featureType}</option>}
+                </> : <><option>Bedding plane</option>
                 <option>Fault plane</option>
                 <option>Foliation</option>
                 <option>Cleavage</option>
                 <option>Joint / fracture</option>
                 <option>Vein</option>
                 <option>Contact</option>
-                <option>Unconformity</option>
+                <option>Unconformity</option></>}
                 <option>Other</option>
               </select>
             </div>
@@ -488,9 +493,10 @@ export default function StrikeDipPage() {
     setSelectedDatasetId((id) => String(resolveDatasetId(id, localDatasets)));
   }, [localDatasets]);
   const visibleMeasurements = useMemo(() => {
-    if (selectedDatasetId === "all") return measurements;
-    if (selectedDatasetId === "uncategorized") return measurements.filter((m) => !m.datasetId);
-    return measurements.filter((m) => String(resolveDatasetId(m.datasetId, localDatasets) ?? "") === String(resolveDatasetId(selectedDatasetId, localDatasets)));
+    const ordered = orderMeasurements(measurements);
+    if (selectedDatasetId === "all") return ordered;
+    if (selectedDatasetId === "uncategorized") return ordered.filter((m) => !m.datasetId);
+    return ordered.filter((m) => String(resolveDatasetId(m.datasetId, localDatasets) ?? "") === String(resolveDatasetId(selectedDatasetId, localDatasets)));
   }, [measurements, selectedDatasetId, localDatasets]);
   const selectedDatasetName = selectedDatasetId === "all"
     ? "All Datasets"
@@ -740,7 +746,7 @@ export default function StrikeDipPage() {
               ...blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId),
               ...capture,
               measurementType: "lineation",
-              label: `Lineation ${capture.trendDegrees.toString().padStart(3, "0")}°/${capture.plungeDegrees}°`,
+              label: "Lineation",
               featureType: "Lineation",
             };
             addMeasurementWithGps(m, "Lineation captured", `Azimuth ${capture.trendDegrees}° / Plunge ${capture.plungeDegrees}°`);

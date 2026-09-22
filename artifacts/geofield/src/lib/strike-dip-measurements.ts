@@ -1,3 +1,4 @@
+import { normalizeLineationRecord } from "./lineation-record.ts";
 import { reassignMeasurementRecords, type DatasetIdentity } from "./dataset-identity.ts";
 export interface StrikeDipMeasurement {
   id: string;
@@ -56,6 +57,15 @@ export const STRIKE_DIP_UPDATED_EVENT = "strike-dip-updated";
 
 export function loadMeasurements(includeDeleted = false): StrikeDipMeasurement[] {
   const stored = readDurableArray<StrikeDipMeasurement>(KEY);
+  let migratedLineations = false;
+  for (let index = 0; index < stored.length; index++) {
+    const original = stored[index];
+    const normalized = normalizeLineationRecord(original);
+    if (normalized === original) continue;
+    stored[index] = { ...normalized, cloudUpdatedAt: original.cloudUpdatedAt ?? (!original.localRevision ? original.updatedAt : undefined), localRevision: crypto.randomUUID(), photoUploadOnly: undefined };
+    migratedLineations = true;
+  }
+  if (migratedLineations) writeDurableArray(KEY, stored);
   let migratedPhotos = false;
   for (const item of stored) {
     if ((item.photo || item.photoLocalKey) && !item.photoKey && !item.photoUploadId) {

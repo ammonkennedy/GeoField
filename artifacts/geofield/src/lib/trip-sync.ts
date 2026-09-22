@@ -43,15 +43,15 @@ export async function syncTripRecords(store: Store) {
   for (const trip of before) {
     if (!trip.localRevision) continue;
     try {
-      if (Number(trip.datasetId) < 0)
-        throw new Error(
-          "A trip's dataset is still waiting to sync. The trip remains saved locally.",
-        );
+      const datasetPending = Number(trip.datasetId) < 0;
       const existing = await store.get(trip.id);
+      // A failed/missing dataset upload must not hide the entire trip on other
+      // devices. Preserve any confirmed cloud link until the local link resolves.
+      const payload = datasetPending ? { ...trip, datasetId: existing?.datasetId ?? null } : trip;
       if (
         existing &&
         trip.cloudUpdatedAt !== existing.updatedAt &&
-        !confirms(existing, trip)
+        !confirms(existing, payload)
       ) {
         // Preserve the other version before applying this pending edit/deletion.
         const recovery = {
@@ -84,17 +84,17 @@ export async function syncTripRecords(store: Store) {
           ]);
       }
       let saved: SyncTrip;
-      if (confirms(existing, trip)) saved = existing!;
+      if (confirms(existing, payload)) saved = existing!;
       else {
         try {
-          saved = await store.write(trip, !!existing);
+          saved = await store.write(payload, !!existing);
         } catch (error) {
           const found = await store.get(trip.id);
-          if (!confirms(found, trip)) throw error;
+          if (!confirms(found, payload)) throw error;
           saved = found!;
         }
       }
-      if (!confirms(saved, trip))
+      if (!confirms(saved, payload))
         throw new Error(
           "Cloud did not confirm all trip details. Your complete trip remains pending.",
         );
@@ -104,7 +104,7 @@ export async function syncTripRecords(store: Store) {
           .map((latest) =>
             latest.id !== trip.id
               ? latest
-              : JSON.stringify(latest) === JSON.stringify(trip)
+              : !datasetPending && JSON.stringify(latest) === JSON.stringify(trip)
                 ? {
                     ...saved,
                     localRevision: undefined,
@@ -114,6 +114,7 @@ export async function syncTripRecords(store: Store) {
           ),
       );
       acknowledged.add(trip.id);
+      if (datasetPending) errors.push(new Error(`Trip "${trip.name}" is saved to your account, but its dataset link is still waiting to sync. The local link is preserved.`));
     } catch (error) {
       errors.push(error);
     }
