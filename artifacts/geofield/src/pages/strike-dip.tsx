@@ -14,7 +14,7 @@ import { CompassModal, type StrikeDipCapture } from "@/components/CompassModal";
 import { ExportCustomizerDialog } from "@/components/ExportCustomizerDialog";
 import { FolderDialog } from "@/components/FolderDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, Image as ImageIcon, MapPin, FolderOpen } from "lucide-react";
+import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, Image as ImageIcon, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { saveFile } from "@/lib/save-file";
@@ -90,11 +90,6 @@ function compressImage(file: File): Promise<string> {
   });
 }
 
-function formatNumber(value: number | undefined, fractionDigits = 0): string {
-  if (typeof value !== "number" || Number.isNaN(value)) return "";
-  return value.toLocaleString(undefined, { maximumFractionDigits: fractionDigits });
-}
-
 const ROCK_LAYER_OPTIONS = [
   "Sandstone bed",
   "Siltstone bed",
@@ -152,8 +147,6 @@ function MeasurementRow({
     onChange({ ...measurement, [k]: v });
   };
   const setDatasetId = (value: string) => onChange({ ...measurement, datasetId: value ? value : null });
-  const hasGps = typeof measurement.latitude === "number" && typeof measurement.longitude === "number";
-  const hasUtm = typeof measurement.utmEasting === "number" && typeof measurement.utmNorthing === "number" && !!measurement.utmZone;
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -170,9 +163,9 @@ function MeasurementRow({
   };
 
   return (
-    <div ref={rowRef} className="border rounded-xl bg-card shadow-sm overflow-hidden scroll-mt-4">
+    <div ref={rowRef} className="rounded-2xl border border-border/80 border-l-[3px] border-l-primary/50 bg-card shadow-sm overflow-hidden scroll-mt-4">
       {/* Collapsed header */}
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-center gap-3 bg-gradient-to-r from-primary/5 to-transparent px-4 py-4">
         {/* Photo thumbnail or index badge */}
         {photoUrl ? (
           <img
@@ -188,9 +181,10 @@ function MeasurementRow({
         )}
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{measurement.label || "Untitled measurement"}</p>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-primary">{measurement.measurementType === "lineation" ? "Lineation" : "Strike & Dip"}</p>
+          <p className="text-sm font-semibold truncate">{measurement.label || "Untitled measurement"}</p>
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-            <span className="text-xs font-mono text-primary">
+            <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold font-mono text-primary">
               {measurement.measurementType === "lineation"
                 ? `Azimuth ${measurement.trendDegrees?.toFixed(0).padStart(3, "0") ?? "--"}° / Plunge ${measurement.plungeDegrees ?? "--"}°`
                 : `Strike ${measurement.strike || "--"} / Dip ${measurement.dip || "--"}`}
@@ -200,9 +194,6 @@ function MeasurementRow({
             )}
             {measurement.rockLayerType && (
               <span className="text-xs text-muted-foreground">{measurement.rockLayerType}</span>
-            )}
-            {measurement.location && (
-              <span className="text-xs text-muted-foreground truncate">{measurement.location}</span>
             )}
           </div>
         </div>
@@ -217,10 +208,10 @@ function MeasurementRow({
 
       {/* Expanded editor */}
       {open && (
-        <div className="px-4 pb-4 pt-2 border-t bg-muted/30 space-y-3">
+        <div className="px-4 pb-4 pt-4 border-t border-primary/10 bg-muted/20 space-y-4">
           {/* Photo slot */}
           <div className="space-y-1">
-            <Label className="text-xs">Outcrop / Field Photo</Label>
+            <Label className="text-xs font-semibold text-foreground/80">Outcrop / Field Photo</Label>
             {!photoUrl && measurement.photoKey && <p className="text-xs text-muted-foreground">Photo saved to your account. Sync when connected to download it here.</p>}
             {photoUrl ? (
               <div className="relative inline-block">
@@ -278,22 +269,23 @@ function MeasurementRow({
             />
           </div>
 
-          <h3 className="text-sm font-semibold">{measurement.measurementType === "lineation" ? "Lineation Measurement" : "Strike & Dip Measurement"}</h3>
+          <h3 className="flex items-center gap-2 border-b border-primary/15 pb-2 text-sm font-semibold text-primary"><Compass className="h-4 w-4" aria-hidden="true" />{measurement.measurementType === "lineation" ? "Lineation Measurement" : "Strike & Dip Measurement"}</h3>
           {/* Fields grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="col-span-2 sm:col-span-3 space-y-1">
-              <Label className="text-xs">Label / Name</Label>
+              <Label className="text-xs font-semibold text-foreground/80">Label / Name</Label>
               <Input autoFocus={initiallyOpen} value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder={measurement.measurementType === "lineation" ? "e.g. Outcrop A — mineral lineation" : "e.g. Outcrop A — bedding plane"} className="h-9 text-sm" />
             </div>
             {measurement.measurementType === "lineation" ? <>
-              <div className="space-y-1"><Label className="text-xs">Azimuth</Label><Input type="text" inputMode="numeric" value={measurement.trendDegrees ?? ""} onChange={(e) => onChange({ ...measurement, trendDegrees: Number(e.target.value) })} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Azimuth in degrees" /></div>
-              <div className="space-y-1"><Label className="text-xs">Plunge</Label><Input type="text" inputMode="decimal" value={measurement.plungeDegrees ?? ""} onChange={(e) => onChange({ ...measurement, plungeDegrees: Number(e.target.value) })} placeholder="0–90°" className="h-10 text-base font-mono" aria-label="Plunge in degrees" /></div>
+              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Azimuth</Label><Input type="text" inputMode="numeric" value={measurement.trendDegrees ?? ""} onChange={(e) => onChange({ ...measurement, trendDegrees: Number(e.target.value) })} placeholder="0–359°" className="h-10 bg-card text-base font-semibold font-mono" aria-label="Azimuth in degrees" /></div>
+              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Plunge</Label><Input type="text" inputMode="decimal" value={measurement.plungeDegrees ?? ""} onChange={(e) => onChange({ ...measurement, plungeDegrees: Number(e.target.value) })} placeholder="0–90°" className="h-10 bg-card text-base font-semibold font-mono" aria-label="Plunge in degrees" /></div>
             </> : <>
-              <div className="space-y-1"><Label className="text-xs">Strike</Label><Input type="text" inputMode="numeric" value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} onBlur={() => upd("strike", normalizeStrike(measurement.strike))} placeholder="0–359°" className="h-10 text-base font-mono" aria-label="Strike in degrees" /></div>
-              <div className="space-y-1"><Label className="text-xs">Dip</Label><Input type="text" inputMode="decimal" value={measurement.dip} onChange={(e) => upd("dip", e.target.value)} onBlur={() => upd("dip", normalizeAngle(measurement.dip, 90))} placeholder="0–90°" className="h-10 text-base font-mono" aria-label="Dip in degrees" /></div>
+              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Strike</Label><Input type="text" inputMode="numeric" value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} onBlur={() => upd("strike", normalizeStrike(measurement.strike))} placeholder="0–359°" className="h-10 bg-card text-base font-semibold font-mono" aria-label="Strike in degrees" /></div>
+              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Dip</Label><Input type="text" inputMode="decimal" value={measurement.dip} onChange={(e) => upd("dip", e.target.value)} onBlur={() => upd("dip", normalizeAngle(measurement.dip, 90))} placeholder="0–90°" className="h-10 bg-card text-base font-semibold font-mono" aria-label="Dip in degrees" /></div>
             </>}
+            <div className="col-span-2 sm:col-span-3 flex items-center gap-2 pt-1"><span className="h-1.5 w-1.5 rounded-full bg-primary/60" /><h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Geology &amp; record details</h4></div>
             <div className="space-y-1">
-              <Label className="text-xs">Feature Type</Label>
+              <Label className="text-xs font-semibold text-foreground/80">Feature Type</Label>
               <select
                 className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
                 value={measurement.featureType}
@@ -324,7 +316,7 @@ function MeasurementRow({
                 />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Rock / Layer Type</Label>
+              <Label className="text-xs font-semibold text-foreground/80">Rock / Layer Type</Label>
               <div className="grid gap-1.5">
                 <select
                   className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
@@ -345,7 +337,7 @@ function MeasurementRow({
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Dataset</Label>
+              <Label className="text-xs font-semibold text-foreground/80">Dataset</Label>
               <select
                 className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
                 value={measurement.datasetId ?? ""}
@@ -360,40 +352,15 @@ function MeasurementRow({
               </select>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Location / Outcrop</Label>
-              <Input value={measurement.location} onChange={(e) => upd("location", e.target.value)} placeholder="e.g. GPS or site name" className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Date &amp; Time</Label>
+              <Label className="text-xs font-semibold text-foreground/80">Date &amp; Time</Label>
               <Input type="datetime-local" value={measurement.date} onChange={(e) => upd("date", e.target.value)} className="h-8 text-sm" />
             </div>
             <div className="col-span-2 sm:col-span-3 space-y-1">
-              <Label className="text-xs">Elevation (GPS)</Label>
+              <Label className="text-xs font-semibold text-foreground/80">Elevation (GPS)</Label>
               <p className="text-sm">{formatElevation(measurement.elevation, measurement.elevationAccuracy)}</p>
             </div>
-            {(hasGps || hasUtm) && (
-              <div className="col-span-2 sm:col-span-3 rounded-xl border bg-card p-3 text-xs space-y-2">
-                <div className="flex items-center gap-2 font-semibold text-muted-foreground uppercase tracking-wide">
-                  <MapPin className="w-3.5 h-3.5" />
-                  Coordinates
-                </div>
-                {hasGps && (
-                  <div className="font-mono">
-                    Lat/Long: {measurement.latitude!.toFixed(6)}, {measurement.longitude!.toFixed(6)}
-                    {typeof measurement.gpsAccuracy === "number" && (
-                      <span className="text-muted-foreground"> · ±{formatNumber(measurement.gpsAccuracy, 1)} m</span>
-                    )}
-                  </div>
-                )}
-                {hasUtm && (
-                  <div className="font-mono">
-                    UTM (WGS84): Zone {measurement.utmZone} · {formatNumber(measurement.utmEasting)} mE · {formatNumber(measurement.utmNorthing)} mN
-                  </div>
-                )}
-              </div>
-            )}
             <div className="col-span-2 sm:col-span-3 space-y-1">
-              <Label className="text-xs">Notes</Label>
+              <Label className="text-xs font-semibold text-foreground/80">Notes</Label>
               <Input value={measurement.notes} onChange={(e) => upd("notes", e.target.value)} placeholder="Fold vergence, shear sense, quality of measurement…" className="h-8 text-sm" />
             </div>
           </div>
