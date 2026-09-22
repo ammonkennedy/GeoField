@@ -152,7 +152,7 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
         if CLLocationManager.headingAvailable() { location.startUpdatingHeading() }
         motion.deviceMotionUpdateInterval = 1.0 / 30.0
         let frames = CMMotionManager.availableAttitudeReferenceFrames()
-        let requestedReference = call.getString("northReference") ?? "true"
+        let requestedReference = call.getString("northReference") ?? "magnetic"
         let frame: CMAttitudeReferenceFrame
         let activeNorthReference: String
         switch requestedReference {

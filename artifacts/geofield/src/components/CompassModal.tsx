@@ -51,7 +51,7 @@ const STABILITY_WINDOW = 24, AZIMUTH_TOLERANCE = 3, DIP_TOLERANCE = 2;
 const NORTH_REFERENCE_KEY = "geofield_north_reference";
 const emptyFiltered = () => ({ strike: null as number | null, dipDirection: null as number | null, dip: 0, strikeVector: null as Vector3 | null, downDipVector: null as Vector3 | null, screenStrikeVector: null as ScreenVector | null, screenDownDipVector: null as ScreenVector | null, screenNorthVector: null as ScreenVector | null });
 const loadNorthReference = (): NorthReferencePreference =>
-  localStorage.getItem(NORTH_REFERENCE_KEY) === "magnetic" ? "magnetic" : "true";
+  localStorage.getItem(NORTH_REFERENCE_KEY) === "true" ? "true" : "magnetic";
 const fmt = (value: number | null) => value === null ? "—" : `${Math.round(normalizeAzimuth(value)).toString().padStart(3, "0")}°`;
 const signedAngle = (angle: number) => ((angle + 540) % 360) - 180;
 const degrees = (radians: number) => radians * 180 / Math.PI;
@@ -393,7 +393,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
     <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-y-contain px-5 pb-6 pt-4 [-webkit-overflow-scrolling:touch]">
       <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Tap the large compass face to hold the reading while you move the phone.</span></div>
       <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="North reference">
-        {(["true", "magnetic"] as const).map((value) => <button key={value} type="button" aria-label={`Use ${value} north`} aria-pressed={selectedNorthReference === value} onClick={() => selectNorthReference(value)} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedNorthReference === value ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>{value === "true" ? "True North" : "Magnetic North"}</button>)}
+        {(["true", "magnetic"] as const).map((value) => <button key={value} type="button" aria-label={`Use ${value} north`} aria-pressed={selectedNorthReference === value} onClick={() => selectNorthReference(value)} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedNorthReference === value ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}><span className="block">{value === "true" ? "True North" : "Magnetic North"}</span>{value === "magnetic" && <span className="mt-0.5 block text-[10px] font-normal">(preferred)</span>}</button>)}
       </div>
       <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="Measurement mode">
         <button type="button" aria-pressed={mode === "plane"} onClick={() => setMode("plane")} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${mode === "plane" ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}>Strike &amp; Dip</button>
@@ -431,7 +431,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
           </div>
           {mode === "lineation" && <button type="button" onClick={flipLineDirection} className="mx-auto mt-2 block min-h-10 rounded-lg border border-white/15 bg-white/5 px-4 text-xs font-semibold text-slate-200 hover:bg-white/10">Flip Direction{lineFlipped ? " (flipped)" : ""}</button>}
           {mode === "plane"
-            ? <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Water-flow direction</span></div>
+            ? <div className="mt-1 flex items-center justify-center gap-4 text-[9px] uppercase tracking-wider text-slate-500"><span className="flex items-center gap-1"><span className="h-0.5 w-4 bg-blue-400" />Horizontal strike line</span><span className="flex items-center gap-1"><span className="h-0.5 w-4 border-t-2 border-dashed border-amber-400" />Dip angle</span></div>
             : <p className="mt-1 text-center text-[9px] uppercase tracking-wider text-slate-500">Align the blue center line with the linear feature; the arrow marks the measured direction</p>}
           {status === "starting" && <div className="absolute inset-0 flex items-center justify-center bg-[#080d14]/55 backdrop-blur-[1px]" aria-live="polite"><div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#0d1117]/95 px-4 py-2.5 text-sm text-slate-200 shadow-xl"><span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300/30 border-t-blue-300" aria-hidden="true" />Starting sensors…</div></div>}
         </div>

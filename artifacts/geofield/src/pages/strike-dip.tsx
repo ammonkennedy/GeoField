@@ -310,18 +310,18 @@ function MeasurementRow({
                 <option>Joint / fracture</option>
                 <option>Vein</option>
                 <option>Contact</option>
-                <option>Unconformity</option></>}
+                <option>Unconformity</option>
+                {measurement.featureType && !["Bedding plane", "Fault plane", "Foliation", "Cleavage", "Joint / fracture", "Vein", "Contact", "Unconformity", "Other"].includes(measurement.featureType) && <option>{measurement.featureType}</option>}
+                </>}
                 <option>Other</option>
               </select>
-              {measurement.measurementType === "lineation" && (
-                <Input
+              <Input
                   value={measurement.featureType ?? ""}
                   onChange={(e) => upd("featureType", e.target.value)}
-                  placeholder="Or type your own lineation feature type"
-                  aria-label="Custom lineation feature type"
+                  placeholder={measurement.measurementType === "lineation" ? "Or type your own lineation feature type" : "Or type your own feature type"}
+                  aria-label={measurement.measurementType === "lineation" ? "Custom lineation feature type" : "Custom strike and dip feature type"}
                   className="h-8 text-sm"
                 />
-              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Rock / Layer Type</Label>
@@ -797,7 +797,9 @@ export default function StrikeDipPage() {
               <Label htmlFor="manual-feature">Feature Type</Label>
               <select id="manual-feature" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm" value={manualDraft.featureType} onChange={(e) => setManualDraft((draft) => ({ ...draft, featureType: e.target.value }))}>
                 <option value="">Select…</option><option>Bedding plane</option><option>Fault plane</option><option>Foliation</option><option>Cleavage</option><option>Joint / fracture</option><option>Other</option>
+                {manualDraft.featureType && !["Bedding plane", "Fault plane", "Foliation", "Cleavage", "Joint / fracture", "Other"].includes(manualDraft.featureType) && <option>{manualDraft.featureType}</option>}
               </select>
+              <Input value={manualDraft.featureType ?? ""} onChange={(e) => setManualDraft((draft) => ({ ...draft, featureType: e.target.value }))} placeholder="Or type your own feature type" aria-label="Custom strike and dip feature type" className="h-8 text-sm" />
             </div>
           </div>
           <div className="flex justify-end gap-3 border-t pt-4">
