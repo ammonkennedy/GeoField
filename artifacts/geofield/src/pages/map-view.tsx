@@ -1,3 +1,4 @@
+import { parseMacrostratSelection } from "@/lib/macrostrat-service";
 import { addDetailedTrails, removeDetailedTrails, showDetailedTrailPopup } from "@/lib/detailed-trail-overlay";
 import { applyBaseMap } from "@/lib/base-map";
 import { exportMapImage } from "@/lib/export-map";
@@ -26,7 +27,7 @@ import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT
 import { geocodeAddress, geocodeAddressSuggestions, type GeocodeResult } from "@/lib/geocoding";
 import { lookupSoil } from "@/lib/soil-data";
 import { CombinedGeologyInfo } from "@/components/CombinedGeologyInfo";
-import { ensureMacrostratLayer, setMacrostratOpacity, setMacrostratVisibility } from "@/lib/macrostrat-layer";
+import { renderedMacrostratUnit, ensureMacrostratLayer, setMacrostratOpacity, setMacrostratVisibility } from "@/lib/macrostrat-layer";
 import { MACROSTRAT_DEFAULT_OPACITY } from "@/lib/macrostrat-config";
 import { queryCombinedGeology, type CombinedGeology } from "@/lib/combined-geology";
 import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
@@ -595,7 +596,10 @@ export default function MapViewPage() {
           geologyRequestRef.current = controller;
           const requestId = ++geologyRequestIdRef.current;
           try {
-            const geology = await queryCombinedGeology(lat, lng, controller.signal);
+            const unit = renderedMacrostratUnit(map, e.point);
+            const selected = parseMacrostratSelection({ data: unit ? [unit] : [] });
+            const geology = await queryCombinedGeology(lat, lng, controller.signal, selected);
+            if (!selected) geology.warnings.unshift("No visible geology unit at this point. Let the overlay load, then tap inside a colored area.");
             if (controller.signal.aborted || requestId !== geologyRequestIdRef.current) return;
             setGeoInfo({ loading: false, lngLat: [lng, lat], geology });
           } catch (error) {

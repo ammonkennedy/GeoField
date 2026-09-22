@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { macrostratSourceQueryUrl, macrostratUnitQueryUrl } from "./macrostrat-config.ts";
-import { ensureMacrostratLayer, setMacrostratVisibility } from "./macrostrat-layer.ts";
+import { renderedMacrostratUnit, ensureMacrostratLayer, setMacrostratVisibility } from "./macrostrat-layer.ts";
 import { clearMacrostratSourceCache, parseMacrostratSelection, queryMacrostratGeology } from "./macrostrat-service.ts";
 
 test("coordinate query sends latitude as lat and longitude as lng", () => {
@@ -15,15 +15,15 @@ test("source URL construction preserves source id", () => {
   assert.equal(new URL(macrostratSourceQueryUrl(42)).searchParams.get("source_id"), "42");
 });
 
-test("parser selects the most informative unit and tolerates missing fields", () => {
+test("parser preserves selected unit identity instead of preferring richer descriptions", () => {
   const selection = parseMacrostratSelection({ success: { data: [
     { name: "Generic unit" },
     { name: "Raleigh Gneiss", source_id: 12, strat_name: "Raleigh", lith: "gneiss", descrip: "Metamorphic rock", t_int_name: "Neoproterozoic", color: "aabbcc" },
   ], refs: { "12": "State Geological Survey" } } });
-  assert.equal(selection?.displayName, "Raleigh Gneiss");
-  assert.equal(selection?.lithology, "gneiss");
-  assert.equal(selection?.age, "Neoproterozoic");
-  assert.equal(selection?.source, "State Geological Survey");
+  assert.equal(selection?.displayName, "Generic unit");
+  assert.equal(selection?.lithology, undefined);
+  assert.equal(selection?.age, undefined);
+  assert.equal(selection?.source, undefined);
   assert.equal(parseMacrostratSelection({ success: { data: [] } }), null);
   assert.equal(parseMacrostratSelection({}), null);
 });
@@ -42,7 +42,7 @@ test("layer creation is idempotent and visibility can be toggled", () => {
   ensureMacrostratLayer(map, 0.65);
   ensureMacrostratLayer(map, 0.5);
   assert.equal(sources.size, 1);
-  assert.equal(layers.size, 1);
+  assert.equal(layers.size, 2);
   setMacrostratVisibility(map, false);
   assert.equal(layers.get("geology-overlay").layout.visibility, "none");
 });
@@ -92,4 +92,21 @@ test("an aborted rapid-tap request cannot complete", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test("hit testing selects the top rendered polygon at the exact point", () => {
+  const point = { x: 120, y: 230 };
+  const selected = { map_id: 1, color: "00ff00", name: "Green unit" };
+  const map = {
+    getLayer: () => true,
+    queryRenderedFeatures: (position: unknown, options: unknown) => {
+      assert.deepEqual(position, [point.x, point.y]);
+      assert.deepEqual(options, { layers: ["geology-overlay"] });
+      return [{ properties: selected }, { properties: { map_id: 2, color: "ff00ff", descrip: "Richer but hidden unit" } }];
+    },
+  };
+  assert.equal(renderedMacrostratUnit(map, point), selected);
+  assert.equal(renderedMacrostratUnit({ getLayer: () => false }, point), null);
+  assert.equal(renderedMacrostratUnit({ getLayer: () => true, queryRenderedFeatures: () => [] }, point), null);
 });

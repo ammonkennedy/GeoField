@@ -1,3 +1,5 @@
+import { ensureMacrostratLayer, setMacrostratOpacity, renderedMacrostratUnit } from "@/lib/macrostrat-layer";
+import { parseMacrostratSelection } from "@/lib/macrostrat-service";
 import { loadTrips, saveTrips, deleteTripRecord, TRIPS_UPDATED, type Trip, type PlannedSite } from "@/lib/trips";
 import { addDetailedTrails, removeDetailedTrails, showDetailedTrailPopup } from "@/lib/detailed-trail-overlay";
 import { applyBaseMap } from "@/lib/base-map";
@@ -30,14 +32,13 @@ type OverlayLayer = "none" | "geology" | "soil" | "trails";
 const SATELLITE_IMAGERY_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
 const ESRI_STREET_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
-const GEO_TILES    = "https://tiles.macrostrat.org/carto/{z}/{x}/{y}.png";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
 const SOIL_WMS     =
   "https://SDMDataAccess.sc.egov.usda.gov/Spatial/SDM.wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image%2Fpng&TRANSPARENT=TRUE&LAYERS=mapunitpoly&STYLES=default&WIDTH=256&HEIGHT=256&SRS=EPSG%3A3857&BBOX={bbox-epsg-3857}";
 
 function safeRemoveOverlays(map: any) {
   removeDetailedTrails(map);
-  for (const id of ["geology-overlay", "soil-overlay", "trails-overlay"]) {
+  for (const id of ["geology-lines", "geology-overlay", "soil-overlay", "trails-overlay"]) {
     try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
   }
   for (const id of ["geology", "soil", "trails-src"]) {
@@ -48,8 +49,8 @@ function safeRemoveOverlays(map: any) {
 function safeAddOverlay(map: any, overlay: OverlayLayer) {
   try {
     if (overlay === "geology") {
-      map.addSource("geology", { type: "raster", tiles: [GEO_TILES], tileSize: 256, attribution: "© Macrostrat" });
-      map.addLayer({ id: "geology-overlay", type: "raster", source: "geology", paint: { "raster-opacity": 0.65 } }, "labels");
+      ensureMacrostratLayer(map);
+      if (map.getLayer("labels")) map.moveLayer("geology-overlay", "labels");
     } else if (overlay === "soil") {
       map.addSource("soil", { type: "raster", tiles: [SOIL_WMS], tileSize: 256, minzoom: 4, maxzoom: 18, attribution: "USDA NRCS SSURGO via Soil Data Access" });
       map.addLayer({ id: "soil-overlay", type: "raster", source: "soil", paint: { "raster-opacity": 0.65 } }, "labels");
@@ -256,7 +257,7 @@ export default function TripPlannerPage() {
   useEffect(() => { terrainRef.current = terrain; }, [terrain]);
   useEffect(() => {
     if (!mapInstanceRef.current || !mapLoadedRef.current || overlayLayer !== "geology") return;
-    try { mapInstanceRef.current.setPaintProperty("geology-overlay", "raster-opacity", geologyOpacity); } catch {}
+    try { setMacrostratOpacity(mapInstanceRef.current, geologyOpacity); } catch {}
   }, [geologyOpacity, overlayLayer]);
 
   // Sync custom layers from localStorage
@@ -592,7 +593,7 @@ export default function TripPlannerPage() {
             if (overlayLayerRef.current !== "none") {
               safeAddOverlay(map, overlayLayerRef.current);
               if (overlayLayerRef.current === "geology") {
-                try { map.setPaintProperty("geology-overlay", "raster-opacity", geologyOpacity); } catch {}
+                try { setMacrostratOpacity(map, geologyOpacity); } catch {}
               }
             }
 
@@ -634,18 +635,15 @@ export default function TripPlannerPage() {
 
             if (over === "geology") {
               try {
-                const r = await fetch(
-                  `https://macrostrat.org/api/v2/geologic_units/burwell?lat=${lat}&lng=${lng}&response=short`
-                );
-                const d = await r.json();
-                const unit = d?.success?.data?.[0];
+                const properties = renderedMacrostratUnit(map, e.point);
+                const selection = parseMacrostratSelection({ data: properties ? [properties] : [] });
+                const unit = selection?.unit;
                 if (unit) {
                   setGeoInfo({
                     loading: false, lngLat: [lng, lat],
                     data: {
-                      Formation: unit.strat_name_long || unit.map_unit_name || "Unknown",
+                      Formation: selection?.displayName || "Unknown",
                       Age:       [unit.t_int_name, unit.b_int_name].filter(Boolean).join(" – ") || "—",
-                      Era:       unit.era || "—",
                       Lithology: unit.lith || "—",
                       Description: unit.descrip || "—",
                     },
@@ -723,7 +721,7 @@ export default function TripPlannerPage() {
     if (overlayLayer !== "none") {
       safeAddOverlay(mapInstanceRef.current, overlayLayer);
       if (overlayLayer === "geology") {
-        try { mapInstanceRef.current.setPaintProperty("geology-overlay", "raster-opacity", geologyOpacity); } catch {}
+        try { setMacrostratOpacity(mapInstanceRef.current, geologyOpacity); } catch {}
       }
     }
   }, [overlayLayer]);

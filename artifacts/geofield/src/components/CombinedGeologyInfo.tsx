@@ -10,10 +10,10 @@ function UnitDetails({ unit }: { unit: Record<string, unknown> }) {
 
 export function CombinedGeologyInfo({ geology }: { geology: CombinedGeology }) {
   return <div className="space-y-4 break-words">
-    <p className="text-xs text-muted-foreground">Two map sources at this location. Map colors are from Macrostrat. Sources may differ in scale, boundaries, and interpretation; additional descriptions do not increase mapped precision.</p>
+    <p className="text-xs text-muted-foreground">The selected Macrostrat unit is the polygon you tapped. USGS provides a separate comparison at the same coordinates. Sources may differ in scale, boundaries, and interpretation; additional descriptions do not increase mapped precision.</p>
     {geology.warnings.map(warning => <p key={warning} role="status" className="text-xs text-amber-700 dark:text-amber-400">{warning}</p>)}
-    <section className="space-y-2"><h4 className="font-semibold text-sm">Macrostrat geology</h4><MacrostratGeologyInfo selection={geology.macrostrat} /></section>
-    <section className="space-y-3 border-t pt-3"><h4 className="font-semibold text-sm">USGS surface geology</h4>
+    <section className="space-y-2"><h4 className="font-semibold text-sm">Selected map unit · Macrostrat</h4><MacrostratGeologyInfo selection={geology.macrostrat} /></section>
+    <section className="space-y-3 border-t pt-3"><h4 className="font-semibold text-sm">USGS comparison · separate map</h4>
       {!geology.usgs.length && <p className="text-sm text-muted-foreground">No USGS unit returned at this location.</p>}
       {geology.usgs.map((unit, index) => <div key={`${unit.code}-${index}`} className="space-y-3 border-t pt-2">
         {unit.original && <div className="space-y-2"><h5 className="text-xs font-semibold">Original map description</h5><UnitDetails unit={unit.original} /></div>}

@@ -1,4 +1,4 @@
-import { queryMacrostratGeology } from './macrostrat-service.ts';
+import { queryMacrostratGeology, enrichMacrostratSelection } from './macrostrat-service.ts';
 import type { MacrostratSelection } from './macrostrat-types.ts';
 
 export const USGS_GEOLOGY_URL = 'https://services.arcgis.com/v01gqwM5QqNysAAi/arcgis/rest/services/National_Earth_Surface_v2/FeatureServer';
@@ -34,7 +34,7 @@ export async function queryUsgsGeology(latitude: number, longitude: number, sign
   }));
 }
 
-export async function queryCombinedGeology(latitude: number, longitude: number, signal?: AbortSignal): Promise<CombinedGeology> {
+export async function queryCombinedGeology(latitude: number, longitude: number, signal?: AbortSignal, renderedSelection?: MacrostratSelection | null): Promise<CombinedGeology> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) controller.abort();
@@ -42,12 +42,14 @@ export async function queryCombinedGeology(latitude: number, longitude: number, 
   const timeout = setTimeout(abort, 12000);
   try {
     const [macrostrat, usgs] = await Promise.allSettled([
-      queryMacrostratGeology(latitude, longitude, controller.signal),
+      renderedSelection === undefined
+        ? queryMacrostratGeology(latitude, longitude, controller.signal)
+        : enrichMacrostratSelection(renderedSelection, controller.signal),
       queryUsgsGeology(latitude, longitude, controller.signal),
     ]);
     if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
     return {
-      macrostrat: macrostrat.status === 'fulfilled' ? macrostrat.value : null,
+      macrostrat: macrostrat.status === 'fulfilled' ? macrostrat.value : renderedSelection ?? null,
       usgs: usgs.status === 'fulfilled' ? usgs.value : [],
       warnings: [macrostrat.status === 'rejected' ? 'Macrostrat is temporarily unavailable. Tap the map to retry.' : '', usgs.status === 'rejected' ? 'USGS is temporarily unavailable. Tap the map to retry.' : ''].filter(Boolean),
     };

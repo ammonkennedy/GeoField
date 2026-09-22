@@ -58,3 +58,17 @@ test('USGS remains available if Macrostrat fails', async () => {
     assert.match(result.warnings[0], /Macrostrat/);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('rendered unit stays selected without a coordinate lookup even when USGS differs', async () => {
+  const originalFetch = globalThis.fetch;
+  const selected = { unit: { map_id: 123, name: 'Visible green unit', color: '00ff00' }, displayName: 'Visible green unit', color: '00ff00' };
+  globalThis.fetch = async input => {
+    assert.ok(String(input).includes('FeatureServer'), 'must not replace the visible polygon with a coordinate lookup');
+    return Response.json({ features: [] });
+  };
+  try {
+    const result = await queryCombinedGeology(40, -111, undefined, selected);
+    assert.equal(result.macrostrat, selected);
+    assert.equal((await queryCombinedGeology(40, -111, undefined, null)).macrostrat, null);
+  } finally { globalThis.fetch = originalFetch; }
+});

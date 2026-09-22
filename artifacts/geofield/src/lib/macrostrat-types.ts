@@ -14,6 +14,10 @@ export interface MacrostratUnit {
   color?: string;
   source?: string;
   ref?: string;
+  ref_authors?: string;
+  ref_title?: string;
+  ref_source?: string;
+  ref_year?: string;
 }
 
 export interface MacrostratSelection {
