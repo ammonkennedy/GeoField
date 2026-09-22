@@ -6,7 +6,7 @@ import { Download, FolderOpen, Layers, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ExportCustomizerDialog } from "./ExportCustomizerDialog";
 import { exportDatasetWorkbookWithConfig, getSampleColumns, SAMPLE_TYPE_SHEETS, type SampleTypeSheetKey } from "@/lib/export";
-import { DEFAULT_FORMAT_CONFIG } from "@/lib/export-config";
+import { DEFAULT_FORMAT_CONFIG, STRIKE_DIP_COLUMNS } from "@/lib/export-config";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
@@ -84,7 +84,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
 
   // Match the workbook's visible sheet order so the user can predict the file.
   const sheetGroups = useMemo(
-    () => SAMPLE_TYPE_SHEETS.flatMap((sheet) => {
+    () => [...SAMPLE_TYPE_SHEETS.flatMap((sheet) => {
       const typeSamples = samplesToExport.filter((sample) => sample.sampleType === sheet.key);
       if (typeSamples.length === 0) return [];
       return [{
@@ -93,9 +93,9 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
         count: typeSamples.length,
         columns: getSampleColumns(typeSamples),
       }];
-    }),
+    }), ...(measurementCount > 0 ? [{ key: "measurements", label: "Measurements sheet", count: measurementCount, columns: STRIKE_DIP_COLUMNS.map(column => ({ ...column })) }] : [])],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [customizerOpen, samplesToExport]
+    [customizerOpen, samplesToExport, measurementCount]
   );
   const savedConfig = DEFAULT_FORMAT_CONFIG;
 
@@ -119,7 +119,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
 
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Choose a dataset to export samples and strike/dip measurements together.
+              Choose a dataset to export samples and measurements together.
             </p>
 
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -128,7 +128,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
                   icon={<Layers className="w-4 h-4" />}
                   label="All Data"
                   count={(allSamples?.length ?? 0) + (allMeasurements?.length ?? 0)}
-                  detail={`${allSamples?.length ?? 0} samples · ${allMeasurements?.length ?? 0} strike/dip`}
+                  detail={`${allSamples?.length ?? 0} samples · ${allMeasurements?.length ?? 0} measurements`}
                   selected={selected === "all"}
                   onClick={() => setSelected("all")}
                 />
@@ -142,7 +142,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
                     (allSamples || []).filter((s) => String(s.folderId ?? "") === String(folder.id)).length +
                     (allMeasurements || []).filter((m) => String(m.datasetId ?? "") === String(folder.id)).length
                   }
-                  detail={`${(allSamples || []).filter((s) => String(s.folderId ?? "") === String(folder.id)).length} samples · ${(allMeasurements || []).filter((m) => String(m.datasetId ?? "") === String(folder.id)).length} strike/dip`}
+                  detail={`${(allSamples || []).filter((s) => String(s.folderId ?? "") === String(folder.id)).length} samples · ${(allMeasurements || []).filter((m) => String(m.datasetId ?? "") === String(folder.id)).length} measurements`}
                   selected={String(selected) === String(folder.id)}
                   onClick={() => setSelected(folder.id)}
                 />
@@ -152,7 +152,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
                   icon={<FolderOpen className="w-4 h-4 opacity-40" />}
                   label="Uncategorized"
                   count={uncategorizedCount + uncategorizedMeasurementCount}
-                  detail={`${uncategorizedCount} samples · ${uncategorizedMeasurementCount} strike/dip`}
+                  detail={`${uncategorizedCount} samples · ${uncategorizedMeasurementCount} measurements`}
                   selected={selected === "uncategorized"}
                   onClick={() => setSelected("uncategorized")}
                   muted
@@ -182,20 +182,21 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
         open={customizerOpen}
         onOpenChange={setCustomizerOpen}
         title="Customize Export"
-        subtitle={`${sampleCount} sample${sampleCount !== 1 ? "s" : ""} and ${measurementCount} strike/dip measurement${measurementCount !== 1 ? "s" : ""} from "${folderName}"`}
+        subtitle={`${sampleCount} sample${sampleCount !== 1 ? "s" : ""} and ${measurementCount} measurement${measurementCount !== 1 ? "s" : ""} from "${folderName}"`}
         initialColumns={[]}
         initialGroups={sheetGroups}
-        trailingSheets={measurementCount > 0 ? [{ label: "Strike & Dip sheet", count: measurementCount }] : []}
         initialConfig={savedConfig}
         configKey="samples"
         exportLabel={`Export ${count} record${count !== 1 ? "s" : ""}`}
         initialFileName={filename}
         onExportGroups={async (groups, config, chosenFileName) => {
+          const measurementGroup = groups.find(group => group.key === "measurements");
+          const sampleGroups = groups.filter(group => group.key !== "measurements");
           const sampleColumnsByType = Object.fromEntries(
-            groups.map((group) => [group.key, group.columns])
+            sampleGroups.map((group) => [group.key, group.columns])
           ) as Partial<Record<SampleTypeSheetKey, typeof groups[number]["columns"]>>;
           const sampleCustomRowsByType = Object.fromEntries(
-            groups.map((group) => [group.key, group.customRows || []])
+            sampleGroups.map((group) => [group.key, group.customRows || []])
           );
           await exportDatasetWorkbookWithConfig({
             samples: samplesToExport,
@@ -206,6 +207,8 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
             sampleColumnsByType,
             sampleCustomRowsByType,
             sampleConfig: config,
+            measurementColumns: measurementGroup?.columns,
+            measurementCustomRows: measurementGroup?.customRows,
           });
         }}
       />

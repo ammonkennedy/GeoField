@@ -315,7 +315,7 @@ export function ExportCustomizerDialog({
                 <div className="rounded-xl border bg-card p-3">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Add the row to</p>
                   <div className="grid grid-cols-2 gap-2">
-                    <Button type="button" size="sm" onClick={() => addRowToGroups("all")}>All sample types</Button>
+                    <Button type="button" size="sm" onClick={() => addRowToGroups("all")}>All sheets</Button>
                     {groups.map((group) => <Button key={group.key} type="button" size="sm" variant="outline" onClick={() => addRowToGroups(group.key)}>{group.label}</Button>)}
                   </div>
                 </div>

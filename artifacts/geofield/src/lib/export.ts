@@ -11,11 +11,11 @@ import {
   loadColumnPrefs,
   type ExportColumn,
   type ExportFormatConfig,
-} from "./export-config";
+} from "./export-config.ts";
 import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
-import { saveFile } from "./save-file";
+import { saveFile } from "./save-file.ts";
 
-export { getSampleColumns } from "./export-config";
+export { getSampleColumns } from "./export-config.ts";
 
 export type DatasetLookupItem = { id: number | string; name: string };
 
@@ -83,7 +83,7 @@ export async function exportSamplesWithConfig(
   );
 }
 
-export async function exportDatasetWorkbookWithConfig({
+export function buildDatasetWorkbook({
   samples,
   measurements,
   datasets,
@@ -92,6 +92,8 @@ export async function exportDatasetWorkbookWithConfig({
   sampleColumnsByType,
   sampleCustomRowsByType,
   sampleConfig,
+  measurementColumns,
+  measurementCustomRows,
 }: {
   samples: Sample[];
   measurements: StrikeDipMeasurement[];
@@ -101,6 +103,8 @@ export async function exportDatasetWorkbookWithConfig({
   sampleColumnsByType: Partial<Record<SampleTypeSheetKey, ExportColumn[]>>;
   sampleCustomRowsByType?: Partial<Record<SampleTypeSheetKey, ExportFormatConfig["customRows"]>>;
   sampleConfig: ExportFormatConfig;
+  measurementColumns?: ExportColumn[];
+  measurementCustomRows?: ExportFormatConfig["customRows"];
 }) {
   if ((!samples || samples.length === 0) && (!measurements || measurements.length === 0)) return;
 
@@ -124,8 +128,8 @@ export async function exportDatasetWorkbookWithConfig({
   }
 
   if (measurements.length > 0) {
-    const strikeColumns = STRIKE_DIP_COLUMNS;
-    const strikeConfig = { ...sampleConfig, customRows: [], sheetName: "Strike & Dip" };
+    const strikeColumns = measurementColumns ?? STRIKE_DIP_COLUMNS;
+    const strikeConfig = { ...sampleConfig, customRows: measurementCustomRows ?? [], sheetName: "Measurements" };
     const strikeRows = measurements.map((measurement, index) =>
       strikeDipToDataRow(measurement, index, datasetNameForId(measurement.datasetId, datasets))
     );
@@ -136,6 +140,13 @@ export async function exportDatasetWorkbookWithConfig({
     );
   }
 
+  return workbook;
+}
+
+export async function exportDatasetWorkbookWithConfig(options: Parameters<typeof buildDatasetWorkbook>[0]) {
+  const workbook = buildDatasetWorkbook(options);
+  if (!workbook) return;
+  const { filename } = options;
   const output = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
   await saveFile(
     new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
