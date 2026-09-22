@@ -23,6 +23,18 @@ export const bearingInMirroredTrueNorthFrame = (trueBearing: number, declination
 export const calibratedStrike = (strike: number | null, offsetDegrees = 10) =>
   strike === null ? null : normalizeAzimuth(strike + offsetDegrees);
 
+/** Apply the compass calibration once, preserving plunge and vector consistency. */
+export function calibratedLineation(orientation: LineationOrientation | null, offsetDegrees = 10): LineationOrientation | null {
+  if (!orientation) return null;
+  const angle = offsetDegrees * Math.PI / 180;
+  const { east, north, up } = orientation.vector;
+  return {
+    ...orientation,
+    trend: normalizeAzimuth(orientation.trend + offsetDegrees),
+    vector: { east: east * Math.cos(angle) + north * Math.sin(angle), north: north * Math.cos(angle) - east * Math.sin(angle), up },
+  };
+}
+
 /** Convert a world-space line into the geological down-plunge convention. */
 export function lineationOrientationFromVector(input: Vector3): LineationOrientation | null {
   const length = Math.hypot(input.east, input.north, input.up);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, circularMean, deviceVectorToScreen, flipLineationDirection, horizontalPlaneAxesFromNormal, lineationOrientationFromVector, mirroredTrueNorthHeading, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
+import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedLineation, calibratedStrike, circularMean, deviceVectorToScreen, flipLineationDirection, horizontalPlaneAxesFromNormal, lineationOrientationFromVector, mirroredTrueNorthHeading, normalForDip, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, rightHandStrikeFromDipDirection, type RotationMatrix3 } from "./strike-dip-math.ts";
 
 const close = (actual: number | null, expected: number, tolerance = 1e-6) => assert.ok(actual !== null && Math.abs(actual - expected) < tolerance, `${actual} ≈ ${expected}`);
 
@@ -153,4 +153,20 @@ test("rolling the phone rotates the screen line oppositely so it remains level i
   assert.ok(screen);
   close(screen.right, -Math.cos(angle));
   close(screen.up, Math.sin(angle));
+});
+
+
+test("lineation calibration adds ten degrees, wraps north, and preserves plunge", () => {
+  for (const trend of [0, 123, 355]) {
+    const angle = trend * Math.PI / 180;
+    const original = { trend, plunge: 30, vector: { east: Math.cos(Math.PI / 6) * Math.sin(angle), north: Math.cos(Math.PI / 6) * Math.cos(angle), up: -0.5 } };
+    const result = calibratedLineation(original)!;
+    close(result.trend, normalizeAzimuth(trend + 10));
+    close(result.plunge, 30);
+    close(lineationOrientationFromVector(result.vector)!.trend, result.trend);
+    close(lineationOrientationFromVector(result.vector)!.plunge, 30);
+    close(original.trend, trend);
+    close(calibratedLineation(original)!.trend, result.trend);
+  }
+  assert.equal(calibratedLineation(null), null);
 });

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import { AlertTriangle, CheckCircle, Pause, Smartphone, X } from "lucide-react";
 import { Button } from "./ui/button";
-import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedStrike, deviceVectorToScreen, flipLineationDirection, horizontalPlaneAxesFromNormal, lineationOrientationFromVector, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type LineationOrientation, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
+import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedLineation, calibratedStrike, deviceVectorToScreen, flipLineationDirection, horizontalPlaneAxesFromNormal, lineationOrientationFromVector, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type LineationOrientation, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
 export type NorthReferencePreference = "true" | "magnetic";
 type SensorReading = {
@@ -52,7 +52,7 @@ const NORTH_REFERENCE_KEY = "geofield_north_reference";
 const emptyFiltered = () => ({ strike: null as number | null, dipDirection: null as number | null, dip: 0, strikeVector: null as Vector3 | null, downDipVector: null as Vector3 | null, screenStrikeVector: null as ScreenVector | null, screenDownDipVector: null as ScreenVector | null, screenNorthVector: null as ScreenVector | null });
 const loadNorthReference = (): NorthReferencePreference =>
   localStorage.getItem(NORTH_REFERENCE_KEY) === "true" ? "true" : "magnetic";
-const fmt = (value: number | null) => value === null ? "—" : `${Math.round(normalizeAzimuth(value)).toString().padStart(3, "0")}°`;
+const fmt = (value: number | null) => value === null ? "—" : `${normalizeAzimuth(Math.round(value)).toString().padStart(3, "0")}°`;
 const signedAngle = (angle: number) => ((angle + 540) % 360) - 180;
 const degrees = (radians: number) => radians * 180 / Math.PI;
 const upwardUnitNormal = (normal: Vector3): Vector3 | null => {
@@ -308,6 +308,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   }, [open, onClose]);
 
   const hasDeclination = typeof reading?.trueHeading === "number" && typeof reading?.magneticHeading === "number";
+  const adjustedLineation = calibratedLineation(lineation);
   const northReference = activeNorthReference ?? selectedNorthReference;
   const declination = hasDeclination ? signedAngle(reading!.trueHeading! - reading!.magneticHeading!) : undefined;
   const accuracyLow = typeof reading?.headingAccuracy === "number" && reading.headingAccuracy > 20;
@@ -350,8 +351,8 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const capture = () => {
     if (!canCapture || !heldRef.current) return;
     if (mode === "lineation") {
-      if (!lineation || !reading) return;
-      onCapture({ measurementType: "lineation", trendDegrees: Math.round(lineation.trend), plungeDegrees: Number(lineation.plunge.toFixed(1)), northReference, referenceFrame: northReference, compassAccuracy: reading.headingAccuracy, lineVector: lineation.vector, quality: lineStable ? "stable" : "unstable" });
+      if (!adjustedLineation || !reading) return;
+      onCapture({ measurementType: "lineation", trendDegrees: normalizeAzimuth(Math.round(adjustedLineation.trend)), plungeDegrees: Number(adjustedLineation.plunge.toFixed(1)), northReference, referenceFrame: northReference, compassAccuracy: reading.headingAccuracy, lineVector: adjustedLineation.vector, quality: lineStable ? "stable" : "unstable" });
       onClose();
       return;
     }
@@ -404,7 +405,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       {(status === "starting" || status === "active" || reading) && <>
         <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#121a27] to-[#080d14] px-3 pb-5 pt-5 shadow-inner">
           <div className="mb-3 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">{mode === "plane" ? "Strike · RHR" : "Azimuth · down-plunge"}</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{mode === "plane" ? fmt(filtered.strike) : fmt(lineation?.trend ?? null)}</p></div>
+            <div className="rounded-2xl border border-blue-400/20 bg-blue-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-blue-200/70">{mode === "plane" ? "Strike · RHR" : "Azimuth · down-plunge"}</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{mode === "plane" ? fmt(filtered.strike) : fmt(adjustedLineation?.trend ?? null)}</p></div>
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-center shadow-lg"><p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-200/70">{mode === "plane" ? "Dip" : "Plunge"}</p><p className="font-mono text-2xl font-bold tabular-nums text-white">{Math.round(mode === "plane" ? filtered.dip : lineation?.plunge ?? 0)}°</p><p className="text-[10px] text-amber-200/70">{mode === "plane" ? "plane slope" : "below horizontal"}</p></div>
           </div>
           <p className="mb-1 text-center text-[10px] font-medium uppercase tracking-wider text-slate-400">Referenced to {northReference === "true" ? "True North" : "Magnetic North"}</p>
