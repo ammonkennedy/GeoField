@@ -1,3 +1,4 @@
+import { findSamplePrecisionError } from "@/lib/sample-precision";
 import { getCachedCloudSamples } from "@/lib/cloud-samples";
 import { loadTrips, saveTrips } from "@/lib/trips";
 import { elevationFromCoordinates, formatElevation } from "@/lib/elevation";
@@ -87,13 +88,6 @@ function getTypeLabel(type: string) {
   if (type === "air") return "Air";
   if (type === "other") return "Other";
   return "Sample";
-}
-
-function exceedsSevenDecimalPlaces(value: unknown) {
-  const text = String(value ?? "").trim();
-  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return false;
-  const mantissa = text.split(/[eE]/)[0];
-  return (mantissa.split(".")[1]?.length ?? 0) > 7;
 }
 
 function isLocalDatasetId(value: unknown) {
@@ -522,12 +516,11 @@ export default function SampleEntry() {
       toast({ title: "Sample is still loading", description: "Wait for the saved sample and attachments before saving changes.", variant: "destructive" });
       return;
     }
-    const invalidField = Object.entries(data.fields).find(([, value]) => exceedsSevenDecimalPlaces(value));
-    const invalidCustomParameter = customParams.find((parameter) => exceedsSevenDecimalPlaces(parameter.value));
-    if (invalidField || invalidCustomParameter) {
+    const invalidParameter = findSamplePrecisionError(data.fields, customParams);
+    if (invalidParameter) {
       toast({
         title: "Too many decimal places",
-        description: "Numerical parameter values can contain up to 7 digits after the decimal point. Text and mixed letter/number values are also allowed.",
+        description: `“${invalidParameter}” has more than 7 digits after the decimal point. Shorten that parameter value and try again. GPS coordinates and elevation do not need to be changed.`,
         variant: "destructive",
       });
       return;

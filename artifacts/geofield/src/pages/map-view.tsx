@@ -25,11 +25,10 @@ import { getQueue, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { geocodeAddress, geocodeAddressSuggestions, type GeocodeResult } from "@/lib/geocoding";
 import { lookupSoil } from "@/lib/soil-data";
-import { MacrostratGeologyInfo } from "@/components/MacrostratGeologyInfo";
+import { CombinedGeologyInfo } from "@/components/CombinedGeologyInfo";
 import { ensureMacrostratLayer, setMacrostratOpacity, setMacrostratVisibility } from "@/lib/macrostrat-layer";
 import { MACROSTRAT_DEFAULT_OPACITY } from "@/lib/macrostrat-config";
-import { queryMacrostratGeology } from "@/lib/macrostrat-service";
-import type { MacrostratSelection } from "@/lib/macrostrat-types";
+import { queryCombinedGeology, type CombinedGeology } from "@/lib/combined-geology";
 import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { requireAccountForSave } from "@/lib/guest-access";
@@ -192,7 +191,7 @@ interface GeoInfo {
   data?: Record<string, string> | null;
   error?: string;
   lngLat?: [number, number];
-  macrostrat?: MacrostratSelection | null;
+  geology?: CombinedGeology;
 }
 
 export default function MapViewPage() {
@@ -596,9 +595,9 @@ export default function MapViewPage() {
           geologyRequestRef.current = controller;
           const requestId = ++geologyRequestIdRef.current;
           try {
-            const macrostrat = await queryMacrostratGeology(lat, lng, controller.signal);
+            const geology = await queryCombinedGeology(lat, lng, controller.signal);
             if (controller.signal.aborted || requestId !== geologyRequestIdRef.current) return;
-            setGeoInfo({ loading: false, lngLat: [lng, lat], macrostrat });
+            setGeoInfo({ loading: false, lngLat: [lng, lat], geology });
           } catch (error) {
             if (controller.signal.aborted || requestId !== geologyRequestIdRef.current) return;
             setGeoInfo({ loading: false, lngLat: [lng, lat], error: "Geologic unit information is temporarily unavailable." });
@@ -1120,7 +1119,7 @@ export default function MapViewPage() {
             )}
             {geoInfo.error && <p className="text-sm text-destructive">{geoInfo.error}</p>}
             {overlayLayer === "geology" && !geoInfo.loading && !geoInfo.error && (
-              <MacrostratGeologyInfo selection={geoInfo.macrostrat ?? null} />
+              geoInfo.geology && <CombinedGeologyInfo geology={geoInfo.geology} />
             )}
             {overlayLayer !== "geology" && geoInfo.data && !geoInfo.loading && (
               <div className="space-y-2.5">
