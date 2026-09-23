@@ -40,3 +40,9 @@ test("remote photo replacement and removal clear stale cached photo pointers", (
     assert.equal(merged[0].photo, undefined); assert.equal(merged[0].photoLocalKey, undefined); assert.equal(merged[0].photoKey, photoKey);
   }
 });
+test("deleted records can sync even if their local photo is missing", async () => {
+  const deleted = { ...item, photo: undefined, photoLocalKey: "missing", deletedAt: "2026-09-22T12:00:00Z" };
+  const s = setup();
+  assert.equal(await prepareMeasurementPhoto(deleted, s.store), deleted);
+  assert.equal(s.uploads.length, 0);
+});

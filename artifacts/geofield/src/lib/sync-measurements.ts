@@ -107,6 +107,8 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
               throw error;
             recovered = confirmed;
           }
+          if (!confirmsMeasurement(recovered, recovery))
+            throw new Error("Cloud did not confirm the recovery copy. Both versions are preserved; sync again to retry.");
           remoteById.set(recoveryId, recovered);
           const current = store.load();
           if (!current.some((record) => record.id === recovered.id))

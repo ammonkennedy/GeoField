@@ -1,3 +1,5 @@
+import { MeasurementAngleInput } from "@/components/MeasurementAngleInput";
+import { applyMeasurementEdit, validMeasurementAngle } from "@/lib/measurement-edit";
 import { orderMeasurements } from "@/lib/measurement-order";
 import { getStoredMediaDataUrl, storeMediaDataUrl } from "@/lib/media-storage";
 import { stampMeasurementAtSave, toLocalDateTimeInputValue } from "@/lib/measurement-save-time";
@@ -36,17 +38,6 @@ function deriveDipDir(strikeStr: string): string {
   if (isNaN(n)) return "";
   const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
   return dirs[Math.round(((n + 90) % 360) / 22.5) % 16];
-}
-
-function normalizeAngle(value: string, maximum: number): string {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "";
-  return String(Math.min(maximum, Math.max(0, number)));
-}
-
-function normalizeStrike(value: string): string {
-  const number = Number(value);
-  return Number.isFinite(number) ? String(((Math.round(number) % 360) + 360) % 360) : "";
 }
 
 function blankMeasurement(datasetId?: number | string | null): StrikeDipMeasurement {
@@ -113,7 +104,7 @@ function MeasurementRow({
   index: number;
   allFolders: Array<{ id: number | string; name: string; isLocal?: boolean }>;
   initiallyOpen?: boolean;
-  onChange: (m: StrikeDipMeasurement) => void;
+  onChange: (m: Partial<StrikeDipMeasurement>) => void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
@@ -133,20 +124,10 @@ function MeasurementRow({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const upd = (k: keyof StrikeDipMeasurement, v: string) => {
-    if (k === "strike") {
-      const cleanStrike = v.replace(/[^0-9.]/g, "");
-      const numeric = Number(cleanStrike);
-      const direction = Number.isFinite(numeric) ? ((numeric + 90) % 360) : undefined;
-      onChange({ ...measurement, strike: cleanStrike, strikeDegrees: numeric, dipDirectionDegrees: direction, dipDir: direction === undefined ? "" : `${Math.round(direction).toString().padStart(3, "0")}° ${deriveDipDir(cleanStrike)}`, convention: "right-hand-rule" });
-      return;
-    }
-    if (k === "dip") {
-      onChange({ ...measurement, dip: v.replace(/[^0-9.]/g, "") });
-      return;
-    }
-    onChange({ ...measurement, [k]: v });
+    onChange({ [k]: v });
   };
-  const setDatasetId = (value: string) => onChange({ ...measurement, datasetId: value ? value : null });
+  const setDatasetId = (value: string) => onChange({ datasetId: value ? value : null });
+  const { toast: photoToast } = useToast();
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -158,8 +139,8 @@ function MeasurementRow({
       const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: file.name, mimeType: "image/jpeg" });
       if (!accountId || getStorageAccountId() !== accountId) return;
       const latest = loadMeasurements().find((item) => item.id === measurement.id);
-      if (latest) onChange({ ...latest, photo: undefined, photoKey: null, photoLocalKey: stored.storageKey, photoUploadId: crypto.randomUUID() });
-    } catch {}
+      if (latest) onChange({ photo: undefined, photoKey: null, photoLocalKey: stored.storageKey, photoUploadId: crypto.randomUUID() });
+    } catch { photoToast({ title: "Photo could not be saved", description: "Please try again. The previous photo has been kept.", variant: "destructive" }); }
   };
 
   return (
@@ -222,7 +203,7 @@ function MeasurementRow({
                 />
                 <button
                   type="button"
-                  onClick={() => onChange({ ...measurement, photo: undefined, photoKey: null, photoLocalKey: undefined, photoUploadId: undefined })}
+                  onClick={() => onChange({ photo: undefined, photoKey: null, photoLocalKey: undefined, photoUploadId: undefined })}
                   className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 shadow"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -277,11 +258,11 @@ function MeasurementRow({
               <Input autoFocus={initiallyOpen} value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder={measurement.measurementType === "lineation" ? "e.g. Outcrop A — mineral lineation" : "e.g. Outcrop A — bedding plane"} className="h-9 text-sm" />
             </div>
             {measurement.measurementType === "lineation" ? <>
-              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Azimuth</Label><Input type="text" inputMode="numeric" value={measurement.trendDegrees ?? ""} onChange={(e) => onChange({ ...measurement, trendDegrees: Number(e.target.value) })} placeholder="0–359°" className="h-10 bg-card text-base font-semibold font-mono" aria-label="Azimuth in degrees" /></div>
-              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Plunge</Label><Input type="text" inputMode="decimal" value={measurement.plungeDegrees ?? ""} onChange={(e) => onChange({ ...measurement, plungeDegrees: Number(e.target.value) })} placeholder="0–90°" className="h-10 bg-card text-base font-semibold font-mono" aria-label="Plunge in degrees" /></div>
+              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Azimuth</Label><MeasurementAngleInput value={measurement.trendDegrees} label="Azimuth" maximum={360} exclusive onCommit={value => onChange({ trendDegrees: value })} /></div>
+              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Plunge</Label><MeasurementAngleInput value={measurement.plungeDegrees} label="Plunge" maximum={90} onCommit={value => onChange({ plungeDegrees: value })} /></div>
             </> : <>
-              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Strike</Label><Input type="text" inputMode="numeric" value={measurement.strike} onChange={(e) => upd("strike", e.target.value)} onBlur={() => upd("strike", normalizeStrike(measurement.strike))} placeholder="0–359°" className="h-10 bg-card text-base font-semibold font-mono" aria-label="Strike in degrees" /></div>
-              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Dip</Label><Input type="text" inputMode="decimal" value={measurement.dip} onChange={(e) => upd("dip", e.target.value)} onBlur={() => upd("dip", normalizeAngle(measurement.dip, 90))} placeholder="0–90°" className="h-10 bg-card text-base font-semibold font-mono" aria-label="Dip in degrees" /></div>
+              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Strike</Label><MeasurementAngleInput value={measurement.strike} label="Strike" maximum={360} exclusive onCommit={value => onChange({ strike: String(value) })} /></div>
+              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Dip</Label><MeasurementAngleInput value={measurement.dip} label="Dip" maximum={90} onCommit={value => onChange({ dip: String(value) })} /></div>
             </>}
             <div className="col-span-2 sm:col-span-3 flex items-center gap-2 pt-1"><span className="h-1.5 w-1.5 rounded-full bg-primary/60" /><h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Geology &amp; record details</h4></div>
             <div className="space-y-1">
@@ -518,32 +499,37 @@ export default function StrikeDipPage() {
   }, []);
 
   const addMeasurementWithGps = (measurement: StrikeDipMeasurement, successTitle?: string, successDescription?: string) => {
-    if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
+    if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return false;
     const savingAccountId = getStorageAccountId();
     measurement = stampMeasurementAtSave(measurement);
     // Save and open the details now; a GPS fix can take ten seconds in the field.
-    changeMeasurements((prev) => [...prev, measurement]);
+    try { changeMeasurements((prev) => [...prev, measurement]); }
+    catch {
+      toast({ title: "Measurement could not be saved", description: "The reading is still open. Check available device storage and try again.", variant: "destructive" });
+      return false;
+    }
     setNewlyCreatedId(measurement.id);
     if (successTitle) toast({ title: successTitle, description: successDescription });
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) return true;
 
-    navigator.geolocation.getCurrentPosition(
+    try { navigator.geolocation.getCurrentPosition(
       (position) => {
         if (!savingAccountId || getStorageAccountId() !== savingAccountId) return;
         // Merge into the latest saved record so typing, photos, dataset changes,
         // or deletion while GPS is pending cannot be overwritten or resurrected.
-        changeMeasurements((current) => current.map((item) => {
+        try { changeMeasurements((current) => current.map((item) => {
           if (item.id !== measurement.id || item.location !== measurement.location ||
               item.latitude !== measurement.latitude || item.longitude !== measurement.longitude) return item;
           return {
             ...addGpsToMeasurement(item, position),
             updatedAt: new Date(Math.max(Date.now(), (Date.parse(item.updatedAt ?? "") || 0) + 1)).toISOString(),
           };
-        }));
+        })); } catch { toast({ title: "Measurement saved without GPS", description: "The location update could not be saved. Your measurement is still available.", variant: "destructive" }); }
       },
       () => { /* The measurement is already saved and its details remain open. */ },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-    );
+    ); } catch { /* Location failure cannot turn a successful measurement save into a failed capture. */ }
+    return true;
   };
 
   const addManual = () => {
@@ -553,23 +539,25 @@ export default function StrikeDipPage() {
 
   const saveManualMeasurement = () => {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
-    const strike = normalizeStrike(manualDraft.strike);
-    const dip = normalizeAngle(manualDraft.dip, 90);
-    if (!strike || !dip) {
+    const validStrike = validMeasurementAngle(manualDraft.strike, 360, true);
+    const validDip = validMeasurementAngle(manualDraft.dip, 90);
+    if (validStrike === null || validDip === null) {
       toast({ title: "Strike and dip required", description: "Enter a strike from 0–359° and a dip from 0–90°.", variant: "destructive" });
       return;
     }
-    const strikeDegrees = Number(strike);
-    const dipDegrees = Number(dip);
+    const strike = String(validStrike), dip = String(validDip);
+    const strikeDegrees = validStrike;
+    const dipDegrees = validDip;
     const dipDirectionDegrees = ((strikeDegrees + 90) % 360);
     const measurement: StrikeDipMeasurement = { ...manualDraft, strike, dip, strikeDegrees, dipDegrees, dipDirectionDegrees, dipDir: `${dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(strike)}`, convention: "right-hand-rule", northReference: "magnetic", quality: "manual", updatedAt: new Date().toISOString() };
-    addMeasurementWithGps(measurement, "Measurement saved", `Strike ${strike}° / Dip ${dip}°`);
-    setManualOpen(false);
+    if (addMeasurementWithGps(measurement, "Measurement saved", `Strike ${strike}° / Dip ${dip}°`)) setManualOpen(false);
   };
 
-  const updateMeasurementById = (id: string, m: StrikeDipMeasurement) => {
+  const updateMeasurementById = (id: string, patch: Partial<StrikeDipMeasurement>) => {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
-    changeMeasurements((prev) => prev.map((item) => item.id === id ? { ...m, updatedAt: new Date().toISOString() } : item));
+    try {
+      changeMeasurements((prev) => prev.map((item) => item.id === id ? { ...applyMeasurementEdit(item, patch), updatedAt: new Date().toISOString() } : item));
+    } catch (error) { toast({ title: "Measurement edit could not be saved", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" }); }
   };
 
   const deleteMeasurementById = (id: string) => {
@@ -725,8 +713,7 @@ export default function StrikeDipPage() {
               label: "Lineation",
               featureType: "Lineation",
             };
-            addMeasurementWithGps(m, "Lineation captured", `Azimuth ${capture.trendDegrees}° / Plunge ${capture.plungeDegrees}°`);
-            return;
+            return addMeasurementWithGps(m, "Lineation captured", `Azimuth ${capture.trendDegrees}° / Plunge ${capture.plungeDegrees}°`);
           }
           const m: StrikeDipMeasurement = {
             ...blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId),
@@ -736,7 +723,7 @@ export default function StrikeDipPage() {
             dip: String(capture.dipDegrees),
             dipDir: `${capture.dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(String(capture.strikeDegrees))}`,
           };
-          addMeasurementWithGps(m, "Measurement captured", `Strike ${m.strike}° / Dip ${m.dip}°`);
+          return addMeasurementWithGps(m, "Measurement captured", `Strike ${m.strike}° / Dip ${m.dip}°`);
         }}
       />
 
@@ -748,11 +735,11 @@ export default function StrikeDipPage() {
           <div className="grid grid-cols-1 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="manual-strike">Strike (0–359°)</Label>
-              <Input id="manual-strike" autoFocus inputMode="numeric" value={manualDraft.strike} onChange={(e) => { const strike = e.target.value.replace(/[^0-9]/g, ""); const direction = strike ? (Number(strike) + 90) % 360 : undefined; setManualDraft((draft) => ({ ...draft, strike, strikeDegrees: strike ? Number(strike) : undefined, dipDirectionDegrees: direction, dipDir: direction === undefined ? "" : String(direction) })); }} onBlur={() => setManualDraft((draft) => ({ ...draft, strike: normalizeStrike(draft.strike) }))} placeholder="045" />
+              <Input id="manual-strike" autoFocus inputMode="numeric" value={manualDraft.strike} onChange={(e) => setManualDraft((draft) => ({ ...draft, strike: e.target.value }))} placeholder="045" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="manual-dip">Dip (0–90°)</Label>
-              <Input id="manual-dip" inputMode="decimal" value={manualDraft.dip} onChange={(e) => setManualDraft((draft) => ({ ...draft, dip: e.target.value.replace(/[^0-9.]/g, "") }))} placeholder="30" />
+              <Input id="manual-dip" inputMode="decimal" value={manualDraft.dip} onChange={(e) => setManualDraft((draft) => ({ ...draft, dip: e.target.value }))} placeholder="30" />
             </div>
           </div>
           <div className="space-y-1.5">

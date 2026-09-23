@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -45,7 +45,7 @@ export function ExportCustomizerDialog({
   const [columns, setColumns] = useState<ExportColumn[]>(initialColumns);
   const [groups, setGroups] = useState<ExportSheetGroup[]>(initialGroups);
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(initialGroups.slice(0, 1).map((group) => group.key)));
-  const grouped = initialGroups.length > 0;
+  const grouped = groups.length > 0;
   const [sheetName, setSheetName] = useState(initialConfig.sheetName);
   const [orientation, setOrientation] = useState<ExportFormatConfig["orientation"]>(initialConfig.orientation || "normal");
   const [customRows, setCustomRows] = useState<ExportCustomRow[]>(initialConfig.customRows || []);
@@ -53,8 +53,12 @@ export function ExportCustomizerDialog({
   const [choosingRowTarget, setChoosingRowTarget] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const initializedForOpen = useRef(false);
   useEffect(() => {
-    if (!open) return;
+    if (!open) { initializedForOpen.current = false; return; }
+    // A fresh props array or background sync must not reset an in-progress export.
+    if (initializedForOpen.current) return;
+    initializedForOpen.current = true;
     setColumns(initialColumns);
     setGroups(initialGroups);
     setOpenGroups(new Set(initialGroups.slice(0, 1).map((group) => group.key)));

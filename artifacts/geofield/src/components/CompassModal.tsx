@@ -36,7 +36,7 @@ type LineationCapture = {
   compassAccuracy?: number; lineVector: Vector3; quality: "stable" | "unstable";
 };
 type Capture = PlaneCapture | LineationCapture;
-interface Props { open: boolean; onClose: () => void; onCapture: (capture: Capture) => void; }
+interface Props { open: boolean; onClose: () => void; onCapture: (capture: Capture) => boolean | void; }
 interface GeologyMotionPlugin {
   available(): Promise<{ available: boolean }>;
   start(options: { northReference: NorthReferencePreference }): Promise<{ northReference: NorthReferencePreference }>;
@@ -348,16 +348,21 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const canCapture = status === "active" && held && !!reading && (mode === "plane"
     ? filtered.strike !== null && filtered.dipDirection !== null
     : !!lineation);
+  const saveCapture = (value: Capture) => {
+    try {
+      if (onCapture(value) === false) { setNotice("Measurement was not saved. Your paused reading is still available; try saving again."); return; }
+      onClose();
+    } catch { setNotice("Measurement could not be saved. Your paused reading is still available; try saving again."); }
+  };
   const capture = () => {
     if (!canCapture || !heldRef.current) return;
     if (mode === "lineation") {
       if (!adjustedLineation || !reading) return;
-      onCapture({ measurementType: "lineation", trendDegrees: normalizeAzimuth(Math.round(adjustedLineation.trend)), plungeDegrees: Number(adjustedLineation.plunge.toFixed(1)), northReference, referenceFrame: northReference, compassAccuracy: reading.headingAccuracy, lineVector: adjustedLineation.vector, quality: lineStable ? "stable" : "unstable" });
-      onClose();
+      saveCapture({ measurementType: "lineation", trendDegrees: normalizeAzimuth(Math.round(adjustedLineation.trend)), plungeDegrees: Number(adjustedLineation.plunge.toFixed(1)), northReference, referenceFrame: northReference, compassAccuracy: reading.headingAccuracy, lineVector: adjustedLineation.vector, quality: lineStable ? "stable" : "unstable" });
       return;
     }
     if (filtered.strike === null || filtered.dipDirection === null || !reading) return;
-    onCapture({ measurementType: "plane", strikeDegrees: Math.round(filtered.strike), dipDegrees: Number(filtered.dip.toFixed(1)), dipDirectionDegrees: Math.round(filtered.dipDirection), convention: "right-hand-rule", northReference, compassAccuracy: reading.headingAccuracy, magneticHeading: reading.magneticHeading, trueHeading: reading.trueHeading, magneticDeclination: declination, referenceFrame: northReference, rawMagneticStrikeDegrees: northReference === "magnetic" && rawOrientation.strike !== null ? Math.round(rawOrientation.strike) : undefined, orientationQuaternion: { x: reading.quaternionX, y: reading.quaternionY, z: reading.quaternionZ, w: reading.quaternionW }, planeNormal: { east: reading.normalEast, north: reading.normalNorth, up: reading.normalUp }, quality: stable ? "stable" : "unstable" }); onClose();
+    saveCapture({ measurementType: "plane", strikeDegrees: normalizeAzimuth(Math.round(filtered.strike)), dipDegrees: Number(filtered.dip.toFixed(1)), dipDirectionDegrees: normalizeAzimuth(Math.round(filtered.dipDirection)), convention: "right-hand-rule", northReference, compassAccuracy: reading.headingAccuracy, magneticHeading: reading.magneticHeading, trueHeading: reading.trueHeading, magneticDeclination: declination, referenceFrame: northReference, rawMagneticStrikeDegrees: northReference === "magnetic" && rawOrientation.strike !== null ? normalizeAzimuth(Math.round(rawOrientation.strike)) : undefined, orientationQuaternion: { x: reading.quaternionX, y: reading.quaternionY, z: reading.quaternionZ, w: reading.quaternionW }, planeNormal: { east: reading.normalEast, north: reading.normalNorth, up: reading.normalUp }, quality: stable ? "stable" : "unstable" });
   };
   const selectNorthReference = (value: NorthReferencePreference) => {
     if (value === selectedNorthReference) return;

@@ -9,7 +9,7 @@ export async function prepareMeasurementPhoto(
   item: StrikeDipMeasurement,
   store: PhotoStore,
 ): Promise<StrikeDipMeasurement> {
-  if (item.photoKey || (!item.photo && !item.photoLocalKey)) return item;
+  if (item.deletedAt || item.photoKey || (!item.photo && !item.photoLocalKey)) return item;
   const dataUrl =
     item.photo ??
     (item.photoLocalKey ? await store.read(item.photoLocalKey) : null);

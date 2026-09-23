@@ -154,3 +154,12 @@ for (const deletedAt of [null, "2026-09-21T12:00:00Z"]) {
     assert.equal(local[0].photoLocalKey, "cached"); assert.equal(cloud.photoKey, "media/legacy");
   });
 }
+test("unconfirmed conflict backup never overwrites the original cloud version", async () => {
+  const initial = { ...base, cloudUpdatedAt: "2026-09-17T09:00:00Z", notes: "local edit" };
+  const scenario = setup(initial);
+  scenario.store.create = async item => ({ ...item, label: "incomplete backup" });
+  await assert.rejects(syncMeasurementRecords(scenario.store), /recovery copy/);
+  assert.equal(scenario.writes.length, 0);
+  assert.equal(scenario.local()[0].notes, "local edit");
+  assert.equal(scenario.local()[0].localRevision, "edit-1");
+});
