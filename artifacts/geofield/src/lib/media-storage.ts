@@ -4,6 +4,7 @@ export interface StoredMediaMetadata {
   id: string;
   kind: StoredMediaKind;
   fileName: string;
+  caption?: string;
   mimeType: string;
   sizeBytes: number;
   storage: "indexeddb";

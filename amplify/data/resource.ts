@@ -42,6 +42,16 @@ const schema = a.schema({
     })
     .authorization((allow) => [allow.owner()]),
 
+  NoteFolder: a
+    .model({
+      name: a.string().required(),
+      noteIds: a.json(),
+      createdAt: a.datetime(),
+      updatedAt: a.datetime(),
+      deletedAt: a.datetime(),
+    })
+    .authorization((allow) => [allow.owner()]),
+
   FieldNote: a
     .model({
       title: a.string(),
@@ -56,6 +66,7 @@ const schema = a.schema({
   StrikeDipMeasurement: a
     .model({
       photoKey: a.string(),
+      photoCaption: a.string(),
       measurementType: a.string(),
       datasetId: a.id(),
       label: a.string(),

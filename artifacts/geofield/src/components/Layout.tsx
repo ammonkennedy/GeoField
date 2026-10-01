@@ -249,7 +249,7 @@ export function Layout({ children }: { children: ReactNode }) {
               onClick={() => setSidebarOpen(false)}
             >
               <Compass className="w-4 h-4 opacity-80 shrink-0" />
-              <span className="flex-1">Measurements</span>
+              <span className="flex-1">Clinometer</span>
               {location === "/strike-dip" && <ChevronRight className="w-4 h-4 shrink-0" />}
             </Link>
             <Link href="/notes" onClick={() => setSidebarOpen(false)} className={cn("mt-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium", location === "/notes" ? "bg-primary text-primary-foreground shadow-md" : "text-foreground hover:bg-muted")}>

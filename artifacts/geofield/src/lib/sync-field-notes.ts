@@ -10,7 +10,7 @@ export async function syncFieldNotes(accountId: string) {
     save: (notes) => storeFieldNotes(accountId, notes),
     list: () => getFieldNotes(accountId),
     get: (id) => getFieldNote(id, accountId),
-    write: (note, exists) => saveCloudFieldNote({ ...note, photos: note.photos.map(({ id, fileName, cloudKey }) => ({ id, fileName, cloudKey: cloudKey! })) } as CloudFieldNote, exists, accountId),
+    write: (note, exists) => saveCloudFieldNote({ ...note, photos: note.photos.map(({ id, fileName, cloudKey, caption }) => ({ id, fileName, cloudKey: cloudKey!, caption })) } as CloudFieldNote, exists, accountId),
     uploadPhoto: async (noteId, photo) => {
       const dataUrl = photo.localKey ? await getStoredMediaDataUrl(photo.localKey) : null;
       if (!dataUrl) throw new Error("A note photo is unavailable on this device. The note has not been overwritten in the cloud.");

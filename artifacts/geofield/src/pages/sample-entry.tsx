@@ -1,3 +1,5 @@
+import { LabeledPhoto } from "@/components/LabeledPhoto";
+import { getAccuratePosition } from "@/lib/gps";
 import { findSamplePrecisionError } from "@/lib/sample-precision";
 import { getCachedCloudSamples } from "@/lib/cloud-samples";
 import { loadTrips, saveTrips } from "@/lib/trips";
@@ -18,7 +20,7 @@ import { useSamplesMutations } from "@/hooks/use-geofield";
 import { useGetCurrentAuthUser, useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { enqueue, getQueue, updateQueuedSample } from "@/lib/offline-queue";
-import { assertStorageAccount } from "@/lib/storage-account";
+import { assertStorageAccount, getStorageAccountId } from "@/lib/storage-account";
 import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } from "@/lib/media-storage";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { AirFields, BaseFields, WaterFields, RockFields, SoilFields } from "@/components/fields/SchemaForms";
@@ -56,6 +58,7 @@ type MediaSlot = {
   mimeType?: string;
   sizeBytes?: number;
   stored?: StoredMediaMetadata;
+  caption?: string;
 } | null;
 
 interface CustomParam {
@@ -102,7 +105,7 @@ async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlo
   if (Array.isArray(fields.media)) {
     const loaded = await Promise.all(
       (fields.media as any[]).slice(0, 3).map(async (m: any) => {
-        if (m?.dataUrl?.startsWith("data:") && m?.type && !m?.storageKey) return { type: m.type as "photo" | "video", dataUrl: m.dataUrl };
+        if (m?.dataUrl?.startsWith("data:") && m?.type && !m?.storageKey) return { type: m.type as "photo" | "video", dataUrl: m.dataUrl, caption: m.caption };
         if (m?.storageKey) {
           const dataUrl = await getStoredMediaDataUrl(m.localKey || m.storageKey).catch(() => null);
           if (dataUrl) {
@@ -113,58 +116,22 @@ async function hydrateMediaSlots(fields: Record<string, any>): Promise<[MediaSlo
               mimeType: m.mimeType,
               sizeBytes: m.sizeBytes,
               stored: m as StoredMediaMetadata,
+              caption: m.caption,
             };
           }
         }
         if (m?.cloudUrl && (m?.kind || m?.type)) {
-          return { type: (m.kind || m.type) as "photo" | "video", dataUrl: m.cloudUrl, stored: m };
+          return { type: (m.kind || m.type) as "photo" | "video", dataUrl: m.cloudUrl, stored: m, caption: m.caption };
         }
-        return m?.storageKey ? { type: (m.kind || m.type) as "photo" | "video", dataUrl: "", stored: m } : null;
+        return m?.storageKey ? { type: (m.kind || m.type) as "photo" | "video", dataUrl: "", stored: m, caption: m.caption } : null;
       })
     );
     while (loaded.length < 3) loaded.push(null);
     return loaded as [MediaSlot, MediaSlot, MediaSlot];
   }
 
-  if (fields.photo) return [{ type: "photo", dataUrl: fields.photo }, null, null];
+  if (fields.photo) return [{ type: "photo", dataUrl: fields.photo, caption: fields.photoCaption }, null, null];
   return empty;
-}
-
-type DevicePosition = { latitude: number; longitude: number; accuracy?: number | null; altitude?: number | null; altitudeAccuracy?: number | null };
-
-function timeoutPromise<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => window.setTimeout(() => reject(new Error("GPS_TIMEOUT")), milliseconds)),
-  ]);
-}
-
-async function getDevicePosition(): Promise<DevicePosition> {
-  const nativeGeolocation = (globalThis as any).Capacitor?.Plugins?.Geolocation;
-  if (nativeGeolocation) {
-    let permission = await nativeGeolocation.checkPermissions();
-    if (permission?.location !== "granted" && permission?.coarseLocation !== "granted") {
-      permission = await nativeGeolocation.requestPermissions({ permissions: ["location"] });
-    }
-    if (permission?.location !== "granted" && permission?.coarseLocation !== "granted") {
-      throw Object.assign(new Error("Location permission denied"), { code: 1 });
-    }
-    const result = await timeoutPromise<any>(nativeGeolocation.getCurrentPosition({
-      enableHighAccuracy: true,
-      timeout: 12000,
-      maximumAge: 60000,
-    }), 15000);
-    return result.coords;
-  }
-
-  if (!navigator.geolocation) throw new Error("Geolocation is unavailable");
-  return timeoutPromise(new Promise<DevicePosition>((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(
-      (position) => resolve(position.coords),
-      reject,
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
-    );
-  }), 15000);
 }
 
 export default function SampleEntry() {
@@ -215,7 +182,7 @@ export default function SampleEntry() {
     };
   }, []);
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, watch, setValue, getValues, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       sampleType: 'rock',
@@ -230,10 +197,18 @@ export default function SampleEntry() {
     if (!isEdit && initialFolderId) setValue("folderId", initialFolderId);
   }, [initialFolderId, isEdit, setValue]);
 
+  const gpsRequest = useRef(0);
+  useEffect(() => () => { gpsRequest.current++; }, [id]);
+
   const captureGps = useCallback(async () => {
+    const request = ++gpsRequest.current;
+    const originalLocation = getValues("fields.location");
+    const account = getStorageAccountId();
     setGpsStatus("loading");
     try {
-      const coords = await getDevicePosition();
+      const { coords } = await getAccuratePosition();
+      if (request !== gpsRequest.current || account !== getStorageAccountId()) return;
+      if (getValues("fields.location") !== originalLocation) { setGpsStatus("idle"); return; }
       setValue("fields.location", `${coords.latitude.toFixed(7)}, ${coords.longitude.toFixed(7)}`, { shouldDirty: true });
       if (Number.isFinite(coords.accuracy)) setValue("fields.gpsAccuracy", Math.round(coords.accuracy!), { shouldDirty: true });
       const height = elevationFromCoordinates(coords);
@@ -241,6 +216,7 @@ export default function SampleEntry() {
       setValue("fields.elevationAccuracy", height.elevationAccuracy, { shouldDirty: true });
       setGpsStatus("success");
     } catch (error: any) {
+      if (request !== gpsRequest.current || account !== getStorageAccountId()) return;
       console.error("[GeoField GPS] Location capture failed", error);
       const denied = error?.code === 1 || /denied|permission/i.test(error?.message || "");
       setGpsStatus(denied ? "denied" : "error");
@@ -252,7 +228,7 @@ export default function SampleEntry() {
         variant: "destructive",
       });
     }
-  }, [setValue, toast]);
+  }, [getValues, setValue, toast]);
 
   useEffect(() => {
     if (isEdit) return;
@@ -411,8 +387,8 @@ export default function SampleEntry() {
     const filled = slots.filter(Boolean) as Exclude<MediaSlot, null>[];
     if (filled.length === 0) return [];
     return Promise.all(filled.map(async (slot) => {
-      if (slot.stored) return slot.stored;
-      return storeMediaDataUrl({ kind: slot.type, dataUrl: slot.dataUrl, fileName: slot.fileName, mimeType: slot.mimeType });
+      if (slot.stored) return { ...slot.stored, caption: slot.caption ?? slot.stored.caption };
+      return { ...await storeMediaDataUrl({ kind: slot.type, dataUrl: slot.dataUrl, fileName: slot.fileName, mimeType: slot.mimeType }), caption: slot.caption };
     }));
   }
 
@@ -649,9 +625,10 @@ export default function SampleEntry() {
             <div className="space-y-4">
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">1</span>Basic Information{!isEdit && (<span className={cn("ml-2 inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium", gpsStatus === "loading" && "bg-yellow-100 text-yellow-700", gpsStatus === "success" && "bg-green-100 text-green-700", (gpsStatus === "error" || gpsStatus === "denied") && "bg-red-100 text-red-600", gpsStatus === "idle" && "bg-muted text-muted-foreground")}>{gpsStatus === "loading" && <><Loader2 className="w-3 h-3 animate-spin" />Getting GPS...</>}{gpsStatus === "success" && <><MapPin className="w-3 h-3" />GPS captured</>}{gpsStatus === "denied" && <><MapPin className="w-3 h-3" />Location denied</>}{gpsStatus === "error" && <><MapPin className="w-3 h-3" />GPS unavailable</>}</span>)}</h3>
               <BaseFields register={register} errors={errors} />
-              {!isEdit && (gpsStatus === "error" || gpsStatus === "denied") && (
-                <Button type="button" variant="outline" size="sm" className="gap-2" onClick={captureGps}>
-                  <MapPin className="h-4 w-4" />Try GPS Again
+              {Number.isFinite(watch("fields.gpsAccuracy")) && <p className="text-sm text-muted-foreground">GPS estimated accuracy: ±{watch("fields.gpsAccuracy")} m. For a better fix, stay still with a clear view of the sky and enable Precise Location.</p>}
+              {(
+                <Button type="button" variant="outline" size="sm" className="gap-2" disabled={gpsStatus === "loading"} onClick={captureGps}>
+                  <MapPin className="h-4 w-4" />{gpsStatus === "loading" ? "Improving GPS…" : "Refresh GPS at current position"}
                 </Button>
               )}
               <div className="rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
@@ -716,17 +693,22 @@ export default function SampleEntry() {
                         {slot ? (
                           <>
                             {slot.type === "photo" ? (
-                              <img src={slot.dataUrl} alt={`Sample photo ${i + 1}`} className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer" onClick={() => openSlot(i)} />
+                              <LabeledPhoto key={slot.dataUrl} src={slot.dataUrl} initiallyOpen={new URLSearchParams(window.location.search).get("photo") === String(i)} initiallyRead={new URLSearchParams(window.location.search).get("label") === "read"} alt={`Sample photo ${i + 1}`} caption={slot.caption} className="w-36 h-36 object-cover" saveMessage="Label added. Save the sample to keep your changes." onSave={caption => setMediaSlots(previous => {
+                                if (previous[i]?.dataUrl !== slot.dataUrl) return previous;
+                                const next = [...previous] as [MediaSlot, MediaSlot, MediaSlot];
+                                next[i] = { ...previous[i]!, caption }; return next;
+                              })} />
                             ) : (
                               <video src={slot.dataUrl} className="w-36 h-36 object-cover rounded-xl border border-border shadow-md cursor-pointer bg-black" controls playsInline onClick={(e) => e.stopPropagation()} />
                             )}
-                            <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] font-semibold rounded px-1.5 py-0.5 flex items-center gap-1 pointer-events-none">
+                            <span className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] font-semibold rounded px-1.5 py-0.5 flex items-center gap-1 pointer-events-none">
                               {slot.type === "photo" ? <ImageIcon className="w-2.5 h-2.5" /> : <Video className="w-2.5 h-2.5" />}
                               {slot.type === "photo" ? "Photo" : "Video"}
                             </span>
                             <button type="button" onClick={() => clearSlot(i)} className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow"><X className="w-3.5 h-3.5" /></button>
+                            {slot.type === "photo" && <button type="button" className="mt-1 block text-xs text-primary underline" onClick={() => openSlot(i)}>Replace photo</button>}
                             {slot.type === "photo" && <SavePhotoButton src={slot.dataUrl} fileName={slot.fileName || `geofield-${getTypeLabel(currentType).toLowerCase()}-${i + 1}`} />}
-                            {slot.type === "photo" && <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer" onClick={() => openSlot(i, "camera")}><Camera className="w-6 h-6 text-white" /></div>}
+
                           </>
                         ) : (
                           <div className="w-36 rounded-xl border border-border bg-muted/30 p-2 shadow-sm">

@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "period": "1991\u20132020",
+  "resolution": "4 km",
+  "source": "PRISM Group, Oregon State University",
+  "url": "https://prism.oregonstate.edu",
+  "accessed": "2026-09-24",
+  "variables": {
+    "ppt": {
+      "file": "ppt-1991-2020.f32.gz",
+      "units": "mm",
+      "original": "https://data.prism.oregonstate.edu/normals/us/4km/ppt/monthly/prism_ppt_us_25m_2020_avg_30y.zip",
+      "sha256": "054ee0ea81f38eb2f4d4272b9a6c3905d0df1c0b92bb4e391ebc3f9901ce3246",
+      "bytes": 1705804
+    },
+    "tmean": {
+      "file": "tmean-1991-2020.f32.gz",
+      "units": "\u00b0C",
+      "original": "https://data.prism.oregonstate.edu/normals/us/4km/tmean/monthly/prism_tmean_us_25m_2020_avg_30y.zip",
+      "sha256": "e4c2069c7a9ef64635575811f1e67a7ebb119fb908f0395500ef2c13572fcdcc",
+      "bytes": 789938
+    },
+    "tmin": {
+      "file": "tmin-1991-2020.f32.gz",
+      "units": "\u00b0C",
+      "original": "https://data.prism.oregonstate.edu/normals/us/4km/tmin/monthly/prism_tmin_us_25m_2020_avg_30y.zip",
+      "sha256": "ba5458adadaed417f7183a34b4250dc7e9cb148c276db9b7c974fc7a9096fcf6",
+      "bytes": 845222
+    },
+    "tmax": {
+      "file": "tmax-1991-2020.f32.gz",
+      "units": "\u00b0C",
+      "original": "https://data.prism.oregonstate.edu/normals/us/4km/tmax/monthly/prism_tmax_us_25m_2020_avg_30y.zip",
+      "sha256": "42877e0916374275b64bb6c99739e08aefca06f230596cc8c3b10d4feb000ca0",
+      "bytes": 820181
+    }
+  },
+  "nodata": -9999,
+  "crs": "EPSG:4326",
+  "grid": {
+    "width": 1405,
+    "height": 621,
+    "west": -125.0208333333335,
+    "north": 49.9375000000005,
+    "step": 0.041666666667
+  }
+}

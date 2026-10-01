@@ -1,3 +1,5 @@
+import { loadNoteFolders, NOTE_FOLDERS_UPDATED } from "@/lib/note-folders";
+import { syncNoteFolders } from "@/lib/sync-note-folders";
 import { syncTrips } from "@/lib/sync-trips";
 import { loadTrips, TRIPS_UPDATED } from "@/lib/trips";
 import { preparePhotoForMeasurement, downloadMeasurementPhotos } from "@/lib/sync-measurement-photos";
@@ -102,7 +104,7 @@ function getSyncableQueue() {
 }
 
 function getPendingSyncCount(accountId = "") {
-  return loadTrips(true).filter((trip) => trip.localRevision).length + loadFieldNotes(accountId).filter((note) => note.localRevision).length + getPendingLocalDatasets().length + getSyncableQueue().length + loadMeasurements(true).filter((item) => item.localRevision).length;
+  return loadNoteFolders(accountId).filter(folder => folder.localRevision).length + loadTrips(true).filter((trip) => trip.localRevision).length + loadFieldNotes(accountId).filter((note) => note.localRevision).length + getPendingLocalDatasets().length + getSyncableQueue().length + loadMeasurements(true).filter((item) => item.localRevision).length;
 }
 
 async function syncLocalDataset(dataset: LocalDataset, checkAccount: () => void, accountId: string) {
@@ -211,6 +213,7 @@ export function useOfflineSync() {
 
   useEffect(() => {
     refreshCount();
+    window.addEventListener(NOTE_FOLDERS_UPDATED, refreshCount);
     window.addEventListener(FIELD_NOTES_UPDATED, refreshCount);
     window.addEventListener(TRIPS_UPDATED, refreshCount);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
@@ -218,6 +221,7 @@ export function useOfflineSync() {
     window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
     window.addEventListener("storage", refreshCount);
     return () => {
+      window.removeEventListener(NOTE_FOLDERS_UPDATED, refreshCount);
       window.removeEventListener(FIELD_NOTES_UPDATED, refreshCount);
       window.removeEventListener(TRIPS_UPDATED, refreshCount);
       window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
@@ -325,6 +329,7 @@ export function useOfflineSync() {
             getFolders(true, accountId),
             syncStrikeDipMeasurements(accountId),
             syncFieldNotes(accountId),
+            syncNoteFolders(accountId),
             syncTrips(accountId),
           ]);
           // Wait for every operation before releasing the sync lock. An early
@@ -377,7 +382,7 @@ export function useOfflineSync() {
         setIsSyncing(false);
         setSyncProgress(null);
         refreshCount();
-        if (!failed && (loadTrips(true).some((trip) => trip.localRevision) || getPendingLocalDatasets().length > 0 || loadMeasurements(true).some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
+        if (!failed && (loadNoteFolders(accountId).some(folder => folder.localRevision) || loadTrips(true).some((trip) => trip.localRevision) || getPendingLocalDatasets().length > 0 || loadMeasurements(true).some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
         if (retryNeeded && !authRequired) scheduleRetry();
       }
     },
@@ -391,14 +396,15 @@ export function useOfflineSync() {
       // Sync writes also emit storage events; do not turn a pending failed link
       // into an unbounded immediate retry loop. runSync schedules safe retries.
       if (syncingRef.current) return;
-      if (!loadFieldNotes(accountId).some((note) => note.localRevision) && !loadTrips(true).some((trip) => trip.localRevision) && !loadMeasurements(true).some((item) => item.localRevision)) return;
+      if (!loadNoteFolders(accountId).some(folder => folder.localRevision) && !loadFieldNotes(accountId).some((note) => note.localRevision) && !loadTrips(true).some((trip) => trip.localRevision) && !loadMeasurements(true).some((item) => item.localRevision)) return;
       clearTimeout(timer);
       timer = setTimeout(() => { if (navigator.onLine) void sync(); }, 1500);
     };
+    window.addEventListener(NOTE_FOLDERS_UPDATED, changed);
     window.addEventListener(FIELD_NOTES_UPDATED, changed);
     window.addEventListener(TRIPS_UPDATED, changed);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, changed);
-    return () => { clearTimeout(timer); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
+    return () => { clearTimeout(timer); window.removeEventListener(NOTE_FOLDERS_UPDATED, changed); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
   }, [accountId, sync]);
   const rebuildCloudCache = useCallback(() => runSync(true), [runSync]);
   useEffect(() => {

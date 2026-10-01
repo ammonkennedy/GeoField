@@ -3,6 +3,8 @@ import Capacitor
 import Speech
 import CoreMotion
 import CoreLocation
+import Photos
+import ImageIO
 
 @objc(GeoFieldSpeechRecognitionPlugin)
 public final class GeoFieldSpeechRecognitionPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -113,6 +115,7 @@ public final class GeoFieldBridgeViewController: CAPBridgeViewController {
     public override func capacitorDidLoad() {
         bridge?.registerPluginInstance(GeoFieldSpeechRecognitionPlugin())
         bridge?.registerPluginInstance(GeoFieldGeologyMotionPlugin())
+        bridge?.registerPluginInstance(GeoFieldPhotoLibraryPlugin())
     }
 }
 
@@ -234,4 +237,40 @@ public final class GeoFieldGeologyMotionPlugin: CAPPlugin, CAPBridgedPlugin, CLL
         headingAccuracy = heading.headingAccuracy >= 0 ? heading.headingAccuracy : nil
     }
     public func locationManagerShouldDisplayHeadingCalibration(_ manager: CLLocationManager) -> Bool { true }
+}
+
+
+@objc(GeoFieldPhotoLibraryPlugin)
+public final class GeoFieldPhotoLibraryPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "GeoFieldPhotoLibraryPlugin"
+    public let jsName = "GeoFieldPhotoLibrary"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "savePhoto", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func savePhoto(_ call: CAPPluginCall) {
+        guard let encoded = call.getString("base64"),
+              let data = Data(base64Encoded: encoded),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0 else {
+            call.reject("This file could not be read as a photo.")
+            return
+        }
+        let filename = (call.getString("filename") ?? "geofield-photo.jpg") as NSString
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized || status == .limited else {
+                call.reject("Allow GeoField to add photos in iPhone Settings, then try downloading again.")
+                return
+            }
+            PHPhotoLibrary.shared().performChanges({
+                let request = PHAssetCreationRequest.forAsset()
+                let options = PHAssetResourceCreationOptions()
+                options.originalFilename = filename.lastPathComponent
+                request.addResource(with: .photo, data: data, options: options)
+            }) { success, error in
+                if success { call.resolve() }
+                else { call.reject(error?.localizedDescription ?? "Photos could not save this picture. Please try again.") }
+            }
+        }
+    }
 }

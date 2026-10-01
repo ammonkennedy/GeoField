@@ -107,3 +107,17 @@ test("a lost note response reuses the confirmed photo key without uploading agai
  await syncNoteRecords({...scenario.store,get:async()=>cloud});
  assert.equal(scenario.uploads(),0);assert.equal(scenario.local()[0].localRevision,undefined);assert.equal(scenario.local().length,1);assert.equal(scenario.local()[0].photos[0].cloudKey,"cloud-photo");
 });
+
+test("photo labels survive upload and cache; dropped captions are not acknowledged", async () => {
+ const scenario = setup();
+ scenario.store.save([{ ...note, photos: [{ ...note.photos[0], caption: 'Fold hinge\nLooking north' }] }]);
+ await syncNoteRecords(scenario.store);
+ assert.equal(scenario.remote()[0].photos[0].caption, 'Fold hinge\nLooking north');
+ assert.equal(scenario.local()[0].photos[0].caption, 'Fold hinge\nLooking north');
+ scenario.store.save([{ ...scenario.local()[0], photos: [{ ...scenario.local()[0].photos[0], caption: 'Revised label' }], localRevision:'caption-edit' }]);
+ const write = scenario.store.write;
+ scenario.store.write = async (record, exists) => write({ ...record, photos:record.photos.map(photo => ({...photo,caption:undefined})) }, exists);
+ await assert.rejects(syncNoteRecords(scenario.store), /confirm/);
+ assert.equal(scenario.local()[0].photos[0].caption, 'Revised label');
+ assert.equal(scenario.local()[0].localRevision, 'caption-edit');
+});

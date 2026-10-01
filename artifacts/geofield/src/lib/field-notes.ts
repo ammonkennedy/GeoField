@@ -3,6 +3,7 @@ import { readDurableArray, writeDurableArray } from "./durable-storage.ts";
 export interface NotePhoto {
   id: string;
   fileName: string;
+  caption?: string;
   localKey?: string;
   cloudKey?: string;
 }

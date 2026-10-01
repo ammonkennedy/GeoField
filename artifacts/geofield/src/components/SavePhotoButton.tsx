@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { saveFile } from "@/lib/save-file";
+import { savePhoto } from "@/lib/save-photo";
 import { cn } from "@/lib/utils";
 
 function photoFileName(requestedName: string | undefined, mimeType: string) {
@@ -9,7 +9,7 @@ function photoFileName(requestedName: string | undefined, mimeType: string) {
     .replace(/[\\/:*?"<>|]+/g, "-")
     .trim();
   const baseName = clean.replace(/\.[a-z0-9]{2,5}$/i, "");
-  const extension = mimeType.includes("png") ? "png" : mimeType.includes("heic") ? "heic" : "jpg";
+  const extension = ({ "image/png": "png", "image/heic": "heic", "image/heif": "heif", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif", "image/tiff": "tiff" } as Record<string, string>)[mimeType.toLowerCase().split(";")[0]] || "jpg";
   return `${baseName || "geofield-photo"}.${extension}`;
 }
 
@@ -17,10 +17,12 @@ export function SavePhotoButton({
   src,
   fileName,
   className,
+  showLabel = false,
 }: {
   src: string;
   fileName?: string;
   className?: string;
+  showLabel?: boolean;
 }) {
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -34,12 +36,12 @@ export function SavePhotoButton({
       const response = await fetch(src);
       if (!response.ok) throw new Error("The photo could not be loaded.");
       const blob = await response.blob();
-      const result = await saveFile(blob, photoFileName(fileName, blob.type));
+      const result = await savePhoto(blob, photoFileName(fileName, blob.type));
       toast({
-        title: result === "shared" ? "Photo ready to save" : "Photo saved",
-        description: result === "shared"
+        title: result === "photos" ? "Saved to Photos" : result === "shared" ? "Photo ready to save" : "Download started",
+        description: result === "photos" ? "The picture is now in your photo library." : result === "shared"
           ? "Choose Save Image in the iPhone share menu to add it to Photos."
-          : "The photo was downloaded to this device.",
+          : "Your browser will save the picture to your chosen download location.",
       });
     } catch (error: any) {
       toast({
@@ -58,13 +60,15 @@ export function SavePhotoButton({
       onClick={handleSave}
       disabled={saving}
       className={cn(
-        "absolute bottom-2 right-2 z-20 flex h-9 w-9 touch-manipulation items-center justify-center rounded-full bg-black/70 text-white shadow-lg backdrop-blur-sm transition-colors hover:bg-black/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70",
+        showLabel ? "flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-70" : "absolute bottom-2 right-2 z-20 flex h-9 w-9 touch-manipulation items-center justify-center rounded-full bg-black/70 text-white shadow-lg backdrop-blur-sm transition-colors hover:bg-black/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-70",
         className,
+  showLabel = false,
       )}
-      aria-label="Save photo to camera roll"
-      title="Save photo to camera roll"
+      aria-label="Download photo"
+      title="Download photo"
     >
       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+      {showLabel && (saving ? "Saving…" : "Download")}
     </button>
   );
 }

@@ -35,6 +35,7 @@ export interface StrikeDipMeasurement {
   notes: string;
   photo?: string;
   photoKey?: string | null;
+  photoCaption?: string;
   photoLocalKey?: string;
   photoUploadId?: string;
   photoUploadOnly?: boolean;

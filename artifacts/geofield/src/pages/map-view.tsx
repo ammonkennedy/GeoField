@@ -1,3 +1,5 @@
+import { getStoredMediaDataUrl } from "@/lib/media-storage";
+import { PrismOverlay } from "@/components/PrismOverlay";
 import { parseMacrostratSelection } from "@/lib/macrostrat-service";
 import { addDetailedTrails, removeDetailedTrails, showDetailedTrailPopup } from "@/lib/detailed-trail-overlay";
 import { applyBaseMap } from "@/lib/base-map";
@@ -74,7 +76,7 @@ function getSampleLabel(sample: any) {
 }
 
 type BaseLayer = "street" | "satellite" | "topographic";
-type OverlayLayer = "none" | "geology" | "soil" | "trails";
+type OverlayLayer = "none" | "geology" | "soil" | "trails" | "prism";
 
 const SATELLITE_IMAGERY_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
@@ -249,6 +251,7 @@ export default function MapViewPage() {
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
   const mapRef = useRef<any>(null);
+  const [prismMap, setPrismMap] = useState<any>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<any[]>([]);
   const popupRef = useRef<any>(null);
@@ -463,6 +466,7 @@ export default function MapViewPage() {
         attributionControl: {},
       });
       mapRef.current = map;
+      setPrismMap(map);
 
       map.addControl(new L.NavigationControl({ visualizePitch: true }), "top-right");
       const geolocateControl = new L.GeolocateControl({
@@ -534,7 +538,7 @@ export default function MapViewPage() {
       map.on("click", async (e: any) => {
         if (exportModeRef.current) return;
         const over = overlayLayerRef.current;
-        if (over === "none") return;
+        if (over === "none" || over === "prism") return;
         if (over === "trails") {
           trailRequestRef.current?.abort();
           trailPopupRef.current?.remove();
@@ -718,10 +722,10 @@ export default function MapViewPage() {
       const firstMedia = Array.isArray(fields?.media) ? fields.media[0] : null;
       const photoHtml = firstMedia?.type === "video"
         ? `<video src="${firstMedia.dataUrl}" style="width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:8px;border:none;" muted playsinline controls></video>`
-        : firstMedia?.type === "photo"
-          ? `<img src="${firstMedia.dataUrl}" style="width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:8px;"/>`
+        : (firstMedia?.kind || firstMedia?.type) === "photo"
+          ? `<img style="width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:8px;"/>`
           : fields?.photo
-            ? `<img src="${fields.photo}" style="width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:8px;"/>`
+            ? `<img style="width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:8px;"/>`
             : "";
 
       const el = document.createElement("div");
@@ -748,6 +752,28 @@ export default function MapViewPage() {
             </div>
           `)
           .addTo(map);
+        const image = popup.getElement().querySelector("img");
+        if (image) {
+          const previewUrl = firstMedia?.dataUrl || firstMedia?.cloudUrl || (!firstMedia ? fields?.photo : undefined);
+          if (typeof previewUrl === "string" && /^(data:image\/|blob:|https?:)/i.test(previewUrl)) image.src = previewUrl;
+          else if (firstMedia?.localKey || firstMedia?.storageKey) {
+            void getStoredMediaDataUrl(firstMedia.localKey || firstMedia.storageKey).then(url => { if (url && image.isConnected) image.src = url; }).catch(() => {});
+          }
+          const photoFrame = document.createElement("div"); photoFrame.style.position = "relative";
+          image.before(photoFrame); photoFrame.append(image);
+          const showPhoto = (read = false) => setLocation(`/sample/${sample.id}?photo=0${read ? "&label=read" : ""}`);
+          image.style.cursor = "pointer";
+          image.setAttribute("role", "button"); image.setAttribute("tabindex", "0"); image.setAttribute("aria-label", "View sample photo");
+          image.addEventListener("click", () => showPhoto());
+          image.addEventListener("keydown", (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showPhoto(); } });
+          const caption = firstMedia ? firstMedia.caption : fields?.photoCaption;
+          if (caption) {
+            const button = document.createElement("button"); button.type = "button";
+            button.textContent = caption; button.setAttribute("aria-label", "Read full photo label");
+            button.style.cssText = "position:absolute;bottom:8px;left:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;background:#000b;color:white;font-size:11px;line-height:14px;width:100%;text-align:left;padding:3px 5px;";
+            button.addEventListener("click", () => showPhoto(true)); image.after(button);
+          }
+        }
       });
 
       markersRef.current.push(marker);
@@ -1005,6 +1031,7 @@ export default function MapViewPage() {
               <option value="none">No Overlay</option>
               <option value="geology">Regional Geology</option>
               <option value="soil">Soil Types</option>
+              <option value="prism">PRISM Climate</option>
               <option value="trails">Hiking Trails (Waymarked)</option>
             </select>
             <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -1077,7 +1104,9 @@ export default function MapViewPage() {
           </div>
         )}
 
-        {overlayLayer !== "none" && (
+        {overlayLayer === "prism" && prismMap && <PrismOverlay map={prismMap} exportMode={exportMode} />}
+
+        {overlayLayer !== "none" && overlayLayer !== "prism" && (
           <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2 flex items-center gap-2">
             <Layers className="w-3.5 h-3.5 text-primary shrink-0" />
             {overlayLayer === "geology"

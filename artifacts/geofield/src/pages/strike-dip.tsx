@@ -1,3 +1,5 @@
+import { LabeledPhoto } from "@/components/LabeledPhoto";
+import { getAccuratePosition } from "@/lib/gps";
 import { MeasurementAngleInput } from "@/components/MeasurementAngleInput";
 import { applyMeasurementEdit, validMeasurementAngle } from "@/lib/measurement-edit";
 import { orderMeasurements } from "@/lib/measurement-order";
@@ -96,6 +98,9 @@ const ROCK_LAYER_OPTIONS = [
   "Other layer",
 ];
 
+const PLANE_FEATURE_TYPES = ["Bedding plane", "Fault plane", "Cleavage", "Joint"];
+const LINEATION_FEATURE_TYPES = ["Lineation", "Mineral lineation", "Glacial striation", "Slickenline", "Intersection lineation", "Fold axis", "Other"];
+
 /* ── Row component ──────────────────────────────────────────────────────── */
 function MeasurementRow({
   measurement, index, allFolders, initiallyOpen = false, onChange, onDelete,
@@ -104,7 +109,7 @@ function MeasurementRow({
   index: number;
   allFolders: Array<{ id: number | string; name: string; isLocal?: boolean }>;
   initiallyOpen?: boolean;
-  onChange: (m: Partial<StrikeDipMeasurement>) => void;
+  onChange: (m: Partial<StrikeDipMeasurement>) => boolean | void;
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
@@ -139,7 +144,7 @@ function MeasurementRow({
       const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: file.name, mimeType: "image/jpeg" });
       if (!accountId || getStorageAccountId() !== accountId) return;
       const latest = loadMeasurements().find((item) => item.id === measurement.id);
-      if (latest) onChange({ photo: undefined, photoKey: null, photoLocalKey: stored.storageKey, photoUploadId: crypto.randomUUID() });
+      if (latest) onChange({ photo: undefined, photoKey: null, photoCaption: "", photoLocalKey: stored.storageKey, photoUploadId: crypto.randomUUID() });
     } catch { photoToast({ title: "Photo could not be saved", description: "Please try again. The previous photo has been kept.", variant: "destructive" }); }
   };
 
@@ -149,12 +154,9 @@ function MeasurementRow({
       <div className="flex items-center gap-3 bg-gradient-to-r from-primary/5 to-transparent px-4 py-4">
         {/* Photo thumbnail or index badge */}
         {photoUrl ? (
-          <img
-            src={photoUrl}
-            alt="outcrop"
-            className="w-10 h-10 rounded-lg object-cover shrink-0 border border-border cursor-pointer"
-            onClick={() => setOpen((o) => !o)}
-          />
+          <div className="w-10 shrink-0"><LabeledPhoto key={measurement.photoLocalKey || measurement.photoKey || photoUrl} src={photoUrl} alt="Measurement photo" caption={measurement.photoCaption} className="w-10 h-10 object-cover" showPreview={false} onSave={photoCaption => {
+            if (onChange({ photoCaption }) === false) throw new Error("The label could not be saved. Please try again.");
+          }} /></div>
         ) : (
           <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
             {index + 1}
@@ -196,14 +198,12 @@ function MeasurementRow({
             {!photoUrl && measurement.photoKey && <p className="text-xs text-muted-foreground">Photo saved to your account. Sync when connected to download it here.</p>}
             {photoUrl ? (
               <div className="relative inline-block">
-                <img
-                  src={photoUrl}
-                  alt="outcrop"
-                  className="w-full max-w-xs h-40 object-cover rounded-xl border border-border shadow-sm"
-                />
+                <LabeledPhoto key={measurement.photoLocalKey || measurement.photoKey || photoUrl} src={photoUrl} alt="Measurement photo" caption={measurement.photoCaption} className="w-full max-w-xs h-40 object-cover" onSave={photoCaption => {
+                  if (onChange({ photoCaption }) === false) throw new Error("The label could not be saved. Please try again.");
+                }} />
                 <button
                   type="button"
-                  onClick={() => onChange({ photo: undefined, photoKey: null, photoLocalKey: undefined, photoUploadId: undefined })}
+                  onClick={() => onChange({ photo: undefined, photoKey: null, photoCaption: "", photoLocalKey: undefined, photoUploadId: undefined })}
                   className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 shadow"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -273,20 +273,8 @@ function MeasurementRow({
                 onChange={(e) => upd("featureType", e.target.value)}
               >
                 <option value="">Select...</option>
-                {measurement.measurementType === "lineation" ? <>
-                  <option>Lineation</option><option>Mineral lineation</option><option>Stretching lineation</option><option>Slickenline</option><option>Intersection lineation</option><option>Fold axis</option>
-                  {measurement.featureType && !["Lineation", "Mineral lineation", "Stretching lineation", "Slickenline", "Intersection lineation", "Fold axis", "Other"].includes(measurement.featureType) && <option>{measurement.featureType}</option>}
-                </> : <><option>Bedding plane</option>
-                <option>Fault plane</option>
-                <option>Foliation</option>
-                <option>Cleavage</option>
-                <option>Joint / fracture</option>
-                <option>Vein</option>
-                <option>Contact</option>
-                <option>Unconformity</option>
-                {measurement.featureType && !["Bedding plane", "Fault plane", "Foliation", "Cleavage", "Joint / fracture", "Vein", "Contact", "Unconformity", "Other"].includes(measurement.featureType) && <option>{measurement.featureType}</option>}
-                </>}
-                <option>Other</option>
+                {(measurement.measurementType === "lineation" ? LINEATION_FEATURE_TYPES : PLANE_FEATURE_TYPES).map(type => <option key={type}>{type}</option>)}
+                {measurement.featureType && !(measurement.measurementType === "lineation" ? LINEATION_FEATURE_TYPES : PLANE_FEATURE_TYPES).includes(measurement.featureType) && <option>{measurement.featureType}</option>}
               </select>
               <Input
                   value={measurement.featureType ?? ""}
@@ -502,7 +490,7 @@ export default function StrikeDipPage() {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return false;
     const savingAccountId = getStorageAccountId();
     measurement = stampMeasurementAtSave(measurement);
-    // Save and open the details now; a GPS fix can take ten seconds in the field.
+    // Save and open the details immediately while GPS refines the position.
     try { changeMeasurements((prev) => [...prev, measurement]); }
     catch {
       toast({ title: "Measurement could not be saved", description: "The reading is still open. Check available device storage and try again.", variant: "destructive" });
@@ -510,9 +498,7 @@ export default function StrikeDipPage() {
     }
     setNewlyCreatedId(measurement.id);
     if (successTitle) toast({ title: successTitle, description: successDescription });
-    if (!navigator.geolocation) return true;
-
-    try { navigator.geolocation.getCurrentPosition(
+    void getAccuratePosition().then(
       (position) => {
         if (!savingAccountId || getStorageAccountId() !== savingAccountId) return;
         // Merge into the latest saved record so typing, photos, dataset changes,
@@ -524,11 +510,13 @@ export default function StrikeDipPage() {
             ...addGpsToMeasurement(item, position),
             updatedAt: new Date(Math.max(Date.now(), (Date.parse(item.updatedAt ?? "") || 0) + 1)).toISOString(),
           };
-        })); } catch { toast({ title: "Measurement saved without GPS", description: "The location update could not be saved. Your measurement is still available.", variant: "destructive" }); }
+        }));
+          if (position.coords.accuracy > 20) toast({ title: "GPS accuracy is limited", description: `Estimated accuracy: ±${Math.round(position.coords.accuracy)} m. A clear view of the sky and Precise Location can help.` });
+        } catch { toast({ title: "Measurement saved without GPS", description: "The location update could not be saved. Your measurement is still available.", variant: "destructive" }); }
       },
-      () => { /* The measurement is already saved and its details remain open. */ },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-    ); } catch { /* Location failure cannot turn a successful measurement save into a failed capture. */ }
+    ).catch(() => {
+      if (getStorageAccountId() === savingAccountId) toast({ title: "Measurement saved without a fresh GPS fix", description: "Check location permission and your view of the sky. Your measurement is saved.", variant: "destructive" });
+    });
     return true;
   };
 
@@ -554,10 +542,11 @@ export default function StrikeDipPage() {
   };
 
   const updateMeasurementById = (id: string, patch: Partial<StrikeDipMeasurement>) => {
-    if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return;
+    if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return false;
     try {
       changeMeasurements((prev) => prev.map((item) => item.id === id ? { ...applyMeasurementEdit(item, patch), updatedAt: new Date().toISOString() } : item));
-    } catch (error) { toast({ title: "Measurement edit could not be saved", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" }); }
+      return true;
+    } catch (error) { toast({ title: "Measurement edit could not be saved", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" }); return false; }
   };
 
   const deleteMeasurementById = (id: string) => {
@@ -661,7 +650,7 @@ export default function StrikeDipPage() {
         <div className="flex gap-3">
           <Button onClick={() => setCompassOpen(true)} className="flex-1 gap-2">
             <Compass className="w-4 h-4" />
-            Use Compass
+            Use Clinometer
           </Button>
           <Button variant="outline" onClick={addManual} className="flex-1 gap-2">
             <Plus className="w-4 h-4" />
@@ -750,8 +739,9 @@ export default function StrikeDipPage() {
             <div className="space-y-1.5">
               <Label htmlFor="manual-feature">Feature Type</Label>
               <select id="manual-feature" className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm" value={manualDraft.featureType} onChange={(e) => setManualDraft((draft) => ({ ...draft, featureType: e.target.value }))}>
-                <option value="">Select…</option><option>Bedding plane</option><option>Fault plane</option><option>Foliation</option><option>Cleavage</option><option>Joint / fracture</option><option>Other</option>
-                {manualDraft.featureType && !["Bedding plane", "Fault plane", "Foliation", "Cleavage", "Joint / fracture", "Other"].includes(manualDraft.featureType) && <option>{manualDraft.featureType}</option>}
+                <option value="">Select…</option>
+                {PLANE_FEATURE_TYPES.map(type => <option key={type}>{type}</option>)}
+                {manualDraft.featureType && !PLANE_FEATURE_TYPES.includes(manualDraft.featureType) && <option>{manualDraft.featureType}</option>}
               </select>
               <Input value={manualDraft.featureType ?? ""} onChange={(e) => setManualDraft((draft) => ({ ...draft, featureType: e.target.value }))} placeholder="Or type your own feature type" aria-label="Custom strike and dip feature type" className="h-8 text-sm" />
             </div>

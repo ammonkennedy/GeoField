@@ -46,3 +46,11 @@ test("deleted records can sync even if their local photo is missing", async () =
   assert.equal(await prepareMeasurementPhoto(deleted, s.store), deleted);
   assert.equal(s.uploads.length, 0);
 });
+
+test("measurement photo labels survive upload and another device's photo cache", async () => {
+ const a=setup();
+ const sent=await prepareMeasurementPhoto({...item,photoCaption:'Bedding in sandstone'},a.store);
+ assert.equal(sent.photoCaption,'Bedding in sandstone');
+ const received=await cacheMeasurementPhoto({...sent,photoLocalKey:undefined},a.store);
+ assert.equal(received.photoCaption,'Bedding in sandstone');
+});

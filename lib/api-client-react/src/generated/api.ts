@@ -1,3 +1,4 @@
+import { requestWithCaptionFallback } from "../measurement-caption-request";
 import { captureAccountAuthorization } from "../account-authorization";
 import { isNetworkError, requireCloudSession } from "../cloud-session";
 import { defaultStorage } from "aws-amplify/utils";
@@ -366,7 +367,8 @@ export async function getCurrentAccountToken(): Promise<string> {
  */
 export function subscribeToAccountDataChanges(onChange: () => void): () => void {
   const subscriptions: Array<{ unsubscribe: () => void }> = [];
-  for (const modelName of ["Sample", "Dataset", "StrikeDipMeasurement", "FieldNote", "Trip"] as const) {
+  for (const modelName of ["Sample", "Dataset", "StrikeDipMeasurement", "FieldNote", "NoteFolder", "Trip"] as const) {
+    if (!client.models[modelName]) continue; // New models become available when deployment outputs refresh.
     for (const eventName of ["onCreate", "onUpdate", "onDelete"] as const) {
       try {
         const subscription = client.models[modelName][eventName]().subscribe({
@@ -626,6 +628,7 @@ export async function moveSample({ id, data }: { id: string | number; data: Move
 
 export interface CloudStrikeDipMeasurement {
   photoKey?: string | null;
+  photoCaption?: string;
   deletedAt?: string | null;
   id: string;
   measurementType?: "plane" | "lineation";
@@ -670,7 +673,7 @@ export interface CloudStrikeDipMeasurement {
 
 function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
   return {
-    id: String(record.id), photoKey: record.photoKey ?? null, measurementType: record.measurementType === "lineation" ? "lineation" : "plane", datasetId: record.datasetId ?? null,
+    id: String(record.id), photoKey: record.photoKey ?? null, photoCaption: record.photoCaption ?? "", measurementType: record.measurementType === "lineation" ? "lineation" : "plane", datasetId: record.datasetId ?? null,
     label: record.label ?? "", strike: record.strike ?? "", dip: record.dip ?? "", dipDir: record.dipDir ?? "",
     strikeDegrees: record.strikeDegrees ?? undefined, dipDegrees: record.dipDegrees ?? undefined,
     dipDirectionDegrees: record.dipDirectionDegrees ?? undefined, convention: record.convention ?? undefined,
@@ -692,6 +695,7 @@ function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
 
 function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
   const input = cleanObject({
+    photoCaption: data.photoCaption,
     measurementType: data.measurementType ?? "plane", datasetId: normalizeFolderId(data.datasetId) ?? undefined, label: data.label, strike: data.strike, dip: data.dip,
     dipDir: data.dipDir, strikeDegrees: data.strikeDegrees, dipDegrees: data.dipDegrees,
     trendDegrees: data.trendDegrees, plungeDegrees: data.plungeDegrees, lineVector: encodeMeasurementJson(data.lineVector),
@@ -717,6 +721,32 @@ function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
     : { ...input, ...nullableHeight };
 }
 
+// Explicit selection includes the new caption field after the backend is deployed,
+// even before a local Xcode checkout has refreshed generated model introspection.
+async function measurementRequest(kind: "list" | "get" | "create" | "update", input: Record<string, unknown>, accountId?: string) {
+  const fields = outputs.data.model_introspection.models.StrikeDipMeasurement.fields;
+  const selection = [...new Set([...Object.entries(fields).filter(([, field]) => typeof field.type === "string").map(([name]) => name), "photoCaption"])].join(" ");
+  let query: string;
+  let variables: Record<string, unknown>;
+  const operation = kind === "list" ? "listStrikeDipMeasurements" : `${kind}StrikeDipMeasurement`;
+  if (kind === "list") {
+    query = `query ReadMeasurements($nextToken: String) { ${operation}(limit: 1000, nextToken: $nextToken) { items { ${selection} } nextToken } }`;
+    variables = { nextToken: input.nextToken ?? null };
+  } else if (kind === "get") {
+    query = `query ReadMeasurement($id: ID!) { ${operation}(id: $id) { ${selection} } }`;
+    variables = { id: input.id };
+  } else {
+    const inputType = kind === "create" ? "CreateStrikeDipMeasurementInput" : "UpdateStrikeDipMeasurementInput";
+    query = `mutation SaveMeasurement($input: ${inputType}!) { ${operation}(input: $input) { ${selection} } }`;
+    variables = { input };
+  }
+  const result = await requestWithCaptionFallback(request => client.graphql(request), { query, variables, ...await accountRequestOptions(accountId) });
+  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  const value = result.data?.[operation];
+  if (kind !== "get" && !value) throw new Error("Cloud did not confirm the measurement request. Local data is preserved.");
+  return kind === "list" ? { data: value.items, nextToken: value.nextToken, errors: undefined } : { data: value, errors: undefined };
+}
+
 export async function getStrikeDipMeasurements(includeDeleted = false, expectedAccountId?: string): Promise<CloudStrikeDipMeasurement[]> {
   await requireCloudSyncSession();
   const readingAccount = (await getCurrentUser()).userId;
@@ -724,8 +754,7 @@ export async function getStrikeDipMeasurements(includeDeleted = false, expectedA
   const items: CloudStrikeDipMeasurement[] = [];
   let nextToken: string | null | undefined;
   do {
-    const result = await client.models.StrikeDipMeasurement.list({ limit: 1000, nextToken, ...await accountRequestOptions(readingAccount) });
-    if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    const result = await measurementRequest("list", { nextToken }, readingAccount);
     for (const record of result.data ?? []) if (includeDeleted === true || !record.deletedAt) items.push(asStrikeDipMeasurement(record));
     if ((await getCurrentUser()).userId !== readingAccount) throw new Error("Account changed during download. Please sync again.");
     nextToken = result.nextToken;
@@ -734,22 +763,19 @@ export async function getStrikeDipMeasurements(includeDeleted = false, expectedA
 }
 
 export async function getStrikeDipMeasurement(id: string, accountId?: string): Promise<CloudStrikeDipMeasurement | null> {
-  const result = await client.models.StrikeDipMeasurement.get({ id }, await accountRequestOptions(accountId));
-  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  const result = await measurementRequest("get", { id }, accountId);
   return result.data ? asStrikeDipMeasurement(result.data) : null;
 }
 
 export async function createStrikeDipMeasurement(data: CloudStrikeDipMeasurement, accountId?: string): Promise<CloudStrikeDipMeasurement> {
   await requireCloudSyncSession();
-  const result = await client.models.StrikeDipMeasurement.create({ id: data.id, ...strikeDipInput(data), createdAt: data.createdAt } as any, await accountRequestOptions(accountId));
-  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  const result = await measurementRequest("create", { id: data.id, ...strikeDipInput(data), createdAt: data.createdAt }, accountId);
   return asStrikeDipMeasurement(result.data);
 }
 
 export async function updateStrikeDipMeasurement(data: CloudStrikeDipMeasurement, accountId?: string): Promise<CloudStrikeDipMeasurement> {
   await requireCloudSyncSession();
-  const result = await client.models.StrikeDipMeasurement.update({ id: data.id, ...strikeDipInput(data) } as any, await accountRequestOptions(accountId));
-  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  const result = await measurementRequest("update", { id: data.id, ...strikeDipInput(data) }, accountId);
   return asStrikeDipMeasurement(result.data);
 }
 export function useMoveSample(options?: MutationOptions<Sample, { id: string | number; data: MoveSampleRequest }>) {
@@ -761,7 +787,7 @@ export interface CloudFieldNote {
   id: string;
   title: string;
   body: string;
-  photos: Array<{ id: string; fileName: string; cloudKey: string }>;
+  photos: Array<{ id: string; fileName: string; cloudKey: string; caption?: string }>;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
@@ -800,6 +826,62 @@ export async function saveCloudFieldNote(note: CloudFieldNote, exists: boolean, 
   const result = await client.models.FieldNote[exists ? "update" : "create"](input, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFieldNote(result.data);
+}
+
+// Explicit operations let older app builds keep their existing note model unchanged.
+// The NoteFolder backend model must be deployed before releasing this client.
+export interface CloudNoteFolder {
+  id: string;
+  name: string;
+  noteIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+function asNoteFolder(record: any): CloudNoteFolder {
+  if (!record?.id || typeof record.name !== "string") throw new Error("Cloud did not confirm the note folder.");
+  const ids = typeof record.noteIds === "string" ? JSON.parse(record.noteIds) : record.noteIds ?? [];
+  if (!Array.isArray(ids) || ids.some((id: unknown) => typeof id !== "string")) throw new Error("Cloud folder membership could not be read. Your local folder is preserved.");
+  return { id: record.id, name: record.name, noteIds: [...new Set<string>(ids)], createdAt: record.createdAt, updatedAt: record.updatedAt, deletedAt: record.deletedAt ?? null };
+}
+const noteFolderSelection = "id name noteIds createdAt updatedAt deletedAt";
+async function noteFolderRequest(query: string, variables: Record<string, unknown>, accountId: string): Promise<any> {
+  await requireFieldNoteAccount(accountId);
+  const options = await accountRequestOptions(accountId);
+  try {
+    const result = await client.graphql({ query, variables, ...options });
+    await requireFieldNoteAccount(accountId);
+    if (result.errors?.length) throw new Error(errorMessage(result.errors));
+    return result.data;
+  } catch (error: any) {
+    const message = error?.errors ? errorMessage(error.errors) : error?.message || "Note folders could not sync.";
+    if (/NoteFolder|noteFolder/.test(message) && /undefined|not defined|Unknown|does not exist/i.test(message)) {
+      throw new Error("Note folder cloud support needs a server update. Your folders and notes remain saved on this device.");
+    }
+    throw new Error(message);
+  }
+}
+export async function getCloudNoteFolders(accountId: string): Promise<CloudNoteFolder[]> {
+  const folders: CloudNoteFolder[] = [];
+  let nextToken: string | null = null;
+  do {
+    const data = await noteFolderRequest(`query ListNoteFolders($nextToken: String) { listNoteFolders(limit: 500, nextToken: $nextToken) { items { ${noteFolderSelection} } nextToken } }`, { nextToken }, accountId);
+    if (!data?.listNoteFolders || !Array.isArray(data.listNoteFolders.items)) throw new Error("Cloud note folders could not be read.");
+    folders.push(...data.listNoteFolders.items.filter(Boolean).map(asNoteFolder));
+    nextToken = data.listNoteFolders.nextToken;
+  } while (nextToken);
+  return folders;
+}
+export async function getCloudNoteFolder(id: string, accountId: string): Promise<CloudNoteFolder | null> {
+  const data = await noteFolderRequest(`query GetNoteFolder($id: ID!) { getNoteFolder(id: $id) { ${noteFolderSelection} } }`, { id }, accountId);
+  return data?.getNoteFolder ? asNoteFolder(data.getNoteFolder) : null;
+}
+export async function saveCloudNoteFolder(folder: CloudNoteFolder, exists: boolean, accountId: string): Promise<CloudNoteFolder> {
+  const operation = exists ? "updateNoteFolder" : "createNoteFolder";
+  const inputType = exists ? "UpdateNoteFolderInput" : "CreateNoteFolderInput";
+  const input = { id: folder.id, name: folder.name, noteIds: JSON.stringify(folder.noteIds), createdAt: folder.createdAt, deletedAt: folder.deletedAt ?? null };
+  const data = await noteFolderRequest(`mutation SaveNoteFolder($input: ${inputType}!) { ${operation}(input: $input) { ${noteFolderSelection} } }`, { input }, accountId);
+  return asNoteFolder(data?.[operation]);
 }
 
 export interface CloudTrip {

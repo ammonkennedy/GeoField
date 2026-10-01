@@ -14,7 +14,7 @@ function withLocalPhotos(note: FieldNote, local?: FieldNote): FieldNote {
 }
 
 function confirmsNote(saved: FieldNote | null | undefined, sent: FieldNote) {
-  return Boolean(saved && saved.id === sent.id && saved.title === sent.title && saved.body === sent.body && (saved.deletedAt ?? null) === (sent.deletedAt ?? null) && saved.photos.length === sent.photos.length && sent.photos.every((photo) => saved.photos.some((item) => item.id === photo.id && item.cloudKey === photo.cloudKey)));
+  return Boolean(saved && saved.id === sent.id && saved.title === sent.title && saved.body === sent.body && (saved.deletedAt ?? null) === (sent.deletedAt ?? null) && saved.photos.length === sent.photos.length && sent.photos.every((photo) => saved.photos.some((item) => item.id === photo.id && item.cloudKey === photo.cloudKey && (item.caption ?? "") === (photo.caption ?? ""))));
 }
 
 export async function syncNoteRecords(store: NoteSyncStore) {
