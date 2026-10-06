@@ -1,3 +1,7 @@
+import { MeasurementRow } from "@/components/MeasurementRow";
+import { applyMeasurementEdit } from "@/lib/measurement-edit";
+import { orderMeasurements } from "@/lib/measurement-order";
+import { useToast } from "@/hooks/use-toast";
 import { resolveDatasetId } from "@/lib/dataset-identity";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
@@ -13,7 +17,7 @@ import { ExportDialog } from "@/components/ExportDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getQueue, deleteQueuedSample, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
 import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-import { loadMeasurements, reassignMeasurementsDataset, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
+import { saveMeasurements, deleteMeasurement, loadMeasurements, reassignMeasurementsDataset, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { archiveLocalItem } from "@/lib/recently-deleted";
 import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 import { requireAccountForSave } from "@/lib/guest-access";
@@ -42,6 +46,7 @@ function parseRouteId(value?: string): string | number | undefined {
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const { data: authData } = useGetCurrentAuthUser();
   const { folderId } = useParams();
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
@@ -107,17 +112,18 @@ export default function Dashboard() {
 
   const localSamples = queuedSamples
     .filter((item) => !item.deletedAt)
-    .filter((item) => !activeFolderId || String(item.payload.folderId ?? "") === String(activeFolderId))
+    .filter((item) => !activeFolderId || String(resolveDatasetId(item.payload.folderId, localDatasets) ?? "") === String(activeFolderId))
     .map((item, index) => ({
       id: item.queuedId,
       targetId: item.targetId,
       ...(item.payload || {}),
+      folderId: resolveDatasetId(item.payload.folderId, localDatasets),
       sampleId: item.payload.sampleId || `offline-${index + 1}`,
       createdAt: item.queuedAt,
       isOffline: true,
     }));
 
-  const cachedForView = cachedCloudSamples.filter((sample) => !activeFolderId || String(sample.folderId ?? "") === String(activeFolderId));
+  const cachedForView = cachedCloudSamples.filter((sample) => !activeFolderId || String(resolveDatasetId(sample.folderId, localDatasets) ?? "") === String(activeFolderId));
   const serverSamples = isLocalFolder ? [] : mergeCloudAndLocal(samples ?? [], cachedForView);
   const allSamples = mergeCloudAndLocal((serverSamples as any[]).filter((sample) => !queuedSamples.some((item) => String(item.targetId ?? item.queuedId) === String(sample.id))), localSamples as any[]);
 
@@ -339,9 +345,7 @@ export default function Dashboard() {
                 {datasetMeasurements.length} structural measurement{datasetMeasurements.length !== 1 ? "s" : ""} in this dataset
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setLocation("/strike-dip")}>
-              Manage
-            </Button>
+
           </div>
 
           {datasetMeasurements.length === 0 ? (
@@ -349,27 +353,32 @@ export default function Dashboard() {
               No structural measurements are assigned to this dataset yet.
             </div>
           ) : (
-            <div className="divide-y divide-border">
-              {datasetMeasurements.map((measurement) => (
-                <div key={measurement.id} className="grid gap-2 px-5 py-4 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{measurement.label || "Untitled measurement"}</p>
-                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                      <span className="font-mono text-primary">
-                        {measurement.measurementType === "lineation"
-                          ? `Azimuth ${measurement.trendDegrees ?? "--"}° / Plunge ${measurement.plungeDegrees ?? "--"}°`
-                          : `Strike ${measurement.strike || "--"} / Dip ${measurement.dip || "--"}${measurement.dipDir ? ` ${measurement.dipDir}` : ""}`}
-                      </span>
-                      {measurement.rockLayerType && <span>{measurement.rockLayerType}</span>}
-                      {measurement.location && <span className="truncate">{measurement.location}</span>}
-                    </div>
-                  </div>
-                  {measurement.date && (
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(measurement.date).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                    </span>
-                  )}
-                </div>
+            <div className="space-y-3 p-3 sm:p-5">
+              {orderMeasurements(datasetMeasurements).reverse().map((measurement, index) => (
+                <MeasurementRow key={measurement.id} measurement={measurement} index={index} allFolders={allFolders}
+                  onChange={patch => {
+                    if (!requireAccountForSave(authData?.user, setLocation, window.location.pathname)) return false;
+                    try {
+                      const current = loadMeasurements();
+                      if (!current.some(item => item.id === measurement.id)) throw new Error("This measurement is no longer available.");
+                      saveMeasurements(current.map(item => item.id === measurement.id ? {
+                        ...applyMeasurementEdit(item, patch),
+                        updatedAt: new Date(Math.max(Date.now(), (Date.parse(item.updatedAt || "") || 0) + 1)).toISOString(),
+                      } : item));
+                      setMeasurements(loadMeasurements());
+                      return true;
+                    } catch (error) {
+                      toast({ title: "Measurement edit could not be saved", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+                      return false;
+                    }
+                  }}
+                  onDelete={() => {
+                    if (!requireAccountForSave(authData?.user, setLocation, window.location.pathname)) return;
+                    if (!confirm(`Delete "${measurement.label || "this measurement"}"? You can restore it from Settings.`)) return;
+                    try { deleteMeasurement(measurement.id); setMeasurements(loadMeasurements()); }
+                    catch { toast({ title: "Measurement could not be deleted", description: "Please try again.", variant: "destructive" }); }
+                  }}
+                />
               ))}
             </div>
           )}

@@ -1,3 +1,4 @@
+import { cacheSampleAttachments } from "./cache-sample-attachments";
 import { uploadSampleMedia, resolveSampleMediaUrl } from "@workspace/api-client-react";
 import { getStoredMediaDataUrl, storeMediaDataUrl } from "./media-storage";
 import type { QueuedSample } from "./offline-queue";
@@ -31,13 +32,12 @@ export async function prepareSampleUpload(item: QueuedSample, accountId: string)
 }
 
 /** Refresh device-local photo copies without persisting expiring signed URLs. */
-export async function cacheSamplePhotos(sample: any) {
-  if (!Array.isArray(sample.fields?.media)) return sample;
-  const media = [];
-  for (const attachment of sample.fields.media) {
-    if ((attachment.kind || attachment.type) !== "photo" || !attachment.storageKey?.startsWith("media/")) { media.push(attachment); continue; }
-    if (attachment.localKey && await getStoredMediaDataUrl(attachment.localKey)) { media.push(attachment); continue; }
-    const url = attachment.cloudUrl || await resolveSampleMediaUrl(attachment.storageKey);
+export async function cacheSamplePhotos(sample: any, onProgress?: (sample: any) => void) {
+  return cacheSampleAttachments(sample, async attachment => {
+    if ((attachment.kind || attachment.type) !== "photo" || !attachment.storageKey?.startsWith("media/")) return attachment;
+    if (attachment.localKey && await getStoredMediaDataUrl(attachment.localKey)) return attachment;
+    // Signed URLs expire while a device is offline. Obtain a fresh one on retry.
+    const url = await resolveSampleMediaUrl(attachment.storageKey);
     const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (!response.ok) throw new Error("Network error downloading sample photos. Local samples remain available; photos will retry.");
     const blob = await response.blob();
@@ -47,7 +47,6 @@ export async function cacheSamplePhotos(sample: any) {
       reader.readAsDataURL(blob);
     });
     const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: attachment.fileName, mimeType: blob.type });
-    media.push({ ...attachment, localKey: stored.storageKey });
-  }
-  return { ...sample, fields: { ...sample.fields, media, primaryPhoto: media.find((item) => (item.kind || item.type) === "photo") ?? sample.fields.primaryPhoto } };
+    return { ...attachment, localKey: stored.storageKey };
+  }, onProgress);
 }

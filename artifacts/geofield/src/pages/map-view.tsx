@@ -799,10 +799,10 @@ export default function MapViewPage() {
       el.style.cssText = "width:42px;height:42px;border:0;background:transparent;padding:0;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));";
       el.innerHTML = `
         <svg viewBox="0 0 42 42" width="42" height="42" aria-hidden="true">
-          <circle cx="21" cy="21" r="18" fill="rgba(255,255,255,.88)" stroke="#7c3aed" stroke-width="2"/>
           <g transform="rotate(${bearing} 21 21)">
-            <path d="${isLineation ? "M21 34V8 M15 14L21 8L27 14" : "M21 7V35 M21 21H34"}" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="${isLineation ? "M21 34V8 M15 14L21 8L27 14" : "M21 7V35 M21 21H34"}" fill="none" stroke="#4c1d95" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="${isLineation ? "M21 34V8 M15 14L21 8L27 14" : "M21 7V35 M21 21H34"}" fill="none" stroke="#dbeafe" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="${isLineation ? "M21 34V8" : "M21 7V35"}" fill="none" stroke="${isLineation ? "#3b82f6" : "#60a5fa"}" stroke-width="3.5" stroke-linecap="round"/>
+            <path d="${isLineation ? "M15 14L21 8L27 14" : "M21 21H34"}" fill="none" stroke="#fbbf24" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
           </g>
         </svg>`;
       const marker = new L.Marker({ element: el, anchor: "center", rotationAlignment: "map" })
@@ -816,7 +816,7 @@ export default function MapViewPage() {
           .setHTML(`
             <div style="font-family:system-ui,sans-serif;min-width:190px;">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                <span style="color:#4c1d95;font-size:22px;font-weight:800;">${isLineation ? "↑" : "⊢"}</span>
+                <span style="color:#60a5fa;font-size:22px;font-weight:800;">${isLineation ? "↑" : "⊢"}</span>
                 <div><strong style="font-size:13px;">${escapeHtml(measurement.label || (isLineation ? "Lineation" : "Strike & Dip"))}</strong><div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Structural measurement</div></div>
               </div>
               ${isLineation
@@ -1071,7 +1071,8 @@ export default function MapViewPage() {
             ))}
             <div className="flex items-center gap-1.5 text-sm">
               <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
-                <path d="M10 2v16M10 10h8" fill="none" stroke="#4c1d95" strokeWidth="2.5" strokeLinecap="round" />
+                <path d="M10 2v16" fill="none" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round" />
+                <path d="M10 10h8" fill="none" stroke="#fbbf24" strokeWidth="2.5" strokeLinecap="round" />
               </svg>
               <span className="text-muted-foreground">Strike/Dip</span>
             </div>

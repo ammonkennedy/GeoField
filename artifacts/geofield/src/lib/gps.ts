@@ -10,6 +10,8 @@ export function getAccuratePosition(
     if (!geolocation) { reject(new Error("Geolocation is unavailable")); return; }
     const started = Date.now();
     let best: GeolocationPosition | undefined;
+    let bestWithElevation: GeolocationPosition | undefined;
+    const hasElevation = (position: GeolocationPosition) => typeof position.coords.altitude === "number" && Number.isFinite(position.coords.altitude);
     let watchId: number | undefined;
     let done = false;
     const finish = (error?: unknown) => {
@@ -17,7 +19,10 @@ export function getAccuratePosition(
       done = true;
       clearTimeout(timer);
       if (watchId !== undefined) geolocation.clearWatch(watchId);
-      if (best) resolve(best);
+      // Prefer a complete fix only when its horizontal accuracy is comparable.
+      // Keep all coordinates from one reading; never combine heights from another location.
+      if (bestWithElevation && best && bestWithElevation.coords.accuracy <= best.coords.accuracy + 5) resolve(bestWithElevation);
+      else if (best) resolve(best);
       else reject(error ?? new Error("GPS_TIMEOUT"));
     };
     const timer = setTimeout(() => finish(), durationMs);
@@ -30,7 +35,8 @@ export function getAccuratePosition(
             !Number.isFinite(longitude) || Math.abs(longitude) > 180 ||
             !Number.isFinite(accuracy) || accuracy < 0) return;
         if (!best || accuracy <= best.coords.accuracy) best = position;
-        if (accuracy <= 5) finish();
+        if (hasElevation(position) && (!bestWithElevation || accuracy <= bestWithElevation.coords.accuracy)) bestWithElevation = position;
+        if (accuracy <= 5 && hasElevation(position)) finish();
       }, error => {
         // Temporary failures may be followed by a good fix. Permission denial cannot.
         if (error.code === 1) finish(error);

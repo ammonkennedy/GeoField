@@ -1,3 +1,4 @@
+import { resolveDatasetId } from "./dataset-identity.ts";
 import { loadTrips, storeTrips } from "./trips.ts";
 import { attachTripDataset, getLocalDatasets } from "./local-datasets.ts";
 import { getQueue, setQueue, type QueuedSample } from "./offline-queue.ts";
@@ -73,7 +74,7 @@ export function reconcileTripSites() {
         payload: {
           sampleType: site.sampleType ?? "other",
           sampleId: site.name.trim() || `Site ${index + 1}`,
-          folderId: trip.cloudDatasetId ?? trip.datasetId ?? null,
+          folderId: trip.cloudDatasetId ?? resolveDatasetId(trip.datasetId, getLocalDatasets()) ?? null,
           notes: site.description || "Planned future sample site",
           fields: {
             location: `${site.lat.toFixed(7)}, ${site.lng.toFixed(7)}`,

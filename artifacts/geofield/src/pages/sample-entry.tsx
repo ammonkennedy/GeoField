@@ -1,3 +1,4 @@
+import { FolderDialog } from "@/components/FolderDialog";
 import { LabeledPhoto } from "@/components/LabeledPhoto";
 import { getAccuratePosition } from "@/lib/gps";
 import { findSamplePrecisionError } from "@/lib/sample-precision";
@@ -154,9 +155,10 @@ export default function SampleEntry() {
   const existingSample = remoteSample ?? cachedSample;
   const { data: folders } = useGetFolders();
   const { createSample, updateSample } = useSamplesMutations();
+  const [datasetDialogOpen, setDatasetDialogOpen] = useState(false);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
-  const allFolders = [...(folders || []), ...visibleLocalDatasets];
+  const allFolders = [...(folders || []), ...visibleLocalDatasets.map(dataset => ({ ...dataset, id: dataset.cloudId || dataset.id }))];
 
   const [mediaSlots, setMediaSlots] = useState<[MediaSlot, MediaSlot, MediaSlot]>([null, null, null]);
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("idle");
@@ -197,6 +199,12 @@ export default function SampleEntry() {
     if (!isEdit && initialFolderId) setValue("folderId", initialFolderId);
   }, [initialFolderId, isEdit, setValue]);
 
+  const selectedDataset = watch("folderId");
+  useEffect(() => {
+    const synced = localDatasets.find(dataset => String(dataset.id) === selectedDataset)?.cloudId;
+    if (synced) setValue("folderId", synced, { shouldDirty: true });
+  }, [localDatasets, selectedDataset, setValue]);
+
   const gpsRequest = useRef(0);
   useEffect(() => () => { gpsRequest.current++; }, [id]);
 
@@ -215,6 +223,7 @@ export default function SampleEntry() {
       setValue("fields.elevation", height.elevation, { shouldDirty: true });
       setValue("fields.elevationAccuracy", height.elevationAccuracy, { shouldDirty: true });
       setGpsStatus("success");
+      if (height.elevation === null) toast({ title: "Location saved without elevation", description: "The phone supplied coordinates but no altitude. Try GPS Again with a clear view of the sky." });
     } catch (error: any) {
       if (request !== gpsRequest.current || account !== getStorageAccountId()) return;
       console.error("[GeoField GPS] Location capture failed", error);
@@ -693,7 +702,15 @@ export default function SampleEntry() {
                         {slot ? (
                           <>
                             {slot.type === "photo" ? (
-                              <LabeledPhoto key={slot.dataUrl} src={slot.dataUrl} initiallyOpen={new URLSearchParams(window.location.search).get("photo") === String(i)} initiallyRead={new URLSearchParams(window.location.search).get("label") === "read"} alt={`Sample photo ${i + 1}`} caption={slot.caption} className="w-36 h-36 object-cover" saveMessage="Label added. Save the sample to keep your changes." onSave={caption => setMediaSlots(previous => {
+                              <LabeledPhoto key={slot.dataUrl} src={slot.dataUrl} initiallyOpen={new URLSearchParams(window.location.search).get("photo") === String(i)} initiallyRead={new URLSearchParams(window.location.search).get("label") === "read"} alt={`Sample photo ${i + 1}`} caption={slot.caption} onEdit={async dataUrl => {
+                                setMediaSlots(previous => {
+                                  if (previous[i]?.dataUrl !== slot.dataUrl) return previous;
+                                  const next = [...previous] as [MediaSlot, MediaSlot, MediaSlot];
+                                  next[i] = { type: "photo", dataUrl, fileName: "edited-photo.jpg", mimeType: "image/jpeg", caption: previous[i]?.caption };
+                                  return next;
+                                });
+                                toast({ title: "Photo edited", description: "Save the sample to keep your edited picture." });
+                              }} className="w-36 h-36 object-cover" saveMessage="Label added. Save the sample to keep your changes." onSave={caption => setMediaSlots(previous => {
                                 if (previous[i]?.dataUrl !== slot.dataUrl) return previous;
                                 const next = [...previous] as [MediaSlot, MediaSlot, MediaSlot];
                                 next[i] = { ...previous[i]!, caption }; return next;
@@ -733,13 +750,17 @@ export default function SampleEntry() {
 
             <div className="space-y-4">
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">5</span>Organization</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><Label htmlFor="folderId">Dataset (Optional)</Label><select id="folderId" className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("folderId")}><option value="">Uncategorized</option>{allFolders.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></div><div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><Label htmlFor="notes">Field Notes</Label><button type="button" onClick={toggleRecording} title={isRecording ? "Stop recording" : "Dictate field notes"} className={cn("flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all", isRecording ? "bg-red-500 text-white border-red-500 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/50")}>{isRecording ? <><MicOff className="w-3.5 h-3.5" /> Stop</> : <><Mic className="w-3.5 h-3.5" /> Dictate</>}</button></div>{isRecording && <p className="text-xs text-red-500 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500 animate-ping inline-block" />Listening… speak your field notes now.</p>}<Textarea id="notes" placeholder="Additional observations, weather conditions, context... or click Dictate to speak." className="min-h-[120px]" {...register("notes")} /></div></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="space-y-2"><div className="flex items-center justify-between gap-2"><Label htmlFor="folderId">Dataset (Optional)</Label><Button type="button" variant="outline" size="sm" onClick={() => setDatasetDialogOpen(true)}><Plus className="mr-1 h-4 w-4" />New Dataset</Button></div><select id="folderId" className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("folderId")}><option value="">Uncategorized</option>{allFolders.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></div><div className="space-y-2 md:col-span-2"><div className="flex items-center justify-between"><Label htmlFor="notes">Field Notes</Label><button type="button" onClick={toggleRecording} title={isRecording ? "Stop recording" : "Dictate field notes"} className={cn("flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all", isRecording ? "bg-red-500 text-white border-red-500 animate-pulse" : "bg-card border-border text-muted-foreground hover:text-foreground hover:border-primary/50")}>{isRecording ? <><MicOff className="w-3.5 h-3.5" /> Stop</> : <><Mic className="w-3.5 h-3.5" /> Dictate</>}</button></div>{isRecording && <p className="text-xs text-red-500 flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500 animate-ping inline-block" />Listening… speak your field notes now.</p>}<Textarea id="notes" placeholder="Additional observations, weather conditions, context... or click Dictate to speak." className="min-h-[120px]" {...register("notes")} /></div></div>
             </div>
           </div>
         </Card>
 
         <div className="flex justify-end gap-4 sticky bottom-6 z-20"><Button type="button" variant="outline" size="lg" className="bg-background shadow-md" onClick={() => setLocation("/")}>Cancel</Button><Button type="submit" size="lg" disabled={isPending} className="shadow-xl"><Save className="w-5 h-5 mr-2" />{isPending ? "Saving..." : isEdit ? "Update Sample" : "Save Sample"}</Button></div>
       </form>
+      <FolderDialog open={datasetDialogOpen} onOpenChange={setDatasetDialogOpen} onCreated={dataset => {
+        setLocalDatasets(getLocalDatasets());
+        setValue("folderId", String(dataset.id), { shouldDirty: true });
+      }} />
     </Layout>
   );
 }

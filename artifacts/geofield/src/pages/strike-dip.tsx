@@ -1,13 +1,11 @@
-import { LabeledPhoto } from "@/components/LabeledPhoto";
+import { MeasurementRow, ROCK_LAYER_OPTIONS, PLANE_FEATURE_TYPES, LINEATION_FEATURE_TYPES } from "@/components/MeasurementRow";
 import { getAccuratePosition } from "@/lib/gps";
-import { MeasurementAngleInput } from "@/components/MeasurementAngleInput";
 import { applyMeasurementEdit, validMeasurementAngle } from "@/lib/measurement-edit";
 import { orderMeasurements } from "@/lib/measurement-order";
-import { getStoredMediaDataUrl, storeMediaDataUrl } from "@/lib/media-storage";
 import { stampMeasurementAtSave, toLocalDateTimeInputValue } from "@/lib/measurement-save-time";
-import { elevationFromCoordinates, formatElevation } from "@/lib/elevation";
+import { elevationFromCoordinates } from "@/lib/elevation";
 import { resolveDatasetId } from "@/lib/dataset-identity";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { Layout } from "@/components/Layout";
@@ -18,7 +16,7 @@ import { CompassModal, type StrikeDipCapture } from "@/components/CompassModal";
 import { ExportCustomizerDialog } from "@/components/ExportCustomizerDialog";
 import { FolderDialog } from "@/components/FolderDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Pencil, Compass, ChevronUp, Download, X, Camera, Image as ImageIcon, FolderOpen } from "lucide-react";
+import { Plus, Compass, Download, X, FolderOpen } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from "xlsx";
 import { saveFile } from "@/lib/save-file";
@@ -32,7 +30,6 @@ import { format as fmtDate } from "date-fns";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { deleteMeasurement, loadMeasurements, saveMeasurements, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { getStorageAccountId } from "@/lib/storage-account";
-import { SavePhotoButton } from "@/components/SavePhotoButton";
 import { requireAccountForSave } from "@/lib/guest-access";
 
 function deriveDipDir(strikeStr: string): string {
@@ -59,287 +56,6 @@ function blankMeasurement(datasetId?: number | string | null): StrikeDipMeasurem
     createdAt: now,
     updatedAt: now,
   };
-}
-
-function compressImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const MAX = 900;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round((height * MAX) / width); width = MAX; }
-        else { width = Math.round((width * MAX) / height); height = MAX; }
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = width; canvas.height = height;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/jpeg", 0.78));
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-const ROCK_LAYER_OPTIONS = [
-  "Sandstone bed",
-  "Siltstone bed",
-  "Shale layer",
-  "Limestone bed",
-  "Dolostone bed",
-  "Conglomerate bed",
-  "Basalt flow",
-  "Intrusive contact",
-  "Metamorphic foliation layer",
-  "Ore / mineralized zone",
-  "Soil / regolith layer",
-  "Other layer",
-];
-
-const PLANE_FEATURE_TYPES = ["Bedding plane", "Fault plane", "Cleavage", "Joint"];
-const LINEATION_FEATURE_TYPES = ["Lineation", "Mineral lineation", "Glacial striation", "Slickenline", "Intersection lineation", "Fold axis", "Other"];
-
-/* ── Row component ──────────────────────────────────────────────────────── */
-function MeasurementRow({
-  measurement, index, allFolders, initiallyOpen = false, onChange, onDelete,
-}: {
-  measurement: StrikeDipMeasurement;
-  index: number;
-  allFolders: Array<{ id: number | string; name: string; isLocal?: boolean }>;
-  initiallyOpen?: boolean;
-  onChange: (m: Partial<StrikeDipMeasurement>) => boolean | void;
-  onDelete: () => void;
-}) {
-  const [open, setOpen] = useState(initiallyOpen);
-  const [photoUrl, setPhotoUrl] = useState(measurement.photo);
-  useEffect(() => {
-    let cancelled = false;
-    setPhotoUrl(measurement.photo);
-    if (measurement.photoLocalKey) void getStoredMediaDataUrl(measurement.photoLocalKey).then((url) => { if (!cancelled) setPhotoUrl(url ?? undefined); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [measurement.photo, measurement.photoLocalKey]);
-  const rowRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!initiallyOpen) return;
-    setOpen(true);
-    rowRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-  }, [initiallyOpen]);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const libraryInputRef = useRef<HTMLInputElement>(null);
-  const upd = (k: keyof StrikeDipMeasurement, v: string) => {
-    onChange({ [k]: v });
-  };
-  const setDatasetId = (value: string) => onChange({ datasetId: value ? value : null });
-  const { toast: photoToast } = useToast();
-
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = "";
-    try {
-      const accountId = getStorageAccountId();
-      const dataUrl = await compressImage(file);
-      const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: file.name, mimeType: "image/jpeg" });
-      if (!accountId || getStorageAccountId() !== accountId) return;
-      const latest = loadMeasurements().find((item) => item.id === measurement.id);
-      if (latest) onChange({ photo: undefined, photoKey: null, photoCaption: "", photoLocalKey: stored.storageKey, photoUploadId: crypto.randomUUID() });
-    } catch { photoToast({ title: "Photo could not be saved", description: "Please try again. The previous photo has been kept.", variant: "destructive" }); }
-  };
-
-  return (
-    <div ref={rowRef} className="rounded-2xl border border-border/80 border-l-[3px] border-l-primary/50 bg-card shadow-sm overflow-hidden scroll-mt-4">
-      {/* Collapsed header */}
-      <div className="flex items-center gap-3 bg-gradient-to-r from-primary/5 to-transparent px-4 py-4">
-        {/* Photo thumbnail or index badge */}
-        {photoUrl ? (
-          <div className="w-10 shrink-0"><LabeledPhoto key={measurement.photoLocalKey || measurement.photoKey || photoUrl} src={photoUrl} alt="Measurement photo" caption={measurement.photoCaption} className="w-10 h-10 object-cover" showPreview={false} onSave={photoCaption => {
-            if (onChange({ photoCaption }) === false) throw new Error("The label could not be saved. Please try again.");
-          }} /></div>
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
-            {index + 1}
-          </div>
-        )}
-
-        <div className="flex-1 min-w-0">
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-primary">{measurement.measurementType === "lineation" ? "Lineation" : "Strike & Dip"}</p>
-          <p className="text-sm font-semibold truncate">{measurement.label || "Untitled measurement"}</p>
-          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-            <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold font-mono text-primary">
-              {measurement.measurementType === "lineation"
-                ? `Azimuth ${measurement.trendDegrees?.toFixed(0).padStart(3, "0") ?? "--"}° / Plunge ${measurement.plungeDegrees ?? "--"}°`
-                : `Strike ${measurement.strike || "--"} / Dip ${measurement.dip || "--"}`}
-            </span>
-            {measurement.featureType && (
-              <span className="text-xs text-muted-foreground">{measurement.featureType}</span>
-            )}
-            {measurement.rockLayerType && (
-              <span className="text-xs text-muted-foreground">{measurement.rockLayerType}</span>
-            )}
-          </div>
-        </div>
-
-        <button type="button" onClick={() => setOpen((o) => !o)} className="flex min-h-10 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-expanded={open}>
-          {open ? <><ChevronUp className="w-4 h-4" />Done</> : <><Pencil className="w-4 h-4" />Edit</>}
-        </button>
-        <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground">
-          <Trash2 className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Expanded editor */}
-      {open && (
-        <div className="px-4 pb-4 pt-4 border-t border-primary/10 bg-muted/20 space-y-4">
-          {/* Photo slot */}
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold text-foreground/80">Outcrop / Field Photo</Label>
-            {!photoUrl && measurement.photoKey && <p className="text-xs text-muted-foreground">Photo saved to your account. Sync when connected to download it here.</p>}
-            {photoUrl ? (
-              <div className="relative inline-block">
-                <LabeledPhoto key={measurement.photoLocalKey || measurement.photoKey || photoUrl} src={photoUrl} alt="Measurement photo" caption={measurement.photoCaption} className="w-full max-w-xs h-40 object-cover" onSave={photoCaption => {
-                  if (onChange({ photoCaption }) === false) throw new Error("The label could not be saved. Please try again.");
-                }} />
-                <button
-                  type="button"
-                  onClick={() => onChange({ photo: undefined, photoKey: null, photoCaption: "", photoLocalKey: undefined, photoUploadId: undefined })}
-                  className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-1 shadow"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-                <SavePhotoButton
-                  src={photoUrl}
-                  fileName={`geofield-${measurement.label || `strike-dip-${index + 1}`}`}
-                />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => cameraInputRef.current?.click()}
-                  className="flex min-h-11 touch-manipulation items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                >
-                  <Camera className="w-4 h-4 shrink-0" />
-                  Take Photo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => libraryInputRef.current?.click()}
-                  className="flex min-h-11 touch-manipulation items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                >
-                  <ImageIcon className="w-4 h-4 shrink-0" />
-                  Choose from Library
-                </button>
-              </div>
-            )}
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={handlePhotoChange}
-            />
-            <input
-              ref={libraryInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handlePhotoChange}
-            />
-          </div>
-
-          <h3 className="flex items-center gap-2 border-b border-primary/15 pb-2 text-sm font-semibold text-primary"><Compass className="h-4 w-4" aria-hidden="true" />{measurement.measurementType === "lineation" ? "Lineation Measurement" : "Strike & Dip Measurement"}</h3>
-          {/* Fields grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="col-span-2 sm:col-span-3 space-y-1">
-              <Label className="text-xs font-semibold text-foreground/80">Label / Name</Label>
-              <Input autoFocus={initiallyOpen} value={measurement.label} onChange={(e) => upd("label", e.target.value)} placeholder={measurement.measurementType === "lineation" ? "e.g. Outcrop A — mineral lineation" : "e.g. Outcrop A — bedding plane"} className="h-9 text-sm" />
-            </div>
-            {measurement.measurementType === "lineation" ? <>
-              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Azimuth</Label><MeasurementAngleInput value={measurement.trendDegrees} label="Azimuth" maximum={360} exclusive onCommit={value => onChange({ trendDegrees: value })} /></div>
-              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Plunge</Label><MeasurementAngleInput value={measurement.plungeDegrees} label="Plunge" maximum={90} onCommit={value => onChange({ plungeDegrees: value })} /></div>
-            </> : <>
-              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Strike</Label><MeasurementAngleInput value={measurement.strike} label="Strike" maximum={360} exclusive onCommit={value => onChange({ strike: String(value) })} /></div>
-              <div className="space-y-1.5 rounded-xl border border-primary/15 bg-primary/5 p-2.5"><Label className="text-xs font-semibold text-primary">Dip</Label><MeasurementAngleInput value={measurement.dip} label="Dip" maximum={90} onCommit={value => onChange({ dip: String(value) })} /></div>
-            </>}
-            <div className="col-span-2 sm:col-span-3 flex items-center gap-2 pt-1"><span className="h-1.5 w-1.5 rounded-full bg-primary/60" /><h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Geology &amp; record details</h4></div>
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-foreground/80">Feature Type</Label>
-              <select
-                className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
-                value={measurement.featureType}
-                onChange={(e) => upd("featureType", e.target.value)}
-              >
-                <option value="">Select...</option>
-                {(measurement.measurementType === "lineation" ? LINEATION_FEATURE_TYPES : PLANE_FEATURE_TYPES).map(type => <option key={type}>{type}</option>)}
-                {measurement.featureType && !(measurement.measurementType === "lineation" ? LINEATION_FEATURE_TYPES : PLANE_FEATURE_TYPES).includes(measurement.featureType) && <option>{measurement.featureType}</option>}
-              </select>
-              <Input
-                  value={measurement.featureType ?? ""}
-                  onChange={(e) => upd("featureType", e.target.value)}
-                  placeholder={measurement.measurementType === "lineation" ? "Or type your own lineation feature type" : "Or type your own feature type"}
-                  aria-label={measurement.measurementType === "lineation" ? "Custom lineation feature type" : "Custom strike and dip feature type"}
-                  className="h-8 text-sm"
-                />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-foreground/80">Rock / Layer Type</Label>
-              <div className="grid gap-1.5">
-                <select
-                  className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
-                  value={ROCK_LAYER_OPTIONS.includes(measurement.rockLayerType ?? "") ? measurement.rockLayerType : ""}
-                  onChange={(e) => upd("rockLayerType", e.target.value)}
-                >
-                  <option value="">Select preset...</option>
-                  {ROCK_LAYER_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-                <Input
-                  value={measurement.rockLayerType ?? ""}
-                  onChange={(e) => upd("rockLayerType", e.target.value)}
-                  placeholder="Or type your own rock/layer type"
-                  className="h-8 text-sm"
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-foreground/80">Dataset</Label>
-              <select
-                className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
-                value={measurement.datasetId ?? ""}
-                onChange={(e) => setDatasetId(e.target.value)}
-              >
-                <option value="">Uncategorized</option>
-                {allFolders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>
-                    {folder.name}{folder.isLocal ? " (local)" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-semibold text-foreground/80">Date &amp; Time</Label>
-              <Input type="datetime-local" value={measurement.date} onChange={(e) => upd("date", e.target.value)} className="h-8 text-sm" />
-            </div>
-            <div className="col-span-2 sm:col-span-3 space-y-1">
-              <Label className="text-xs font-semibold text-foreground/80">Elevation (GPS)</Label>
-              <p className="text-sm">{formatElevation(measurement.elevation, measurement.elevationAccuracy)}</p>
-            </div>
-            <div className="col-span-2 sm:col-span-3 space-y-1">
-              <Label className="text-xs font-semibold text-foreground/80">Notes</Label>
-              <Input value={measurement.notes} onChange={(e) => upd("notes", e.target.value)} placeholder="Fold vergence, shear sense, quality of measurement…" className="h-8 text-sm" />
-            </div>
-          </div>
-          <div className="flex justify-end border-t border-border/70 pt-3">
-            <Button type="button" size="sm" onClick={() => setOpen(false)}>Done Editing</Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 /* ── Main page ──────────────────────────────────────────────────────────── */
@@ -422,6 +138,26 @@ export default function StrikeDipPage() {
   const { data: authData } = useGetCurrentAuthUser();
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
   const [compassOpen, setCompassOpen] = useState(false);
+  const presetAccount = getStorageAccountId() || "guest";
+  const presetKey = `geofield-clinometer-presets:${presetAccount}`;
+  const [presetRevision, setPresetRevision] = useState(0);
+  const presets = useMemo(() => {
+    const defaults = { planeFeature: "", lineFeature: "Lineation", rockLayerType: "", datasetId: "" };
+    try {
+      const stored = JSON.parse(localStorage.getItem(presetKey) || "{}");
+      for (const key of Object.keys(defaults) as (keyof typeof defaults)[]) {
+        if (typeof stored?.[key] === "string") defaults[key] = stored[key];
+      }
+    } catch { /* Keep usable defaults if preferences are unavailable. */ }
+    return defaults;
+  }, [presetKey, presetRevision]);
+  const updatePreset = (key: keyof typeof presets, value: string) => {
+    try {
+      localStorage.setItem(presetKey, JSON.stringify({ ...presets, [key]: value }));
+      setPresetRevision(revision => revision + 1);
+    } catch { toast({ title: "Could not save preset", description: "Check available device storage and try again.", variant: "destructive" }); }
+  };
+
   const [exportOpen, setExportOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [newlyCreatedId, setNewlyCreatedId] = useState<string | null>(null);
@@ -438,7 +174,7 @@ export default function StrikeDipPage() {
     setSelectedDatasetId((id) => String(resolveDatasetId(id, localDatasets)));
   }, [localDatasets]);
   const visibleMeasurements = useMemo(() => {
-    const ordered = orderMeasurements(measurements);
+    const ordered = orderMeasurements(measurements).reverse();
     if (selectedDatasetId === "all") return ordered;
     if (selectedDatasetId === "uncategorized") return ordered.filter((m) => !m.datasetId);
     return ordered.filter((m) => String(resolveDatasetId(m.datasetId, localDatasets) ?? "") === String(resolveDatasetId(selectedDatasetId, localDatasets)));
@@ -486,17 +222,17 @@ export default function StrikeDipPage() {
     };
   }, []);
 
-  const addMeasurementWithGps = (measurement: StrikeDipMeasurement, successTitle?: string, successDescription?: string) => {
+  const addMeasurementWithGps = (measurement: StrikeDipMeasurement, successTitle?: string, successDescription?: string, openSheet = true) => {
     if (!requireAccountForSave(authData?.user, setLocation, "/strike-dip")) return false;
     const savingAccountId = getStorageAccountId();
     measurement = stampMeasurementAtSave(measurement);
-    // Save and open the details immediately while GPS refines the position.
+    // Persist immediately; GPS and elevation refine the saved record asynchronously.
     try { changeMeasurements((prev) => [...prev, measurement]); }
     catch {
       toast({ title: "Measurement could not be saved", description: "The reading is still open. Check available device storage and try again.", variant: "destructive" });
       return false;
     }
-    setNewlyCreatedId(measurement.id);
+    if (openSheet) setNewlyCreatedId(measurement.id);
     if (successTitle) toast({ title: successTitle, description: successDescription });
     void getAccuratePosition().then(
       (position) => {
@@ -511,6 +247,7 @@ export default function StrikeDipPage() {
             updatedAt: new Date(Math.max(Date.now(), (Date.parse(item.updatedAt ?? "") || 0) + 1)).toISOString(),
           };
         }));
+          if (elevationFromCoordinates(position.coords).elevation === null) toast({ title: "Measurement saved without elevation", description: "The phone supplied coordinates but no altitude. Your measurement and location are saved." });
           if (position.coords.accuracy > 20) toast({ title: "GPS accuracy is limited", description: `Estimated accuracy: ±${Math.round(position.coords.accuracy)} m. A clear view of the sky and Precise Location can help.` });
         } catch { toast({ title: "Measurement saved without GPS", description: "The location update could not be saved. Your measurement is still available.", variant: "destructive" }); }
       },
@@ -693,26 +430,46 @@ export default function StrikeDipPage() {
       <CompassModal
         open={compassOpen}
         onClose={() => setCompassOpen(false)}
+        renderPresets={(mode) => {
+          const featureKey = mode === "plane" ? "planeFeature" : "lineFeature";
+          const features = mode === "plane" ? PLANE_FEATURE_TYPES : LINEATION_FEATURE_TYPES;
+          const selectClass = "h-10 w-full rounded-md border border-slate-600 bg-slate-900 px-2 text-sm text-white";
+          return <div className="space-y-3 rounded-xl border border-slate-700 p-3">
+            <p className="text-xs text-slate-400">Presets stay selected for your next measurements.</p>
+            <label className="block space-y-1 text-sm"><span>Feature type</span><select aria-label="Capture feature type" className={selectClass} value={presets[featureKey]} onChange={e => updatePreset(featureKey, e.target.value)}><option value="">Select feature type</option>{features.map(value => <option key={value}>{value}</option>)}{presets[featureKey] && !features.includes(presets[featureKey]) && <option>{presets[featureKey]}</option>}</select></label>
+            <Input aria-label="Custom capture feature type" className="bg-slate-900 text-white" placeholder="Or type your own feature type" value={presets[featureKey]} onChange={e => updatePreset(featureKey, e.target.value)} />
+            <label className="block space-y-1 text-sm"><span>Layer type</span><select aria-label="Capture layer type" className={selectClass} value={presets.rockLayerType} onChange={e => updatePreset("rockLayerType", e.target.value)}><option value="">Select layer type</option>{ROCK_LAYER_OPTIONS.map(value => <option key={value}>{value}</option>)}{presets.rockLayerType && !ROCK_LAYER_OPTIONS.includes(presets.rockLayerType) && <option>{presets.rockLayerType}</option>}</select></label>
+            <Input aria-label="Custom capture layer type" className="bg-slate-900 text-white" placeholder="Or type your own layer type" value={presets.rockLayerType} onChange={e => updatePreset("rockLayerType", e.target.value)} />
+            <label className="block space-y-1 text-sm"><span>Dataset</span><select aria-label="Capture dataset" className={selectClass} value={String(resolveDatasetId(presets.datasetId, localDatasets) ?? "")} onChange={e => updatePreset("datasetId", e.target.value)}><option value="">Uncategorized</option>{presets.datasetId && !allFolders.some((folder: any) => String(folder.id) === String(resolveDatasetId(presets.datasetId, localDatasets))) && <option value={String(resolveDatasetId(presets.datasetId, localDatasets))}>Saved dataset (unavailable)</option>}{allFolders.map((folder: any) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>
+          </div>;
+        }}
         onCapture={(capture: StrikeDipCapture) => {
+          if (presets.datasetId && !allFolders.some((folder: any) => String(folder.id) === String(resolveDatasetId(presets.datasetId, localDatasets)))) {
+            toast({ title: "Choose an available dataset", description: "The preset dataset is unavailable. Select a dataset or Uncategorized before capturing.", variant: "destructive" });
+            return false;
+          }
           if (capture.measurementType === "lineation") {
             const m: StrikeDipMeasurement = {
-              ...blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId),
+              ...blankMeasurement(resolveDatasetId(presets.datasetId, localDatasets) || null),
               ...capture,
               measurementType: "lineation",
               label: "Lineation",
-              featureType: "Lineation",
+              featureType: presets.lineFeature,
+              rockLayerType: presets.rockLayerType,
             };
-            return addMeasurementWithGps(m, "Lineation captured", `Azimuth ${capture.trendDegrees}° / Plunge ${capture.plungeDegrees}°`);
+            return addMeasurementWithGps(m, "Lineation captured", `Azimuth ${capture.trendDegrees}° / Plunge ${capture.plungeDegrees}°`, false);
           }
           const m: StrikeDipMeasurement = {
-            ...blankMeasurement(selectedDatasetId === "all" || selectedDatasetId === "uncategorized" ? null : selectedDatasetId),
+            ...blankMeasurement(resolveDatasetId(presets.datasetId, localDatasets) || null),
             ...capture,
             measurementType: "plane",
+            featureType: presets.planeFeature,
+            rockLayerType: presets.rockLayerType,
             strike: String(capture.strikeDegrees),
             dip: String(capture.dipDegrees),
             dipDir: `${capture.dipDirectionDegrees.toString().padStart(3, "0")}° ${deriveDipDir(String(capture.strikeDegrees))}`,
           };
-          return addMeasurementWithGps(m, "Measurement captured", `Strike ${m.strike}° / Dip ${m.dip}°`);
+          return addMeasurementWithGps(m, "Measurement captured", `Strike ${m.strike}° / Dip ${m.dip}°`, false);
         }}
       />
 

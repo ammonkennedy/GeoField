@@ -36,7 +36,7 @@ type LineationCapture = {
   compassAccuracy?: number; lineVector: Vector3; quality: "stable" | "unstable";
 };
 type Capture = PlaneCapture | LineationCapture;
-interface Props { open: boolean; onClose: () => void; onCapture: (capture: Capture) => boolean | void; }
+interface Props { open: boolean; onClose: () => void; onCapture: (capture: Capture) => boolean | void; renderPresets?: (mode: "plane" | "lineation") => import("react").ReactNode; }
 interface GeologyMotionPlugin {
   available(): Promise<{ available: boolean }>;
   start(options: { northReference: NorthReferencePreference }): Promise<{ northReference: NorthReferencePreference }>;
@@ -134,7 +134,7 @@ function LineationCompass({ towardTop, held }: { towardTop: boolean; held: boole
   </svg>;
 }
 
-export function CompassModal({ open, onClose, onCapture }: Props) {
+export function CompassModal({ open, onClose, onCapture, renderPresets }: Props) {
   const [status, setStatus] = useState<"starting" | "active" | "unavailable" | "error">("starting");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -351,7 +351,9 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
   const saveCapture = (value: Capture) => {
     try {
       if (onCapture(value) === false) { setNotice("Measurement was not saved. Your paused reading is still available; try saving again."); return; }
-      onClose();
+      heldRef.current = false;
+      setHeld(false);
+      setNotice("Measurement saved. Ready for the next reading.");
     } catch { setNotice("Measurement could not be saved. Your paused reading is still available; try saving again."); }
   };
   const capture = () => {
@@ -397,6 +399,7 @@ export function CompassModal({ open, onClose, onCapture }: Props) {
       </button>
     </div>
     <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-y-contain px-5 pb-6 pt-4 [-webkit-overflow-scrolling:touch]">
+      {renderPresets?.(mode)}
       <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Tap the large compass face to hold the reading while you move the phone.</span></div>
       <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="North reference">
         {(["true", "magnetic"] as const).map((value) => <button key={value} type="button" aria-label={`Use ${value} north`} aria-pressed={selectedNorthReference === value} onClick={() => selectNorthReference(value)} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedNorthReference === value ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}><span className="block">{value === "true" ? "True North" : "Magnetic North"}</span>{value === "magnetic" && <span className="mt-0.5 block text-[10px] font-normal">(preferred)</span>}</button>)}

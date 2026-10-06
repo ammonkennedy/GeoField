@@ -1,3 +1,5 @@
+import { measurementFigureRecords } from "@/lib/measurement-figures";
+import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { useState, useMemo, useRef } from "react";
 import {
   BarChart,
@@ -21,6 +23,10 @@ import type { Sample } from "@workspace/api-client-react";
 import { saveFile } from "@/lib/save-file";
 
 const NUMERIC_PARAMS: Record<string, { label: string; unit: string; type: string }> = {
+  strike: { label: "Strike", unit: "°", type: "plane" },
+  dip: { label: "Dip", unit: "°", type: "plane" },
+  azimuth: { label: "Azimuth", unit: "°", type: "lineation" },
+  plunge: { label: "Plunge", unit: "°", type: "lineation" },
   temperature:    { label: "Water Temp",         unit: "°C",     type: "water" },
   ph:             { label: "pH Level",            unit: "",       type: "any"   },
   do:             { label: "Dissolved Oxygen",    unit: "mg/L",   type: "water" },
@@ -38,6 +44,8 @@ const NUMERIC_PARAMS: Record<string, { label: string; unit: string; type: string
 };
 
 const TYPE_COLORS: Record<string, string> = {
+  plane: "#60a5fa",
+  lineation: "#3b82f6",
   water:     "#2d7dd2",
   rock:      "#8b5e3c",
   soil_sand: "#c49a3c",
@@ -122,11 +130,11 @@ function BarFigure({
         />
         <YAxis tick={{ fontSize: 11 }} width={58} />
         <Tooltip content={<CustomTooltip />} />
-        <ReferenceLine
+        {!["Strike", "Azimuth"].includes(paramLabel) && <ReferenceLine
           y={data.reduce((s, d) => s + d.value, 0) / (data.length || 1)}
           stroke="#888"
           strokeDasharray="4 4"
-        />
+        />}
         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
           {data.map((d, i) => (
             <Cell key={i} fill={TYPE_COLORS[d.type] || "#8884d8"} opacity={0.85} />
@@ -244,7 +252,8 @@ function BoxFigure({ data, paramLabel, paramUnit }: { data: any[]; paramLabel: s
   );
 }
 
-export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; datasetName?: string }) {
+export function DatasetFigures({ samples: sampleRecords, measurements = [], datasetName }: { samples: Sample[]; measurements?: StrikeDipMeasurement[]; datasetName?: string }) {
+  const samples = useMemo(() => [...sampleRecords, ...measurementFigureRecords(measurements)], [sampleRecords, measurements]);
   const [open, setOpen] = useState(false);
   const [selectedParam, setSelectedParam] = useState<string>("");
   const [scatterXParam, setScatterXParam] = useState<string>("");
@@ -284,7 +293,10 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
   const scatterData = useMemo(() => {
     if (!selectedParam || !scatterXParam) return [];
     return samples.flatMap((sample) => {
-      const x = Number((sample.fields as any)?.[scatterXParam]);
+      const rawX = (sample.fields as any)?.[scatterXParam];
+      const rawY = (sample.fields as any)?.[selectedParam];
+      if (rawX == null || rawY == null || String(rawX).trim() === "" || String(rawY).trim() === "") return [];
+      const x = Number(rawX);
       const value = Number((sample.fields as any)?.[selectedParam]);
       if (!Number.isFinite(x) || !Number.isFinite(value)) return [];
       return [{
@@ -331,7 +343,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
 
     // Title + subtitle
     const title = `${paramMeta.label}${paramMeta.unit ? ` (${paramMeta.unit})` : ""}`;
-    const subtitle = `${chartData.length} sample${chartData.length !== 1 ? "s" : ""}${datasetName ? ` — ${datasetName}` : ""}`;
+    const subtitle = `${chartData.length} record${chartData.length !== 1 ? "s" : ""}${datasetName ? ` — ${datasetName}` : ""}`;
     ctx.fillStyle = "#111827";
     ctx.font = "bold 16px -apple-system, sans-serif";
     ctx.fillText(title, PAD, 24, W);
@@ -399,7 +411,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
   };
 
   const stats = useMemo(() => {
-    if (!chartData.length) return null;
+    if (!chartData.length || ["strike", "azimuth"].includes(selectedParam)) return null;
     const vals = chartData.map((d: any) => d.value);
     const avg = vals.reduce((s: number, v: number) => s + v, 0) / vals.length;
     return {
@@ -408,7 +420,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
       avg: avg.toFixed(3),
       n: vals.length,
     };
-  }, [chartData]);
+  }, [chartData, selectedParam]);
 
   return (
     <>
@@ -437,7 +449,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
                 <BarChart2 className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                 <h3 className="font-semibold text-lg">No numeric data yet</h3>
                 <p className="text-muted-foreground text-sm mt-1">
-                  Add samples with numeric fields (temperature, pH, hardness, etc.) to generate figures.
+                  Add samples or capture strike-and-dip or lineation measurements to generate figures.
                 </p>
               </div>
             ) : (
@@ -452,7 +464,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
                       <select
                         className="w-full h-10 rounded-lg border border-input bg-card px-3 pr-8 text-sm appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20"
                         value={selectedParam}
-                        onChange={(e) => setSelectedParam(e.target.value)}
+                        onChange={(e) => { setSelectedParam(e.target.value); if (["strike", "azimuth"].includes(e.target.value) && chartType === "box") setChartType("bar"); }}
                       >
                         <option value="">Choose a parameter...</option>
                         {availableParams.map(([key, meta]) => (
@@ -489,7 +501,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
                       Chart Type
                     </label>
                     <div className="flex items-center gap-1 bg-muted/50 border border-border rounded-lg p-0.5">
-                      {CHART_OPTIONS.map((opt) => (
+                      {CHART_OPTIONS.filter(opt => opt.id !== "box" || !["strike", "azimuth"].includes(selectedParam)).map((opt) => (
                         <button
                           key={opt.id}
                           onClick={() => setChartType(opt.id)}
@@ -515,7 +527,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
                           {paramMeta?.label}{paramMeta?.unit ? ` (${paramMeta.unit})` : ""}
                         </h3>
                         <p className="text-xs text-muted-foreground">
-                          {chartData.length} sample{chartData.length !== 1 ? "s" : ""}
+                          {chartData.length} record{chartData.length !== 1 ? "s" : ""}
                           {datasetName ? ` in ${datasetName}` : ""}
                         </p>
                       </div>
@@ -553,7 +565,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
                     {chartType === "scatter" && (
                       scatterXParam && scatterData.length > 0
                         ? <ScatterFigure key={`${selectedParam}:${scatterXParam}`} data={scatterData} xLabel={`${scatterXMeta?.label ?? ""}${scatterXMeta?.unit ? ` (${scatterXMeta.unit})` : ""}`} yLabel={`${paramMeta?.label ?? ""}${paramMeta?.unit ? ` (${paramMeta.unit})` : ""}`} />
-                        : <div className="py-16 text-center text-sm text-muted-foreground">{scatterXParam ? "No samples contain values for both selected parameters." : "Choose an X-axis parameter to generate the scatter plot."}</div>
+                        : <div className="py-16 text-center text-sm text-muted-foreground">{scatterXParam ? "No records contain values for both selected parameters." : "Choose an X-axis parameter to generate the scatter plot."}</div>
                     )}
                     {chartType === "box" && (
                       <BoxFigure
@@ -576,7 +588,7 @@ export function DatasetFigures({ samples, datasetName }: { samples: Sample[]; da
                   </div>
                 ) : selectedParam ? (
                   <div className="py-10 text-center text-muted-foreground text-sm">
-                    No samples have values for <strong>{paramMeta?.label}</strong> in this dataset.
+                    No records have values for <strong>{paramMeta?.label}</strong> in this dataset.
                   </div>
                 ) : (
                   <div className="py-10 text-center text-muted-foreground text-sm">

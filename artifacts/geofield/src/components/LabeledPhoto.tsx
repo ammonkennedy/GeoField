@@ -1,16 +1,21 @@
-import { useState } from 'react';
+import { PhotoEditor } from "@/components/PhotoEditor";
+import { ZoomablePhoto } from "@/components/ZoomablePhoto";
+import { useState, useRef } from 'react';
 import { SavePhotoButton } from '@/components/SavePhotoButton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
-export function LabeledPhoto({ src, alt, caption = '', onSave, className = 'h-40 w-full object-cover', saveMessage = 'Label saved.', initiallyOpen = false, initiallyRead = false, showPreview = true }: {
+export function LabeledPhoto({ src, alt, caption = '', onSave, onEdit, className = 'h-40 w-full object-cover', saveMessage = 'Label saved.', initiallyOpen = false, initiallyRead = false, showPreview = true }: {
   src: string; alt: string; caption?: string;
+  onEdit?: (dataUrl: string) => Promise<void>;
   onSave?: (label: string) => void | Promise<void>;
   className?: string; saveMessage?: string; initiallyOpen?: boolean; initiallyRead?: boolean; showPreview?: boolean;
 }) {
+  const editTarget = useRef<{ src: string; save: (dataUrl: string) => Promise<void> } | null>(null);
   const [open, setOpen] = useState(initiallyOpen);
-  const [mode, setMode] = useState<'photo' | 'edit' | 'read'>(initiallyRead ? 'read' : 'photo');
+  const [mode, setMode] = useState<'photo' | 'edit' | 'read' | 'draw'>(initiallyRead ? 'read' : 'photo');
+  const [drawingDirty, setDrawingDirty] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -19,6 +24,7 @@ export function LabeledPhoto({ src, alt, caption = '', onSave, className = 'h-40
   const close = (value: boolean) => {
     if (saving) return;
     if (!value && mode === 'edit' && draft !== caption && !confirm('Discard the unsaved photo label?')) return;
+    if (!value && mode === "draw" && drawingDirty && !confirm("Discard your unsaved drawing?")) return;
     setOpen(value);
   };
   const preview = (inViewer: boolean) => caption ? <button type="button" aria-label="Read full photo label" className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-black/70 px-2 py-1 text-left text-xs leading-4 text-white" onClick={() => inViewer ? setMode('read') : show('read')}><span className="line-clamp-2 break-words">{caption}</span></button> : null;
@@ -30,8 +36,14 @@ export function LabeledPhoto({ src, alt, caption = '', onSave, className = 'h-40
     <Dialog open={open} onOpenChange={close} panelClassName="max-w-4xl">
       <DialogHeader><DialogTitle>{mode === 'read' ? 'Photo label' : alt}</DialogTitle></DialogHeader>
       <DialogContent><div className="space-y-3">
-        {mode === 'read' ? <><p className="max-h-[60dvh] overflow-y-auto whitespace-pre-wrap break-words text-base leading-relaxed">{caption}</p><Button type="button" variant="outline" onClick={() => setMode('photo')}>Back to photo</Button></> : <>
-          <div className="relative mx-auto w-fit max-w-full"><img src={src} alt={alt} className="max-h-[55dvh] max-w-full rounded-lg object-contain" />{mode === 'photo' && preview(true)}</div>
+        {mode === 'draw' && onEdit ? <PhotoEditor src={editTarget.current?.src || src} onDirty={setDrawingDirty} onCancel={() => {
+          if (!drawingDirty || confirm('Discard your unsaved drawing?')) { setDrawingDirty(false); setMode('photo'); }
+        }} onSave={async dataUrl => {
+          setSaving(true);
+          try { await editTarget.current!.save(dataUrl); setDrawingDirty(false); setMode('photo'); setMessage('Photo edited.'); }
+          finally { setSaving(false); }
+        }} /> : mode === 'read' ? <><p className="max-h-[60dvh] overflow-y-auto whitespace-pre-wrap break-words text-base leading-relaxed">{caption}</p><Button type="button" variant="outline" onClick={() => setMode('photo')}>Back to photo</Button></> : <>
+          <ZoomablePhoto key={`${src}:${open}`} src={src} alt={alt} caption={mode === 'photo' && preview(true)} />
           {mode === 'edit' ? <div className="space-y-2">
             <Textarea aria-label="Photo label" autoFocus maxLength={2000} rows={4} value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} placeholder="Describe what is in this picture…" />
             <p className="text-xs text-muted-foreground">{draft.length}/2,000 characters · Two lines appear on the photo. Tap them to read the full label.</p>
@@ -42,7 +54,7 @@ export function LabeledPhoto({ src, alt, caption = '', onSave, className = 'h-40
               catch (error) { setError(error instanceof Error ? error.message : 'Label could not be saved. Please try again.'); }
               finally { setSaving(false); }
             }}>{saving ? 'Saving…' : 'Save label'}</Button><Button type="button" variant="outline" disabled={saving} onClick={() => { setMode('photo'); setError(''); }}>Cancel</Button></div>
-          </div> : <div className="flex gap-2"><SavePhotoButton src={src} fileName={alt} showLabel />{onSave && <Button type="button" className="flex-1" onClick={() => { setDraft(caption); setMode('edit'); setMessage(''); setError(''); }}>Label</Button>}</div>}
+          </div> : <div className="flex gap-2"><SavePhotoButton src={src} fileName={alt} showLabel />{onEdit && <Button type="button" className="flex-1" onClick={() => { editTarget.current = { src, save: onEdit }; setDrawingDirty(false); setMode("draw"); setMessage(""); }}>Edit photo</Button>}{onSave && <Button type="button" className="flex-1" onClick={() => { setDraft(caption); setMode('edit'); setMessage(''); setError(''); }}>Label</Button>}</div>}
         </>}
         {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

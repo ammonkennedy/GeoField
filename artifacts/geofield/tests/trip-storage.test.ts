@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadTrips, saveTrips, deleteTripRecord } from "../src/lib/trips.ts";
 import { loadSyncTrips, storeSyncTrips, reconcileTripSites } from "../src/lib/trip-sync-storage.ts";
-import { getPendingLocalDatasets, createTripDataset } from "../src/lib/local-datasets.ts";
+import { getPendingLocalDatasets, createTripDataset, markLocalDatasetSynced } from "../src/lib/local-datasets.ts";
 import { getQueue, setQueue } from "../src/lib/offline-queue.ts";
 function setup() {
   const values = new Map<string, string>();
@@ -56,4 +56,18 @@ test("legacy trips resolve dataset aliases by trip identity when their numeric I
   setup(); storeSyncTrips([{ ...trip, datasetId: "cloud-dataset", cloudUpdatedAt: trip.updatedAt }]);
   saveTrips([{ ...loadTrips()[0], datasetId: -999, cloudDatasetId: undefined }]);
   assert.equal(loadSyncTrips()[0].datasetId, "cloud-dataset");
+});
+
+test("planned sites retain their dataset after its local ID gains a cloud alias", () => {
+  setup();
+  const dataset = createTripDataset({ tripId: trip.id, name: trip.name });
+  saveTrips([{ ...trip, datasetId: dataset.id }]);
+  reconcileTripSites();
+  assert.equal(getQueue()[0].payload.folderId, dataset.id);
+  markLocalDatasetSynced(dataset.id, "cloud-dataset");
+  // A subsequent trip update must not put the local ID back into its placeholder.
+  reconcileTripSites();
+  assert.equal(getQueue()[0].payload.folderId, "cloud-dataset");
+  assert.equal(getQueue()[0].payload.fields.collectionStatus, "planned");
+  assert.equal(getQueue().length, 1);
 });

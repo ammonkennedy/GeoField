@@ -14,15 +14,17 @@ import { requireAccountForSave } from "@/lib/guest-access";
 export function FolderDialog({ 
   open, 
   onOpenChange, 
-  folder 
+  folder,
+  onCreated,
 }: { 
   open: boolean; 
   onOpenChange: (open: boolean) => void;
   folder?: Folder;
+  onCreated?: (folder: { id: string | number; name: string }) => void;
 }) {
   const [name, setName] = useState(folder?.name || "");
   const [description, setDescription] = useState(folder?.description || "");
-  const { createFolder, updateFolder } = useFoldersMutations();
+  const { updateFolder } = useFoldersMutations();
   const { toast } = useToast();
   const { data: authData } = useGetCurrentAuthUser();
   const [, setLocation] = useLocation();
@@ -32,7 +34,7 @@ export function FolderDialog({
     setDescription(folder?.description || "");
   }, [folder, open]);
 
-  const isPending = createFolder.isPending || updateFolder.isPending;
+  const isPending = updateFolder.isPending;
   const useLocalDatasets = !navigator.onLine;
 
   const finish = () => {
@@ -48,37 +50,42 @@ export function FolderDialog({
 
     // Local datasets are what make the app usable before the backend folder API exists.
     if (folder && ((folder as any).isLocal || (typeof folder.id === "number" && folder.id < 0))) {
-      updateLocalDataset(Number(folder.id), { name, description });
-      toast({ title: "Dataset updated" });
-      finish();
+      try {
+        updateLocalDataset(Number(folder.id), { name, description });
+        toast({ title: "Dataset updated" });
+        finish();
+      } catch {
+        toast({ title: "Dataset could not be saved", description: "Your changes are still here. Check device storage and try again.", variant: "destructive" });
+      }
       return;
     }
 
-    if (useLocalDatasets) {
-      createLocalDataset({ name, description });
+    if (!folder) {
+      try {
+        const created = createLocalDataset({ name, description });
+        onCreated?.(created);
+      } catch {
+        toast({ title: "Dataset could not be saved", description: "Check available device storage and try again.", variant: "destructive" });
+        return;
+      }
       toast({ title: "Dataset created", description: "Saved locally on this device." });
       finish();
       return;
     }
 
     if (folder) {
+      if (useLocalDatasets) {
+        toast({ title: "Dataset rename needs a connection", description: "Your changes are still in this dialog. Reconnect and save again; no duplicate dataset has been created.", variant: "destructive" });
+        return;
+      }
       updateFolder.mutate({ 
         id: folder.id, 
         data: { name, description } 
       }, {
-        onSuccess: () => onOpenChange(false)
+        onSuccess: () => onOpenChange(false),
+        onError: () => toast({ title: "Dataset update is not confirmed", description: "Your changes are still here. Reconnect and try saving again.", variant: "destructive" })
       });
-    } else {
-      createFolder.mutate({ 
-        data: { name, description } 
-      }, {
-        onSuccess: finish,
-        onError: () => {
-          createLocalDataset({ name, description });
-          toast({ title: "Dataset created locally", description: "The backend did not accept the dataset yet, so GeoField saved it on this device." });
-          finish();
-        }
-      });
+
     }
   };
 

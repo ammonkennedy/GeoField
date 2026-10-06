@@ -15,8 +15,8 @@ function fixture() {
     },
     clearWatch(id: number) { cleared.push(id); },
   };
-  return { gps, cleared, emit(accuracy: number, timestamp = Date.now(), latitude = 40) {
-    success({ timestamp, coords: { latitude, longitude: -110, accuracy, altitude: 1000, altitudeAccuracy: 10 } } as GeolocationPosition);
+  return { gps, cleared, emit(accuracy: number, timestamp = Date.now(), latitude = 40, altitude: number | null = 1000) {
+    success({ timestamp, coords: { latitude, longitude: -110, accuracy, altitude, altitudeAccuracy: 10 } } as GeolocationPosition);
   }, error(code: number) { failure({ code } as GeolocationPositionError); } };
 }
 
@@ -49,4 +49,28 @@ test('no usable fix times out without inventing coordinates', async () => {
   f.emit(1, Date.now() - 60000);
   await assert.rejects(pending, /GPS_TIMEOUT/);
   assert.deepEqual(f.cleared, [42]);
+});
+
+test('accurate coordinates without altitude do not stop collection before elevation arrives', async () => {
+  const f = fixture(); const pending = getAccuratePosition(f.gps, 30);
+  f.emit(3, Date.now(), 40, null);
+  assert.deepEqual(f.cleared, []);
+  f.emit(4, Date.now(), 40, 1250);
+  assert.equal((await pending).coords.altitude, 1250);
+});
+test('retains an altitude-bearing fix despite a later comparable fix without altitude', async () => {
+  const f = fixture(); const pending = getAccuratePosition(f.gps, 30);
+  f.emit(8, Date.now(), 40, 0);
+  f.emit(6, Date.now(), 40, null);
+  const result = await pending;
+  assert.equal(result.coords.altitude, 0);
+  assert.equal(result.coords.accuracy, 8);
+});
+test('does not sacrifice substantially better coordinates for elevation', async () => {
+  const f = fixture(); const pending = getAccuratePosition(f.gps, 30);
+  f.emit(50, Date.now(), 40, 1250);
+  f.emit(3, Date.now(), 40, null);
+  const result = await pending;
+  assert.equal(result.coords.altitude, null);
+  assert.equal(result.coords.accuracy, 3);
 });

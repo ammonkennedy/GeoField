@@ -1,3 +1,4 @@
+import { getStorageAccountId } from "@/lib/storage-account";
 import { LabeledPhoto } from "@/components/LabeledPhoto";
 import { createNoteFolder, loadNoteFolders, updateFolderNotes, NOTE_FOLDERS_UPDATED } from "@/lib/note-folders";
 import { useEffect, useRef, useState } from "react";
@@ -13,7 +14,7 @@ import { Link } from "wouter";
 import { createFieldNote, editFieldNote, loadFieldNotes, FIELD_NOTES_UPDATED, prepareNotePhoto, type FieldNote, type NotePhoto } from "@/lib/field-notes";
 import { storeMediaDataUrl, getStoredMediaDataUrl } from "@/lib/media-storage";
 
-function NoteImage({ photo, onSave }: { photo: NotePhoto; onSave?: (label: string) => void }) {
+function NoteImage({ photo, onSave, onEdit }: { photo: NotePhoto; onSave?: (label: string) => void; onEdit?: (dataUrl: string) => Promise<void> }) {
   const [url, setUrl] = useState("");
   useEffect(() => {
     let active = true;
@@ -25,7 +26,7 @@ function NoteImage({ photo, onSave }: { photo: NotePhoto; onSave?: (label: strin
     void load().catch(() => { if (active) setUrl(""); });
     return () => { active = false; };
   }, [photo.localKey, photo.cloudKey]);
-  return url ? <LabeledPhoto src={url} alt={photo.fileName} caption={photo.caption} onSave={onSave} /> : <div className="flex h-40 items-center justify-center rounded-lg bg-muted p-3 text-sm text-muted-foreground">Photo unavailable on this device while offline.</div>;
+  return url ? <LabeledPhoto src={url} alt={photo.fileName} caption={photo.caption} onSave={onSave} onEdit={onEdit} /> : <div className="flex h-40 items-center justify-center rounded-lg bg-muted p-3 text-sm text-muted-foreground">Photo unavailable on this device while offline.</div>;
 }
 
 function NotesContent({ accountId }: { accountId: string }) {
@@ -106,7 +107,16 @@ function NotesContent({ accountId }: { accountId: string }) {
         {draft && <Button onClick={() => save({})}>Save again</Button>}
         <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Photos (optional)</h2>{!note.deletedAt && <div className="flex gap-2"><Button variant="outline" disabled={addingPhotos || Boolean(draft)} onClick={() => camera.current?.click()}><Camera className="mr-2 h-4 w-4" />Take Photo</Button><Button variant="outline" disabled={addingPhotos || Boolean(draft)} onClick={() => library.current?.click()}><ImagePlus className="mr-2 h-4 w-4" />Add Photos</Button></div>}</div>
         {addingPhotos && <p role="status" className="text-sm">Saving photos…</p>}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{note.photos.map((photo) => <div key={photo.id} className="relative"><NoteImage photo={photo} onSave={note.deletedAt ? undefined : label => {
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{note.photos.map((photo) => <div key={photo.id} className="relative"><NoteImage photo={photo} onEdit={note.deletedAt ? undefined : async dataUrl => {
+          const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: "edited-photo.jpg", mimeType: "image/jpeg" });
+          if (getStorageAccountId() !== accountId) throw new Error("Account changed. Reopen this photo.");
+          editFieldNote(accountId, note.id, current => {
+            const original = current.photos.find(item => item.id === photo.id);
+            if (current.deletedAt || !original || original.localKey !== photo.localKey || original.cloudKey !== photo.cloudKey) throw new Error("This photo changed while editing. Please reopen it.");
+            // A new photo ID creates a new cloud object, preserving concurrent copies.
+            return { ...current, photos: current.photos.map(item => item.id === photo.id ? { ...item, id: stored.id, fileName: "edited-photo.jpg", localKey: stored.storageKey, cloudKey: undefined } : item) };
+          });
+        }} onSave={note.deletedAt ? undefined : label => {
           editFieldNote(accountId, note.id, current => {
             if (current.deletedAt || !current.photos.some(item => item.id === photo.id)) throw new Error("This photo is no longer available in the note.");
             return { ...current, photos: current.photos.map(item => item.id === photo.id ? { ...item, caption: label } : item) };

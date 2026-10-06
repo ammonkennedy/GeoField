@@ -1,3 +1,4 @@
+import { resolveDatasetId } from "@/lib/dataset-identity";
 import { ensureMacrostratLayer, setMacrostratOpacity, renderedMacrostratUnit } from "@/lib/macrostrat-layer";
 import { parseMacrostratSelection } from "@/lib/macrostrat-service";
 import { loadTrips, saveTrips, deleteTripRecord, TRIPS_UPDATED, type Trip, type PlannedSite } from "@/lib/trips";
@@ -17,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { createTripDataset, deleteLocalDataset, updateLocalDataset } from "@/lib/local-datasets";
+import { getLocalDatasets, createTripDataset, deleteLocalDataset, updateLocalDataset } from "@/lib/local-datasets";
 import { getQueue, setQueue, type QueuedSample } from "@/lib/offline-queue";
 import { geocodeAddress } from "@/lib/geocoding";
 import { lookupSoil } from "@/lib/soil-data";
@@ -351,7 +352,7 @@ export default function TripPlannerPage() {
     const payload: QueuedSample["payload"] = {
       sampleType: site.sampleType ?? "other",
       sampleId: siteSampleId(site.name, siteIndex),
-      folderId: datasetId,
+      folderId: resolveDatasetId(datasetId, getLocalDatasets()),
       notes: site.description || "Planned future sample site",
       fields: {
         location: `${formatCoord(site.lat)}, ${formatCoord(site.lng)}`,

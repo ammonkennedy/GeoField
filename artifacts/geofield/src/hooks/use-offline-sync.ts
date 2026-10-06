@@ -347,9 +347,17 @@ export function useOfflineSync() {
             queryClient.setQueryData(getGetSamplesQueryKey(), mergedRemote);
             for (const sample of mergedRemote) {
               checkAccount();
-              const cached = await cacheSamplePhotos(sample);
-              checkAccount();
-              if (cached !== sample) cacheCloudSamples([cached], true);
+              try {
+                const cached = await cacheSamplePhotos(sample, partial => {
+                  checkAccount();
+                  cacheCloudSamples([partial], true);
+                });
+                checkAccount();
+                if (cached !== sample) cacheCloudSamples([cached], true);
+              } catch (error) {
+                checkAccount();
+                reportFailure(error);
+              }
             }
           }
           if (foldersResult.status === "fulfilled") {
