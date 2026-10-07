@@ -1,3 +1,4 @@
+import { BulkRecords } from "@/components/BulkRecords";
 import { MeasurementRow, ROCK_LAYER_OPTIONS, PLANE_FEATURE_TYPES, LINEATION_FEATURE_TYPES } from "@/components/MeasurementRow";
 import { getAccuratePosition } from "@/lib/gps";
 import { applyMeasurementEdit, validMeasurementAngle } from "@/lib/measurement-edit";
@@ -394,6 +395,8 @@ export default function StrikeDipPage() {
             Enter Manually
           </Button>
         </div>
+
+        <BulkRecords measurements={visibleMeasurements} datasets={allFolders} />
 
         {/* Measurement list */}
         {visibleMeasurements.length === 0 ? (
