@@ -1,3 +1,5 @@
+import { resolveDatasetId } from "@/lib/dataset-identity";
+import { getLocalDatasets } from "@/lib/local-datasets";
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,9 +14,17 @@ export function BulkRecords({ samples = [], measurements = [], datasets }: { sam
   const [busy, setBusy] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
   const { toast } = useToast();
-  const records: BulkRecord[] = [
-    ...samples.filter(item => item.fields?.collectionStatus !== 'planned').map(item => ({ key: `sample:${item.id}`, id: String(item.id), kind: 'sample' as const, name: item.sampleId || 'Unnamed sample', sample: item })),
-    ...measurements.map(item => ({ key: `measurement:${item.id}`, id: item.id, kind: 'measurement' as const, name: item.label || (item.measurementType === 'lineation' ? 'Lineation' : 'Strike & Dip') })),
+  const localDatasets = getLocalDatasets();
+  const datasetName = (id: string | number | null | undefined) => {
+    if (id === null || id === undefined || id === '') return 'Uncategorized';
+    const resolved = String(resolveDatasetId(id, localDatasets));
+    const dataset = datasets.find(item => String(item.cloudId || resolveDatasetId(item.id, localDatasets)) === resolved)
+      || localDatasets.find(item => String(item.cloudId || item.id) === resolved);
+    return dataset?.name || 'Dataset unavailable';
+  };
+  const records: (BulkRecord & { datasetName: string })[] = [
+    ...samples.filter(item => item.fields?.collectionStatus !== 'planned').map(item => ({ key: `sample:${item.id}`, id: String(item.id), kind: 'sample' as const, name: String(item.sampleId || '').trim() || 'Unnamed sample', datasetName: datasetName(item.folderId), sample: item })),
+    ...measurements.map(item => ({ key: `measurement:${item.id}`, id: item.id, kind: 'measurement' as const, name: String(item.label || '').trim() || (item.measurementType === 'lineation' ? 'Lineation' : 'Strike and Dip'), datasetName: datasetName(item.datasetId) })),
   ];
   const chosen = records.filter(item => selected.includes(item.key));
   const run = (action: 'move' | 'delete') => {
@@ -39,7 +49,7 @@ export function BulkRecords({ samples = [], measurements = [], datasets }: { sam
       <DialogHeader><DialogTitle>Organize samples &amp; measurements</DialogTitle></DialogHeader>
       <DialogContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2"><Button type="button" variant="outline" onClick={() => setSelected(records.map(item => item.key))}>Select all shown</Button><Button type="button" variant="ghost" onClick={() => setSelected([])}>Clear selection</Button><span className="text-sm">{chosen.length} selected</span></div>
-        <div className="max-h-[40dvh] space-y-1 overflow-auto">{records.map(item => <label key={item.key} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(item.key)} onChange={event => setSelected(current => event.target.checked ? [...current, item.key] : current.filter(key => key !== item.key))} /><span className="min-w-0 break-words text-sm">{item.name}<span className="ml-2 text-xs text-muted-foreground">{item.kind}</span></span></label>)}</div>
+        <div className="max-h-[40dvh] space-y-1 overflow-auto">{records.map(item => <label key={item.key} className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border p-3"><input type="checkbox" checked={selected.includes(item.key)} onChange={event => setSelected(current => event.target.checked ? [...current, item.key] : current.filter(key => key !== item.key))} /><span className="min-w-0 break-words text-sm"><span className="font-medium">{item.name}</span><span className="ml-2 text-xs text-muted-foreground">{item.kind}</span><span className="mt-1 block text-xs text-muted-foreground">Dataset: {item.datasetName}</span></span></label>)}</div>
         {samples.some(item => item.fields?.collectionStatus === 'planned') && <p className="text-xs text-muted-foreground">Future sample sites are managed from their trip; this selection includes collected samples and measurements.</p>}
         <label className="block space-y-1 text-sm">Move to dataset<select aria-label="Bulk destination dataset" className="h-11 w-full rounded-md border bg-background px-2" value={target} onChange={event => setTarget(event.target.value)}><option value="">Choose dataset</option><option value="uncategorized">Uncategorized</option>{datasets.map(d => <option key={d.id} value={String(d.cloudId || d.id)}>{d.name}</option>)}</select></label>
         <div className="flex flex-wrap gap-2"><Button type="button" disabled={busy || !chosen.length || !target} onClick={() => run('move')}>Move selected</Button><Button type="button" variant="destructive" disabled={busy || !chosen.length} onClick={() => run('delete')}>Delete selected</Button></div>

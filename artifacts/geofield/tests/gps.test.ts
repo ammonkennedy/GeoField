@@ -26,11 +26,11 @@ test('keeps the best fresh fix when later readings worsen; cleans up at deadline
   assert.equal((await pending).coords.accuracy, 8);
   assert.deepEqual(f.cleared, [42]);
 });
-test('rejects stale and invalid readings and stops early at five metres', async () => {
+test('rejects stale and invalid readings and stops early at three metres', async () => {
   const f = fixture(); const pending = getAccuratePosition(f.gps, 30);
   f.emit(1, Date.now() - 60000); f.emit(-1); f.emit(1, Date.now(), 100);
-  f.emit(5);
-  assert.equal((await pending).coords.accuracy, 5);
+  f.emit(3);
+  assert.equal((await pending).coords.accuracy, 3);
   assert.deepEqual(f.cleared, [42]);
 });
 test('recovers from a temporary unavailable error', async () => {
@@ -61,7 +61,7 @@ test('accurate coordinates without altitude do not stop collection before elevat
 test('retains an altitude-bearing fix despite a later comparable fix without altitude', async () => {
   const f = fixture(); const pending = getAccuratePosition(f.gps, 30);
   f.emit(8, Date.now(), 40, 0);
-  f.emit(6, Date.now(), 40, null);
+  f.emit(7, Date.now(), 40, null);
   const result = await pending;
   assert.equal(result.coords.altitude, 0);
   assert.equal(result.coords.accuracy, 8);
@@ -73,4 +73,18 @@ test('does not sacrifice substantially better coordinates for elevation', async 
   const result = await pending;
   assert.equal(result.coords.altitude, null);
   assert.equal(result.coords.accuracy, 3);
+});
+
+test('continues improving a five-metre fix instead of immediately stopping', async () => {
+  const f = fixture(); const pending = getAccuratePosition(f.gps, 30);
+  f.emit(5);
+  assert.deepEqual(f.cleared, []);
+  f.emit(2);
+  assert.equal((await pending).coords.accuracy, 2);
+});
+test('does not add several metres of horizontal uncertainty just to obtain altitude', async () => {
+  const f = fixture(); const pending = getAccuratePosition(f.gps, 30);
+  f.emit(8, Date.now(), 40, 1250);
+  f.emit(4, Date.now(), 40, null);
+  assert.equal((await pending).coords.accuracy, 4);
 });

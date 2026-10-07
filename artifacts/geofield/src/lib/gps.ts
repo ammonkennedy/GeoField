@@ -21,7 +21,7 @@ export function getAccuratePosition(
       if (watchId !== undefined) geolocation.clearWatch(watchId);
       // Prefer a complete fix only when its horizontal accuracy is comparable.
       // Keep all coordinates from one reading; never combine heights from another location.
-      if (bestWithElevation && best && bestWithElevation.coords.accuracy <= best.coords.accuracy + 5) resolve(bestWithElevation);
+      if (bestWithElevation && best && bestWithElevation.coords.accuracy <= best.coords.accuracy + 1) resolve(bestWithElevation);
       else if (best) resolve(best);
       else reject(error ?? new Error("GPS_TIMEOUT"));
     };
@@ -36,7 +36,7 @@ export function getAccuratePosition(
             !Number.isFinite(accuracy) || accuracy < 0) return;
         if (!best || accuracy <= best.coords.accuracy) best = position;
         if (hasElevation(position) && (!bestWithElevation || accuracy <= bestWithElevation.coords.accuracy)) bestWithElevation = position;
-        if (accuracy <= 5 && hasElevation(position)) finish();
+        if (accuracy <= 3 && hasElevation(position)) finish();
       }, error => {
         // Temporary failures may be followed by a good fix. Permission denial cannot.
         if (error.code === 1) finish(error);

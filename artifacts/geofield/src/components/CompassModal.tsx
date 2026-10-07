@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
-import { AlertTriangle, CheckCircle, Pause, Smartphone, X } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { angularDistance, bearingInMirroredTrueNorthFrame, calibratedLineation, calibratedStrike, deviceVectorToScreen, flipLineationDirection, horizontalPlaneAxesFromNormal, lineationOrientationFromVector, mirroredTrueNorthHeading, normalizeAzimuth, perpendicularScreenVector, planeOrientationFromNormal, projectEnuVectorToScreen, normalForDip, type LineationOrientation, type PlaneOrientation, type RotationMatrix3, type ScreenVector, type Vector3 } from "@/lib/strike-dip-math";
 
@@ -311,7 +311,6 @@ export function CompassModal({ open, onClose, onCapture, renderPresets }: Props)
   const adjustedLineation = calibratedLineation(lineation);
   const northReference = activeNorthReference ?? selectedNorthReference;
   const declination = hasDeclination ? signedAngle(reading!.trueHeading! - reading!.magneticHeading!) : undefined;
-  const accuracyLow = typeof reading?.headingAccuracy === "number" && reading.headingAccuracy > 20;
   const renderingAngle = filtered.screenStrikeVector ? normalizeAzimuth(degrees(Math.atan2(filtered.screenStrikeVector.right, filtered.screenStrikeVector.up))) : null;
   const diagnostic = useMemo(() => reading ? JSON.stringify({
     attitudeDegrees: {
@@ -400,7 +399,6 @@ export function CompassModal({ open, onClose, onCapture, renderPresets }: Props)
     </div>
     <div className="min-h-0 flex-1 touch-pan-y space-y-4 overflow-y-auto overscroll-y-contain px-5 pb-6 pt-4 [-webkit-overflow-scrolling:touch]">
       {renderPresets?.(mode)}
-      <div className="flex gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 p-3 text-xs text-blue-200"><Smartphone className="h-4 w-4 shrink-0" /><span>Place the <strong>back of the phone flat against the surface</strong> and hold steady. Tap the large compass face to hold the reading while you move the phone.</span></div>
       <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/20 p-1" role="group" aria-label="North reference">
         {(["true", "magnetic"] as const).map((value) => <button key={value} type="button" aria-label={`Use ${value} north`} aria-pressed={selectedNorthReference === value} onClick={() => selectNorthReference(value)} className={`min-h-11 rounded-lg px-3 py-2 text-xs font-semibold transition ${selectedNorthReference === value ? "bg-blue-600 text-white shadow" : "text-slate-400 hover:bg-white/5 hover:text-slate-200"}`}><span className="block">{value === "true" ? "True North" : "Magnetic North"}</span>{value === "magnetic" && <span className="mt-0.5 block text-[10px] font-normal">(preferred)</span>}</button>)}
       </div>
@@ -444,13 +442,10 @@ export function CompassModal({ open, onClose, onCapture, renderPresets }: Props)
             : <p className="mt-1 text-center text-[9px] uppercase tracking-wider text-slate-500">Align the blue center line with the linear feature; the arrow marks the measured direction</p>}
           {status === "starting" && <div className="absolute inset-0 flex items-center justify-center bg-[#080d14]/55 backdrop-blur-[1px]" aria-live="polite"><div className="flex items-center gap-3 rounded-full border border-white/15 bg-[#0d1117]/95 px-4 py-2.5 text-sm text-slate-200 shadow-xl"><span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-300/30 border-t-blue-300" aria-hidden="true" />Starting sensors…</div></div>}
         </div>
-        <div className={`flex items-center gap-2 rounded-xl p-3 text-sm ${held ? "bg-blue-500/10 text-blue-200" : (mode === "plane" ? stable : lineStable) ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{held ? <Pause className="h-4 w-4" /> : (mode === "plane" ? stable : lineStable) ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{status === "starting" ? "Waiting for the first sensor reading" : held ? (canCapture ? "Reading paused — ready to capture. Tap the compass to resume." : "Reading paused — no valid measurement. Tap the compass to resume.") : (mode === "plane" ? stable : lineStable) ? "Stable — tap the compass to pause, then capture" : "Tap the compass to pause before capturing"}</div>
-        {accuracyLow && <p className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-300">Compass accuracy is low. Move iPhone in a figure-eight and keep it away from magnets or metal objects.</p>}
         <Button className="w-full" disabled={!canCapture} onClick={capture}>Capture {mode === "plane" ? "Measurement" : "Lineation"}</Button>
       </>}
       {(!native || (import.meta.env.DEV && status === "error")) && <div className="space-y-3 rounded-xl border border-dashed border-slate-600 p-3"><p className="text-xs text-amber-300">Simulator/manual sensor mode — not a real measurement.</p><label className="block text-xs">Dip {mockDip}°<input className="w-full" type="range" min="0" max="90" value={mockDip} onChange={(e) => setMockDip(Number(e.target.value))} /></label><label className="block text-xs">Dip direction {mockDirection}°<input className="w-full" type="range" min="0" max="359" value={mockDirection} onChange={(e) => setMockDirection(Number(e.target.value))} /></label><Button variant="outline" className="w-full" onClick={useMock}>Apply Mock Reading</Button></div>}
       <details className="text-xs text-slate-400"><summary>Measurement diagnostics</summary><pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-black/30 p-2">{diagnostic}</pre></details>
-      <p className="text-center text-[10px] text-slate-500">Field aid only; not survey-grade. Horizontal planes below 1° have no defined strike or dip direction.</p>
     </div></div></div>, document.body);
 }
 

@@ -123,9 +123,9 @@ export function MeasurementRow({
           </div>
         )}
 
-        <button type="button" className="flex-1 min-w-0 text-left" aria-expanded={open} aria-label={`View ${measurement.label || "measurement"}`} onClick={() => setOpen(o => !o)}> 
+        <button type="button" className="flex-1 min-w-0 text-left" aria-expanded={open} aria-label={`View ${measurement.label?.trim() || (measurement.measurementType === "lineation" ? "Lineation" : "Strike and Dip")}`} onClick={() => setOpen(o => !o)}>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-primary">{measurement.measurementType === "lineation" ? "Lineation" : "Strike & Dip"}</p>
-          <p className="text-sm font-semibold truncate">{measurement.label || "Untitled measurement"}</p>
+          <p className="text-sm font-semibold truncate">{measurement.label?.trim() || (measurement.measurementType === "lineation" ? "Lineation" : "Strike and Dip")}</p>
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
             <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-semibold font-mono text-primary">
               {measurement.measurementType === "lineation"

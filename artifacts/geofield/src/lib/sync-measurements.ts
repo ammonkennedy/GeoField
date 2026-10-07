@@ -66,7 +66,10 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
   const errors: unknown[] = [];
   for (const item of before) {
     try {
-      if (Number(item.datasetId) < 0) continue;
+      if (Number(item.datasetId) < 0) {
+        if (item.localRevision) errors.push(new Error(`Measurement "${item.label || item.id}" is waiting for its dataset to sync. If the dataset is no longer available, open the measurement and choose an available dataset or Uncategorized.`));
+        continue;
+      }
       let existing = remoteById.get(item.id);
       if ((!existing || item.localRevision) && store.get)
         existing = (await store.get(item.id)) ?? existing;

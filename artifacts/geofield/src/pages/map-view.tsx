@@ -200,6 +200,7 @@ interface GeoInfo {
 export default function MapViewPage() {
   const [, setLocation] = useLocation();
   const { data: authData } = useGetCurrentAuthUser();
+  const fitMarkersRequested = useRef(true);
   const [selectedFolderId, setSelectedFolderId] = useState<number | string | "all">("all");
   const [baseLayer, setBaseLayer] = useState<BaseLayer>("satellite");
   const baseLayerRef = useRef<BaseLayer>("satellite");
@@ -450,6 +451,11 @@ export default function MapViewPage() {
     import("maplibre-gl").then((L) => {
       if (!mapContainerRef.current || mapRef.current) return;
 
+      const stopAutomaticFit = () => { fitMarkersRequested.current = false; };
+      const container = mapContainerRef.current!;
+      container.addEventListener("pointerdown", stopAutomaticFit, { passive: true });
+      container.addEventListener("wheel", stopAutomaticFit, { passive: true });
+      container.addEventListener("touchstart", stopAutomaticFit, { passive: true });
       const map = new L.Map({
         container: mapContainerRef.current!,
         // iOS may discard WebGL pixels after presenting a frame. Retain them
@@ -464,6 +470,11 @@ export default function MapViewPage() {
         pitchWithRotate: true,
         touchPitch: true,
         attributionControl: {},
+      });
+      map.on("remove", () => {
+        container.removeEventListener("pointerdown", stopAutomaticFit);
+        container.removeEventListener("wheel", stopAutomaticFit);
+        container.removeEventListener("touchstart", stopAutomaticFit);
       });
       mapRef.current = map;
       setPrismMap(map);
@@ -731,8 +742,8 @@ export default function MapViewPage() {
       const el = document.createElement("div");
       el.innerHTML = isFutureSite
         ? `<div aria-label="Future sample site" style="background:${color};border-radius:50%;width:20px;height:20px;border:3px solid white;box-shadow:0 2px 7px rgba(0,0,0,0.4);cursor:pointer;"></div>`
-        : `<div style="background:${color};color:white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:34px;height:34px;border:2.5px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;cursor:pointer;"><span style="transform:rotate(45deg);font-size:14px;font-weight:700;">${letter}</span></div>`;
-      const marker = new L.Marker({ element: el, anchor: "bottom" }).setLngLat([coords[1], coords[0]]).addTo(map);
+        : `<svg width="34" height="42" viewBox="0 0 34 42" style="display:block;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))" aria-hidden="true"><path d="M17 40 L5 25 A15 15 0 1 1 29 25 Z" fill="${color}" stroke="white" stroke-width="2"/><text x="17" y="22" text-anchor="middle" fill="white" font-size="14" font-weight="700" font-family="system-ui">${escapeHtml(letter)}</text></svg>`;
+      const marker = new L.Marker({ element: el, anchor: isFutureSite ? "center" : "bottom", offset: isFutureSite ? [0, 0] : [0, 1] }).setLngLat([coords[1], coords[0]]).addTo(map);
 
       el.addEventListener("click", (e: Event) => {
         e.stopPropagation();
@@ -832,6 +843,9 @@ export default function MapViewPage() {
       markersRef.current.push(marker);
     });
 
+    // Refresh marker data without resetting a view the user has chosen.
+    if (!fitMarkersRequested.current || exportModeRef.current || !allCoords.length) return;
+    fitMarkersRequested.current = false;
     if (allCoords.length === 1) {
       map.flyTo({ center: allCoords[0], zoom: 13 });
     } else if (allCoords.length > 1) {
@@ -845,20 +859,23 @@ export default function MapViewPage() {
   }
 
   useEffect(() => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
+    let cancelled = false;
+    let onLoad: (() => void) | undefined;
     import("maplibre-gl").then((L) => {
-      if (!mapRef.current) return;
-      if (mapLoadedRef.current) {
-        placeMarkers(L, mapRef.current);
-      } else {
-        mapRef.current.once("load", () => {
-          if (mapRef.current) placeMarkers(L, mapRef.current);
-        });
+      if (cancelled || mapRef.current !== map) return;
+      if (mapLoadedRef.current) placeMarkers(L, map);
+      else {
+        onLoad = () => { if (!cancelled && mapRef.current === map) placeMarkers(L, map); };
+        map.once("load", onLoad);
       }
     });
+    return () => { cancelled = true; if (onLoad) map.off("load", onLoad); };
   }, [allSamples, measurements, selectedFolderId]);
 
   function focusSample(coords: [number, number]) {
+    fitMarkersRequested.current = false;
     setSelectedFolderId("all");
     setSampleSearch("");
     setAddressLookupError("");
@@ -873,6 +890,7 @@ export default function MapViewPage() {
   }
 
   function focusAddress(result: GeocodeResult) {
+    fitMarkersRequested.current = false;
     setSelectedFolderId("all");
     setSampleSearch("");
     setAddressSuggestions([]);
@@ -986,7 +1004,7 @@ export default function MapViewPage() {
               <select
                 className="flex items-center pl-8 pr-4 h-9 rounded-lg border border-border bg-card text-sm font-medium shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none w-full sm:w-auto"
                 value={selectedFolderId}
-                onChange={(e) => setSelectedFolderId(e.target.value === "all" ? "all" : e.target.value)}
+                onChange={(e) => { fitMarkersRequested.current = true; setSelectedFolderId(e.target.value === "all" ? "all" : e.target.value); }}
               >
                 <option value="all">All Datasets</option>
                 {allFolders.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}

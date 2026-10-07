@@ -182,7 +182,6 @@ export default function Dashboard() {
 
   return (
     <Layout>
-      <div className="mb-4"><BulkRecords samples={filteredSamples} measurements={activeFolder ? datasetMeasurements : []} datasets={allFolders} /></div>
       <div className="mb-8 overflow-hidden rounded-[28px] border border-border bg-card shadow-sm">
         <div className="border-b border-border/70 bg-gradient-to-br from-white via-white to-blue-50/70 px-5 py-6 md:px-7 md:py-7">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -261,6 +260,8 @@ export default function Dashboard() {
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
+
+      <div className="mb-4"><BulkRecords samples={filteredSamples} measurements={activeFolder ? datasetMeasurements : []} datasets={allFolders} /></div>
 
       {isLoading && shouldLoadServerSamples ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

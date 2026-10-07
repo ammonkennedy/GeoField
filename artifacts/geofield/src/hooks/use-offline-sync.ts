@@ -378,6 +378,19 @@ export function useOfflineSync() {
           setTimeout(() => setSyncedCount(0), 5000);
         }
 
+        checkAccount();
+        if (!failed && getPendingSyncCount(accountId) > 0) {
+          const remaining = [
+            ...getSyncableQueue().map(item => `sample "${item.payload.sampleId || item.queuedId}"`),
+            ...loadMeasurements(true).filter(item => item.localRevision).map(item => `measurement "${item.label || item.id}"`),
+            ...getPendingLocalDatasets().map(item => `dataset "${item.name}"`),
+            ...loadTrips(true).filter(item => item.localRevision).map(item => `trip "${item.name}"`),
+            ...loadFieldNotes(accountId).filter(item => item.localRevision).map(item => `note "${item.title || item.id}"`),
+            ...loadNoteFolders(accountId).filter(item => item.localRevision).map(item => `note folder "${item.name}"`),
+          ];
+          reportFailure(new Error(`Still pending: ${remaining.slice(0, 3).join(", ")}. The latest changes are saved on this device but have not been confirmed by the cloud. Try Sync again; check that these records are assigned to an available dataset.`));
+        }
+
         if (!failed) {
           retryAttempt.current = 0;
           cancelRetry();
