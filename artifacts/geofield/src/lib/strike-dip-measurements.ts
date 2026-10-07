@@ -69,7 +69,9 @@ export function loadMeasurements(includeDeleted = false): StrikeDipMeasurement[]
   if (migratedLineations) writeDurableArray(KEY, stored);
   let migratedPhotos = false;
   for (const item of stored) {
-    if ((item.photo || item.photoLocalKey) && !item.photoKey && !item.photoUploadId) {
+    // Deleted records retain local photos for recovery, but their photos must
+    // not queue a new upload after the cloud has confirmed the deletion.
+    if (!item.deletedAt && (item.photo || item.photoLocalKey) && !item.photoKey && !item.photoUploadId) {
       item.photoUploadOnly = !item.localRevision;
       item.photoUploadId = crypto.randomUUID();
       item.localRevision = crypto.randomUUID();

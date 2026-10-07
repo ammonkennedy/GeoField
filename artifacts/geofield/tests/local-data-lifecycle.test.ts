@@ -50,3 +50,22 @@ test("older cloud-linked dataset deletions remain pending instead of silently re
  archiveLocalItem("dataset","Old dataset",{id:-1,cloudId:"cloud",name:"Old dataset",isLocal:true,createdAt:"2026-09-01T00:00:00Z"});
  assert.deepEqual(getLocalDatasets(),[]);assert.equal(getPendingLocalDatasets().length,1);assert.ok(getPendingLocalDatasets()[0].deletedAt);
 });
+
+test("confirmed deletion of an unuploaded measurement photo does not become pending again", () => {
+ setup();
+ saveMeasurements([{id:"deleted-photo",label:"",strike:"10",dip:"20",photoLocalKey:"local-photo",updatedAt:"2026-10-06T12:00:00Z"} as any]);
+ deleteMeasurement("deleted-photo");
+ const deleted=loadMeasurements(true)[0];
+ saveMeasurements([{...deleted,localRevision:undefined,photoUploadId:undefined,photoUploadOnly:undefined,cloudUpdatedAt:deleted.updatedAt}],{fromSync:true});
+ assert.equal(loadMeasurements(true)[0].localRevision,undefined);
+ assert.equal(loadMeasurements(true)[0].photoUploadId,undefined);
+ assert.equal(loadMeasurements(true)[0].photoLocalKey,"local-photo");
+ assert.equal(getLocalDeletedItems().length,1);
+ // Reopening the app must leave the acknowledgment intact; restoring must
+ // still queue the recovered photo for upload.
+ assert.equal(loadMeasurements(true)[0].localRevision,undefined);
+ restoreMeasurement(getLocalDeletedItems()[0]);
+ assert.equal(loadMeasurements()[0].photoLocalKey,"local-photo");
+ assert.ok(loadMeasurements()[0].localRevision);
+ assert.ok(loadMeasurements()[0].photoUploadId);
+});

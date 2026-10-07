@@ -1,3 +1,4 @@
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { ReactNode, useState, useEffect, useLayoutEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
@@ -29,7 +30,9 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: folders } = useGetFolders({
     query: { enabled: Boolean(user) }
   });
-  const { isOnline, queueCount, isSyncing, syncProgress, lastError, cloudSignInRequired, retryAt, sync } = useOfflineSync();
+  const { isOnline, queueCount, pendingItems, isSyncing, syncProgress, lastError, cloudSignInRequired, retryAt, sync } = useOfflineSync();
+  const [syncDetailsOpen, setSyncDetailsOpen] = useState(false);
+  const openSyncDetails = () => { setSidebarOpen(false); setSyncDetailsOpen(true); };
   const [syncErrorDismissed, setSyncErrorDismissed] = useState(false);
   useEffect(() => { setSyncErrorDismissed(false); }, [lastError]);
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
@@ -346,10 +349,10 @@ export function Layout({ children }: { children: ReactNode }) {
         {queueCount > 0 && (
           <div className="mx-3 mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
             <div className="flex items-center justify-between gap-2 mb-1">
-              <span className="flex items-center gap-1.5 font-semibold">
+              <button type="button" onClick={openSyncDetails} className="flex items-center gap-1.5 text-left font-semibold underline underline-offset-2">
                 <WifiOff className="w-3.5 h-3.5" />
                 {queueCount} item{queueCount !== 1 ? "s" : ""} pending sync
-              </span>
+              </button>
               {isOnline && !isSyncing && (
                 <button
                   onClick={sync}
@@ -435,7 +438,7 @@ export function Layout({ children }: { children: ReactNode }) {
         {lastError && !isSyncing && !syncErrorDismissed && (
           <div role="alert" className="absolute inset-x-3 top-3 z-50 mx-auto flex max-w-3xl items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span className="min-w-0 flex-1 break-words">{lastError}{retryAt && " Retrying automatically — pending data remains on this device."}</span>
+            <button type="button" onClick={openSyncDetails} className="min-w-0 flex-1 break-words text-left underline underline-offset-2" aria-label="View sync error details">{lastError}{retryAt && " Retrying automatically — pending data remains on this device."}</button>
             {cloudSignInRequired ? <Link className="py-1 font-semibold underline" href="/login?reauth=1">Sign in</Link> : <button type="button" className="py-1 font-semibold underline" onClick={sync}>Retry</button>}
             <button type="button" className="-my-2 -mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg hover:bg-red-100" aria-label="Dismiss sync error" onClick={() => setSyncErrorDismissed(true)}><X className="h-4 w-4" /></button>
           </div>
@@ -448,6 +451,16 @@ export function Layout({ children }: { children: ReactNode }) {
           {children}
         </div>
       </main>
+
+      <Dialog open={syncDetailsOpen} onOpenChange={setSyncDetailsOpen} panelClassName="max-w-2xl">
+        <DialogHeader><DialogTitle>Cloud sync details</DialogTitle></DialogHeader>
+        <DialogContent className="space-y-4">
+          {lastError && <p className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{lastError}</p>}
+          <p className="text-sm text-muted-foreground">{isSyncing ? syncProgress || "Syncing…" : `${pendingItems.length} record${pendingItems.length === 1 ? "" : "s"} waiting for cloud confirmation.`} Local changes stay on this device until synced.</p>
+          {pendingItems.length ? <ul className="space-y-2">{pendingItems.map(item => <li key={item.key} className="rounded-lg border p-3"><p className="break-words font-medium">{item.name}</p><p className="text-xs text-muted-foreground">{item.kind} · {item.status}</p>{item.detail && <p className="mt-1 text-sm text-amber-700">{item.detail}</p>}</li>)}</ul> : <p className="text-sm">No local records are waiting to upload. An error above may concern cloud downloads or the connection.</p>}
+          {cloudSignInRequired ? <Link href="/login?reauth=1">Sign in to resume cloud sync</Link> : <Button type="button" disabled={!isOnline || isSyncing} onClick={sync}>{isSyncing ? "Syncing…" : "Retry sync"}</Button>}
+        </DialogContent>
+      </Dialog>
 
       {/* Dataset Dialog */}
       <FolderDialog open={datasetDialogOpen} onOpenChange={setDatasetDialogOpen} />

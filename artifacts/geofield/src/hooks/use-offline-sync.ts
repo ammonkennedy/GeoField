@@ -103,9 +103,22 @@ function getSyncableQueue() {
   );
 }
 
-function getPendingSyncCount(accountId = "") {
-  return loadNoteFolders(accountId).filter(folder => folder.localRevision).length + loadTrips(true).filter((trip) => trip.localRevision).length + loadFieldNotes(accountId).filter((note) => note.localRevision).length + getPendingLocalDatasets().length + getSyncableQueue().length + loadMeasurements(true).filter((item) => item.localRevision).length;
+function getPendingSyncItems(accountId = "") {
+  const item = (kind: string, id: string | number, name: string, deleted: unknown, datasetId?: string | number | null) => ({
+    key: `${kind}:${id}`, kind, name,
+    status: deleted ? "Deletion waiting to sync" : "New or edited data waiting to sync",
+    detail: Number(datasetId) < 0 ? "Waiting for its dataset to finish syncing." : "",
+  });
+  return [
+    ...getSyncableQueue().map(record => item("Sample", record.queuedId, record.payload.sampleId || "Unnamed sample", record.deletedAt, record.payload.folderId)),
+    ...loadMeasurements(true).filter(record => record.localRevision).map(record => item("Measurement", record.id, record.label?.trim() || (record.measurementType === "lineation" ? "Lineation" : "Strike and Dip"), record.deletedAt, record.datasetId)),
+    ...getPendingLocalDatasets().map(record => item("Dataset", record.id, record.name, record.deletedAt)),
+    ...loadTrips(true).filter(record => record.localRevision).map(record => item("Trip", record.id, record.name, record.deletedAt, record.datasetId)),
+    ...loadFieldNotes(accountId).filter(record => record.localRevision).map(record => item("Note", record.id, record.title || "Untitled note", record.deletedAt)),
+    ...loadNoteFolders(accountId).filter(record => record.localRevision).map(record => item("Note folder", record.id, record.name, record.deletedAt)),
+  ];
 }
+function getPendingSyncCount(accountId = "") { return getPendingSyncItems(accountId).length; }
 
 async function syncLocalDataset(dataset: LocalDataset, checkAccount: () => void, accountId: string) {
   if (dataset.cloudId) {
@@ -161,7 +174,8 @@ export function useOfflineSync() {
   const accountId = authData?.user ? String(authData.user.id) : "";
   const queryClient = useQueryClient();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [queueCount, setQueueCount] = useState(() => getPendingSyncCount(accountId));
+  const [pendingItems, setPendingItems] = useState(() => getPendingSyncItems(accountId));
+  const queueCount = pendingItems.length;
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncedCount, setSyncedCount] = useState(0);
   const [downloadedCount, setDownloadedCount] = useState(0);
@@ -208,7 +222,8 @@ export function useOfflineSync() {
   }, []);
 
   const refreshCount = useCallback(() => {
-    setQueueCount(getPendingSyncCount(accountId));
+    const next = getPendingSyncItems(accountId);
+    setPendingItems(current => JSON.stringify(current) === JSON.stringify(next) ? current : next);
   }, [accountId]);
 
   useEffect(() => {
@@ -486,6 +501,7 @@ export function useOfflineSync() {
   return {
     isOnline,
     queueCount,
+    pendingItems,
     isSyncing,
     syncedCount,
     downloadedCount,
