@@ -1,3 +1,4 @@
+import { FaultOverlay } from "@/components/FaultOverlay";
 import { getStoredMediaDataUrl } from "@/lib/media-storage";
 import { PrismOverlay } from "@/components/PrismOverlay";
 import { parseMacrostratSelection } from "@/lib/macrostrat-service";
@@ -76,7 +77,7 @@ function getSampleLabel(sample: any) {
 }
 
 type BaseLayer = "street" | "satellite" | "topographic";
-type OverlayLayer = "none" | "geology" | "soil" | "trails" | "prism";
+type OverlayLayer = "none" | "geology" | "soil" | "trails" | "prism" | "faults";
 
 const SATELLITE_IMAGERY_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
@@ -549,7 +550,7 @@ export default function MapViewPage() {
       map.on("click", async (e: any) => {
         if (exportModeRef.current) return;
         const over = overlayLayerRef.current;
-        if (over === "none" || over === "prism") return;
+        if (over === "none" || over === "prism" || over === "faults") return;
         if (over === "trails") {
           trailRequestRef.current?.abort();
           trailPopupRef.current?.remove();
@@ -1050,6 +1051,7 @@ export default function MapViewPage() {
               <option value="geology">Regional Geology</option>
               <option value="soil">Soil Types</option>
               <option value="prism">PRISM Climate</option>
+              <option value="faults">Active Faults (Global &amp; U.S.)</option>
               <option value="trails">Hiking Trails (Waymarked)</option>
             </select>
             <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -1123,9 +1125,10 @@ export default function MapViewPage() {
           </div>
         )}
 
+        {overlayLayer === "faults" && prismMap && <FaultOverlay map={prismMap} exportMode={exportMode} />}
         {overlayLayer === "prism" && prismMap && <PrismOverlay map={prismMap} exportMode={exportMode} />}
 
-        {overlayLayer !== "none" && overlayLayer !== "prism" && (
+        {overlayLayer !== "none" && overlayLayer !== "prism" && overlayLayer !== "faults" && (
           <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2 flex items-center gap-2">
             <Layers className="w-3.5 h-3.5 text-primary shrink-0" />
             {overlayLayer === "geology"

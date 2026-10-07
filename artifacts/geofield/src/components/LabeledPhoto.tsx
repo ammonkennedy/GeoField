@@ -1,6 +1,7 @@
+import { originalFromPhoto, photoWithOriginal, readPhotoBytes } from "@/lib/photo-versions";
 import { PhotoEditor } from "@/components/PhotoEditor";
 import { ZoomablePhoto } from "@/components/ZoomablePhoto";
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { SavePhotoButton } from '@/components/SavePhotoButton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,18 @@ export function LabeledPhoto({ src, alt, caption = '', onSave, onEdit, className
   const editTarget = useRef<{ src: string; save: (dataUrl: string) => Promise<void> } | null>(null);
   const [open, setOpen] = useState(initiallyOpen);
   const [mode, setMode] = useState<'photo' | 'edit' | 'read' | 'draw'>(initiallyRead ? 'read' : 'photo');
+  const [original, setOriginal] = useState<string | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
+  useEffect(() => {
+    setOriginal(null); setShowOriginal(false);
+    if (!open) return;
+    const controller = new AbortController();
+    void readPhotoBytes(src, controller.signal).then(bytes => {
+      if (!controller.signal.aborted) setOriginal(originalFromPhoto(bytes));
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [src, open]);
+  const displayedSrc = showOriginal && original ? original : src;
   const [drawingDirty, setDrawingDirty] = useState(false);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -40,10 +53,12 @@ export function LabeledPhoto({ src, alt, caption = '', onSave, onEdit, className
           if (!drawingDirty || confirm('Discard your unsaved drawing?')) { setDrawingDirty(false); setMode('photo'); }
         }} onSave={async dataUrl => {
           setSaving(true);
-          try { await editTarget.current!.save(dataUrl); setDrawingDirty(false); setMode('photo'); setMessage('Photo edited.'); }
+          try { const target = editTarget.current!; const bytes = await readPhotoBytes(target.src); await target.save(photoWithOriginal(dataUrl, bytes)); setShowOriginal(false); setDrawingDirty(false); setMode('photo'); setMessage('Photo edited.'); }
           finally { setSaving(false); }
         }} /> : mode === 'read' ? <><p className="max-h-[60dvh] overflow-y-auto whitespace-pre-wrap break-words text-base leading-relaxed">{caption}</p><Button type="button" variant="outline" onClick={() => setMode('photo')}>Back to photo</Button></> : <>
-          <ZoomablePhoto key={`${src}:${open}`} src={src} alt={alt} caption={mode === 'photo' && preview(true)} />
+          <ZoomablePhoto key={`${displayedSrc}:${open}`} src={displayedSrc} alt={alt} caption={mode === 'photo' && preview(true)} />
+          {mode === 'photo' && original && <Button type="button" variant="outline" aria-pressed={showOriginal} onClick={() => setShowOriginal(value => !value)}>{showOriginal ? 'Show edited' : 'Show original'}</Button>}
+          {mode === 'photo' && original && <p className="text-xs text-muted-foreground">{showOriginal ? 'Original photo' : 'Edited photo'}</p>}
           {mode === 'edit' ? <div className="space-y-2">
             <Textarea aria-label="Photo label" autoFocus maxLength={2000} rows={4} value={draft} disabled={saving} onChange={event => setDraft(event.target.value)} placeholder="Describe what is in this picture…" />
             <p className="text-xs text-muted-foreground">{draft.length}/2,000 characters · Two lines appear on the photo. Tap them to read the full label.</p>
@@ -54,7 +69,7 @@ export function LabeledPhoto({ src, alt, caption = '', onSave, onEdit, className
               catch (error) { setError(error instanceof Error ? error.message : 'Label could not be saved. Please try again.'); }
               finally { setSaving(false); }
             }}>{saving ? 'Saving…' : 'Save label'}</Button><Button type="button" variant="outline" disabled={saving} onClick={() => { setMode('photo'); setError(''); }}>Cancel</Button></div>
-          </div> : <div className="flex gap-2"><SavePhotoButton src={src} fileName={alt} showLabel />{onEdit && <Button type="button" className="flex-1" onClick={() => { editTarget.current = { src, save: onEdit }; setDrawingDirty(false); setMode("draw"); setMessage(""); }}>Edit photo</Button>}{onSave && <Button type="button" className="flex-1" onClick={() => { setDraft(caption); setMode('edit'); setMessage(''); setError(''); }}>Label</Button>}</div>}
+          </div> : <div className="flex flex-wrap gap-2"><SavePhotoButton src={displayedSrc} fileName={alt} showLabel />{onEdit && <Button type="button" className="flex-1" onClick={() => { editTarget.current = { src, save: onEdit }; setDrawingDirty(false); setMode("draw"); setMessage(""); }}>Edit photo</Button>}{onSave && <Button type="button" className="flex-1" onClick={() => { setDraft(caption); setMode('edit'); setMessage(''); setError(''); }}>Label</Button>}</div>}
         </>}
         {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
