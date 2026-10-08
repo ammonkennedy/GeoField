@@ -5,7 +5,7 @@ type Point = { x: number; y: number };
 const limit = (value: number, max: number) => Math.max(-max, Math.min(max, value));
 
 /** The original image is unchanged; zoom affects only its presentation. */
-export function ZoomablePhoto({ src, alt, caption }: { src: string; alt: string; caption?: ReactNode }) {
+export function ZoomablePhoto({ src, alt, caption, fullScreen = false }: { src: string; alt: string; caption?: ReactNode; fullScreen?: boolean }) {
   const viewport = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, Point>());
   const transform = useRef({ scale: 1, x: 0, y: 0 });
@@ -20,9 +20,9 @@ export function ZoomablePhoto({ src, alt, caption }: { src: string; alt: string;
     const current = transform.current;
     update(current.scale * factor, current.x * factor, current.y * factor);
   };
-  return <div className="space-y-2">
-    <div className="relative">
-    <div ref={viewport} className="relative flex h-[50dvh] w-full touch-none select-none items-center justify-center overflow-hidden rounded-lg bg-black/90"
+  return <div className={fullScreen ? "flex min-h-0 flex-1 flex-col gap-2" : "space-y-2"}>
+    <div className={fullScreen ? "relative min-h-0 flex-1" : "relative"}>
+    <div ref={viewport} className={`relative flex ${fullScreen ? "h-full" : "h-[50dvh]"} w-full touch-none select-none items-center justify-center overflow-hidden rounded-lg bg-black/90`}
       style={{ cursor: view.scale > 1 ? 'grab' : 'zoom-in' }}
       onDoubleClick={() => view.scale > 1 ? update(1, 0, 0) : zoom(2)}
       onPointerDown={event => {
@@ -65,6 +65,6 @@ export function ZoomablePhoto({ src, alt, caption }: { src: string; alt: string;
       <Button type="button" variant="outline" size="sm" aria-label="Zoom into photo" disabled={view.scale >= 6} onClick={() => zoom(1.5)}>+</Button>
       <Button type="button" variant="outline" size="sm" onClick={() => update(1, 0, 0)}>Reset zoom</Button>
     </div>
-    <p className="text-center text-xs text-muted-foreground">Pinch to zoom. Drag to move around the enlarged photo.</p>
+    {!fullScreen && <p className="text-center text-xs text-muted-foreground">Pinch to zoom. Drag to move around the enlarged photo.</p>}
   </div>;
 }

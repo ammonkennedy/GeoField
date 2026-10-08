@@ -1,3 +1,5 @@
+import { capturePhoto } from "@/lib/capture-photo";
+import { preservePhotoDirection } from "@/lib/photo-direction";
 import { FolderDialog } from "@/components/FolderDialog";
 import { LabeledPhoto } from "@/components/LabeledPhoto";
 import { getAccuratePosition } from "@/lib/gps";
@@ -337,7 +339,9 @@ export default function SampleEntry() {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    const slotIndex = activeSlotRef.current;
+    await saveMediaFile(file, activeSlotRef.current);
+  };
+  const saveMediaFile = async (file: File, slotIndex: number) => {
     const setSlot = (slot: MediaSlot) =>
       setMediaSlots((prev) => {
         const next = [...prev] as [MediaSlot, MediaSlot, MediaSlot];
@@ -369,7 +373,7 @@ export default function SampleEntry() {
       vid.onerror = () => { URL.revokeObjectURL(url); toast({ title: "Could not read video", description: "Try a different format (MP4 recommended)." }); };
     } else {
       try {
-        setSlot({ type: "photo", dataUrl: await compressImage(file), fileName: file.name, mimeType: file.type, sizeBytes: file.size });
+        setSlot({ type: "photo", dataUrl: await preservePhotoDirection(await compressImage(file), file), fileName: file.name, mimeType: file.type, sizeBytes: file.size });
       } catch {
         const reader = new FileReader();
         reader.onload = (ev) => setSlot({ type: "photo", dataUrl: ev.target?.result as string, fileName: file.name, mimeType: file.type, sizeBytes: file.size });
@@ -380,7 +384,7 @@ export default function SampleEntry() {
 
   const openSlot = (index: number, source: "library" | "camera" | "video" = "library") => {
     activeSlotRef.current = index;
-    if (source === "camera") photoCaptureInputRef.current?.click();
+    if (source === "camera") void capturePhoto(() => photoCaptureInputRef.current?.click(), file => saveMediaFile(file, index), message => toast({ title: message, variant: "destructive" }));
     else if (source === "video") videoCaptureInputRef.current?.click();
     else fileInputRef.current?.click();
   };

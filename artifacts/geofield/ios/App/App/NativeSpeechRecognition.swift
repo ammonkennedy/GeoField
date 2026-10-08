@@ -116,6 +116,7 @@ public final class GeoFieldBridgeViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(GeoFieldSpeechRecognitionPlugin())
         bridge?.registerPluginInstance(GeoFieldGeologyMotionPlugin())
         bridge?.registerPluginInstance(GeoFieldPhotoLibraryPlugin())
+        bridge?.registerPluginInstance(GeoFieldCameraPlugin())
     }
 }
 
@@ -273,4 +274,119 @@ public final class GeoFieldPhotoLibraryPlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
     }
+}
+
+/// Rear-camera direction is sampled at our shutter action, not when the picker closes.
+@objc(GeoFieldCameraPlugin)
+public final class GeoFieldCameraPlugin: CAPPlugin, CAPBridgedPlugin, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    public let identifier = "GeoFieldCameraPlugin"
+    public let jsName = "GeoFieldCamera"
+    public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "capture", returnType: CAPPluginReturnPromise)]
+    private let motion = CMMotionManager()
+    private var pending: CAPPluginCall?
+    private var picker: UIImagePickerController?
+    private var shutter: UIButton?
+    private var direction: JSObject?
+
+    @objc func capture(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard self.pending == nil else { call.reject("The camera is already open."); return }
+            guard UIImagePickerController.isCameraDeviceAvailable(.rear) else { call.reject("A rear camera is unavailable on this device."); return }
+            self.pending = call
+            switch AVCaptureDevice.authorizationStatus(for: .video) {
+            case .authorized: self.presentCamera()
+            case .notDetermined:
+                AVCaptureDevice.requestAccess(for: .video) { allowed in
+                    DispatchQueue.main.async {
+                        if allowed { self.presentCamera() }
+                        else { self.pending?.reject("Allow camera access in Settings to take photos."); self.pending = nil }
+                    }
+                }
+            default: self.pending?.reject("Allow camera access in Settings to take photos."); self.pending = nil
+            }
+        }
+    }
+    private func presentCamera() {
+        guard let presenter = bridge?.viewController, presenter.presentedViewController == nil else {
+            pending?.reject("Close the other camera or system dialog and try again."); pending = nil; return
+        }
+        direction = nil
+        if motion.isDeviceMotionAvailable && CMMotionManager.availableAttitudeReferenceFrames().contains(.xMagneticNorthZVertical) {
+            motion.deviceMotionUpdateInterval = 1.0 / 30.0
+            motion.showsDeviceMovementDisplay = true
+            motion.startDeviceMotionUpdates(using: .xMagneticNorthZVertical)
+        }
+        let camera = UIImagePickerController()
+        camera.sourceType = .camera; camera.cameraDevice = .rear; camera.cameraCaptureMode = .photo
+        camera.delegate = self; camera.showsCameraControls = false; camera.modalPresentationStyle = .fullScreen
+        let overlay = UIView(frame: presenter.view.bounds)
+        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        let take = UIButton(type: .system)
+        take.setTitle("Take photo", for: .normal); take.setTitleColor(.white, for: .normal)
+        take.backgroundColor = .systemBlue; take.layer.cornerRadius = 25
+        take.titleLabel?.font = .boldSystemFont(ofSize: 18)
+        take.addTarget(self, action: #selector(takePhoto), for: .touchUpInside)
+        let cancel = UIButton(type: .system)
+        cancel.setTitle("Cancel", for: .normal); cancel.setTitleColor(.white, for: .normal)
+        cancel.backgroundColor = .black; cancel.layer.cornerRadius = 12
+        cancel.addTarget(self, action: #selector(cancelPhoto), for: .touchUpInside)
+        let hint = UILabel(); hint.text = "Hold still while taking the photo"; hint.textColor = .white
+        hint.backgroundColor = UIColor.black.withAlphaComponent(0.7); hint.textAlignment = .center
+        for view in [take, cancel, hint] { view.translatesAutoresizingMaskIntoConstraints = false; overlay.addSubview(view) }
+        NSLayoutConstraint.activate([
+            take.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            take.bottomAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.bottomAnchor, constant: -24),
+            take.widthAnchor.constraint(equalToConstant: 160), take.heightAnchor.constraint(equalToConstant: 52),
+            cancel.leadingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            cancel.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
+            cancel.widthAnchor.constraint(equalToConstant: 90), cancel.heightAnchor.constraint(equalToConstant: 44),
+            hint.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            hint.bottomAnchor.constraint(equalTo: take.topAnchor, constant: -12),
+            hint.widthAnchor.constraint(equalToConstant: 290), hint.heightAnchor.constraint(equalToConstant: 30)
+        ])
+        camera.cameraOverlayView = overlay; picker = camera; shutter = take
+        presenter.present(camera, animated: true)
+    }
+    @objc private func takePhoto() {
+        guard let camera = picker, shutter?.isEnabled == true else { return }
+        direction = nil
+        if let data = motion.deviceMotion,
+           ProcessInfo.processInfo.systemUptime - data.timestamp < 0.5,
+           data.magneticField.accuracy != .uncalibrated {
+            // Transpose reference->device attitude. Rear lens looks along -Z.
+            // Magnetic frame: X=north, Y=west; east=r.m32, north=-r.m31.
+            let r = data.attitude.rotationMatrix
+            let east = r.m32, north = -r.m31
+            if hypot(east, north) > 0.17 {
+                let bearing = (atan2(east, north) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+                let quality = data.magneticField.accuracy == .high ? "high" : data.magneticField.accuracy == .medium ? "medium" : "low"
+                direction = ["degrees": bearing, "reference": "magnetic", "accuracy": quality]
+            }
+        }
+        shutter?.isEnabled = false
+        camera.takePicture()
+    }
+    @objc private func cancelPhoto() { finish(["cancelled": true]) }
+    public func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { cancelPhoto() }
+    public func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        guard let image = info[.originalImage] as? UIImage else { failPhoto(); return }
+        // Bound bridge memory and normalize orientation before passing JPEG to JS.
+        let scale = min(1, 1600 / max(image.size.width, image.size.height))
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let normalized = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+        guard let jpeg = normalized.jpegData(compressionQuality: 0.85) else { failPhoto(); return }
+        var result: JSObject = ["base64": jpeg.base64EncodedString()]
+        if let direction { result["direction"] = direction }
+        finish(result)
+    }
+    private func failPhoto() {
+        let call = pending; cleanup(); picker?.dismiss(animated: true); picker = nil
+        call?.reject("Could not read the camera photo. Please try again.")
+    }
+    private func finish(_ result: JSObject) {
+        let call = pending; cleanup()
+        picker?.dismiss(animated: true) { call?.resolve(result) }; picker = nil
+    }
+    private func cleanup() { motion.stopDeviceMotionUpdates(); pending = nil; direction = nil; shutter = nil }
 }

@@ -1,3 +1,5 @@
+import { capturePhoto } from "@/lib/capture-photo";
+import { preservePhotoDirection } from "@/lib/photo-direction";
 import { useState, useEffect, useRef } from "react";
 import { LabeledPhoto } from "@/components/LabeledPhoto";
 import { MeasurementAngleInput } from "@/components/MeasurementAngleInput";
@@ -98,9 +100,12 @@ export function MeasurementRow({
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
+    await savePhotoFile(file);
+  };
+  const savePhotoFile = async (file: File) => {
     try {
       const accountId = getStorageAccountId();
-      const dataUrl = await compressImage(file);
+      const dataUrl = await preservePhotoDirection(await compressImage(file), file);
       const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: file.name, mimeType: "image/jpeg" });
       if (!accountId || getStorageAccountId() !== accountId) return;
       const latest = loadMeasurements().find((item) => item.id === measurement.id);
@@ -177,7 +182,7 @@ export function MeasurementRow({
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => cameraInputRef.current?.click()}
+                  onClick={() => void capturePhoto(() => cameraInputRef.current?.click(), savePhotoFile, message => photoToast({ title: message, variant: "destructive" }))}
                   className="flex min-h-11 touch-manipulation items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 py-3 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                 >
                   <Camera className="w-4 h-4 shrink-0" />

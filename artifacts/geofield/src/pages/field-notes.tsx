@@ -1,3 +1,5 @@
+import { capturePhoto } from "@/lib/capture-photo";
+import { preservePhotoDirection } from "@/lib/photo-direction";
 import { getStorageAccountId } from "@/lib/storage-account";
 import { LabeledPhoto } from "@/components/LabeledPhoto";
 import { createNoteFolder, loadNoteFolders, updateFolderNotes, NOTE_FOLDERS_UPDATED } from "@/lib/note-folders";
@@ -64,13 +66,13 @@ function NotesContent({ accountId }: { accountId: string }) {
     try { editFieldNote(accountId, note.id, (current) => ({ ...current, ...next })); setDraft(null); setError(""); }
     catch { setError("Your latest text could not be saved. Keep this page open and try Save again."); }
   };
-  const addPhotos = async (files: FileList | null) => {
+  const addPhotos = async (files: FileList | File[] | null) => {
     if (!note || !files?.length) return;
     const id = note.id;
     setAddingPhotos(true); setError("");
     try {
       for (const file of Array.from(files)) {
-        const dataUrl = await prepareNotePhoto(file);
+        const dataUrl = await preservePhotoDirection(await prepareNotePhoto(file), file);
         const photo = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: file.name, mimeType: "image/jpeg" });
         editFieldNote(accountId, id, (current) => ({ ...current, photos: [...current.photos, { id: photo.id, fileName: file.name, localKey: photo.storageKey }] }));
       }
@@ -105,7 +107,7 @@ function NotesContent({ accountId }: { accountId: string }) {
         <p className="text-xs text-muted-foreground">Created {new Date(note.createdAt).toLocaleString()} · {draft ? "Unsaved changes" : note.localRevision ? "Saved on this device · waiting to sync" : "Synced with your account"}</p>
         <div><Label htmlFor="note-body">Field notes</Label><Textarea id="note-body" maxLength={50000} value={draft?.body ?? note.body} onChange={(event) => save({ body: event.target.value })} placeholder="Write your observations here…" className="min-h-[300px] text-base leading-relaxed" disabled={Boolean(note.deletedAt)} /></div>
         {draft && <Button onClick={() => save({})}>Save again</Button>}
-        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Photos (optional)</h2>{!note.deletedAt && <div className="flex gap-2"><Button variant="outline" disabled={addingPhotos || Boolean(draft)} onClick={() => camera.current?.click()}><Camera className="mr-2 h-4 w-4" />Take Photo</Button><Button variant="outline" disabled={addingPhotos || Boolean(draft)} onClick={() => library.current?.click()}><ImagePlus className="mr-2 h-4 w-4" />Add Photos</Button></div>}</div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Photos (optional)</h2>{!note.deletedAt && <div className="flex gap-2"><Button variant="outline" disabled={addingPhotos || Boolean(draft)} onClick={() => void capturePhoto(() => camera.current?.click(), file => addPhotos([file]), setError)}><Camera className="mr-2 h-4 w-4" />Take Photo</Button><Button variant="outline" disabled={addingPhotos || Boolean(draft)} onClick={() => library.current?.click()}><ImagePlus className="mr-2 h-4 w-4" />Add Photos</Button></div>}</div>
         {addingPhotos && <p role="status" className="text-sm">Saving photos…</p>}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{note.photos.map((photo) => <div key={photo.id} className="relative"><NoteImage photo={photo} onEdit={note.deletedAt ? undefined : async dataUrl => {
           const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: "edited-photo.jpg", mimeType: "image/jpeg" });

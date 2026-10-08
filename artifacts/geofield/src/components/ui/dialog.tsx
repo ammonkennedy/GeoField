@@ -9,9 +9,10 @@ interface DialogProps {
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
   panelClassName?: string;
+  fullScreen?: boolean;
 }
 
-export function Dialog({ open, onOpenChange, children, panelClassName }: DialogProps) {
+export function Dialog({ open, onOpenChange, children, panelClassName, fullScreen = false }: DialogProps) {
   React.useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -33,22 +34,23 @@ export function Dialog({ open, onOpenChange, children, panelClassName }: DialogP
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => onOpenChange(false)}
-            className="fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-[200] bg-black/60 backdrop-blur-sm md:inset-0"
+            className={cn("fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-[200] bg-black/60 backdrop-blur-sm md:inset-0", fullScreen && "inset-0 top-0")}
           />
-          <div className="pointer-events-none fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-[200] flex min-h-0 items-center justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:inset-0 md:p-4">
+          <div className={cn("pointer-events-none fixed bottom-0 left-0 right-0 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.5rem)] z-[200] flex min-h-0 items-center justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 md:inset-0 md:p-4", fullScreen && "inset-0 top-0 p-0 md:p-0")}>
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               role="dialog"
               aria-modal="true"
-              className={cn("relative flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl pointer-events-auto md:max-h-[90vh]", panelClassName)}
+              className={cn("relative flex max-h-full w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl pointer-events-auto md:max-h-[90vh]", panelClassName, fullScreen && "h-full max-h-full max-w-none rounded-none border-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] md:max-h-full")}
             >
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}
                 className="absolute right-3 top-3 z-20 flex h-10 w-10 touch-manipulation items-center justify-center rounded-full bg-card/90 text-muted-foreground shadow-sm ring-1 ring-border transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label="Close popup"
+                style={fullScreen ? { top: "calc(env(safe-area-inset-top) + 0.5rem)", right: "calc(env(safe-area-inset-right) + 0.5rem)" } : undefined}
+                aria-label={fullScreen ? "Exit full screen" : "Close popup"}
               >
                 <X className="h-5 w-5" />
               </button>
