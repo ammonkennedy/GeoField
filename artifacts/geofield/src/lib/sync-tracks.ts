@@ -5,7 +5,7 @@ import { loadTracks, storeTracks, trackingStatus } from './tracks';
 export async function syncTracks(accountId: string) {
   const check = () => assertStorageAccount(accountId);
   await syncTrackRecords({
-    load: () => { check(); return loadTracks(); },
+    load: () => { check(); return loadTracks(true); },
     save: tracks => { check(); storeTracks(tracks); },
     activeId: () => trackingStatus().activeId,
     put: snapshot => putTrackCloudObject(snapshot, snapshot, accountId),

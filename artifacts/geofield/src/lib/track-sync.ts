@@ -2,6 +2,7 @@ import { validTrackPoint, type TrackPoint } from './track-math.ts';
 export interface TrackData {
   id: string; name: string; startedAt: string; stoppedAt?: string;
   points: TrackPoint[];
+  deletedAt?: string;
   downloadedTrail?: { source: "usgs" | "osm"; id: number };
 }
 export interface StoredTrack extends TrackData {
@@ -11,7 +12,7 @@ export interface TrackSnapshot {
   schema: 1; revision: string; parent?: string; track: TrackData;
 }
 export function trackPayload(t: TrackData): TrackData {
-  return { id: t.id, name: t.name, startedAt: t.startedAt, stoppedAt: t.stoppedAt, points: t.points, ...(t.downloadedTrail ? { downloadedTrail: t.downloadedTrail } : {}) };
+  return { id: t.id, name: t.name, startedAt: t.startedAt, stoppedAt: t.stoppedAt, points: t.points, ...(t.deletedAt ? { deletedAt: t.deletedAt } : {}), ...(t.downloadedTrail ? { downloadedTrail: t.downloadedTrail } : {}) };
 }
 export function validateTrackSnapshot(value: unknown): TrackSnapshot {
   const s = value as TrackSnapshot;
@@ -22,6 +23,7 @@ export function validateTrackSnapshot(value: unknown): TrackSnapshot {
       (s.track.stoppedAt !== undefined && !Number.isFinite(Date.parse(s.track.stoppedAt))) ||
       (s.track.downloadedTrail !== undefined && (!s.track.downloadedTrail ||
         !['usgs', 'osm'].includes(s.track.downloadedTrail.source) || !Number.isSafeInteger(s.track.downloadedTrail.id) || s.track.downloadedTrail.id <= 0)) ||
+      (s.track.deletedAt !== undefined && !Number.isFinite(Date.parse(s.track.deletedAt))) ||
       !Array.isArray(s.track.points) || s.track.points.some(p => !validTrackPoint(p) ||
         !Number.isInteger(p.segment) || p.segment < 0 ||
         (p.elevation !== null && !Number.isFinite(p.elevation)) ||
@@ -58,10 +60,18 @@ export async function syncTrackRecords(store: Store) {
     const snapshots = (await store.list()).map(validateTrackSnapshot).sort((a,b) => a.revision.localeCompare(b.revision));
     const current = store.load();
     const merged = new Map(current.map(t => [t.id, t]));
+    // Deletion wins over stale or concurrent revisions of the same track.
+    // Retain tombstones so a later device upload cannot resurrect the route.
+    for (const snapshot of snapshots.filter(s => s.track.deletedAt)) {
+      if (snapshot.track.id === store.activeId()) continue;
+      const local = merged.get(snapshot.track.id);
+      if (!local?.deletedAt) merged.set(snapshot.track.id, { ...snapshot.track, visible: false, cloudRevision: snapshot.revision });
+    }
     const usedIds = new Set<string>();
     for (const snapshot of snapshots) {
       const originalId = snapshot.track.id;
       const local = merged.get(originalId);
+      if (snapshot.track.deletedAt || local?.deletedAt) continue;
       const known = current.find(t => t.cloudRevision === snapshot.revision);
       if (known) { usedIds.add(originalId); continue; }
       const conflict = usedIds.has(originalId) || Boolean(local?.localRevision) || originalId === store.activeId();

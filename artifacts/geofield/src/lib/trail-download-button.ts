@@ -14,7 +14,7 @@ export function trailDownloadButton(trail: TrailDownload) {
       const { downloadTrail } = await import('./tracks');
       const id = await downloadTrail(trail);
       button.textContent = 'Downloaded';
-      status.textContent = 'Saved in Track → Saved tracks and shown on the map.';
+      status.textContent = 'Saved in Track → Downloaded tracks and shown on the map.';
       const link = document.createElement('a'); link.href = `/map?track=${encodeURIComponent(id)}`;
       link.textContent = 'View saved track';
       link.onclick = event => { event.preventDefault(); history.pushState(null, '', link.href); window.dispatchEvent(new PopStateEvent('popstate')); };

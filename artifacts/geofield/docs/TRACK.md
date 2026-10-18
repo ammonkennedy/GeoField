@@ -53,7 +53,7 @@ preparing the next store submission.
 
 ## Saved trails
 
-**Saved tracks** contains both recorded walks and downloaded hiking trails. In
+**Custom tracks** lists recorded walks and **Downloaded tracks** lists saved hiking trails. Both sections appear automatically below Activate. In
 Map View, enable Hiking Trails, select a route/segment, then choose **Download**.
 USGS downloads fetch the full selected object instead of rendered tile geometry;
 marked OSM routes recursively include member ways. Duplicate downloads reuse the
@@ -65,3 +65,10 @@ Distances describe the downloaded mapped geometry, not a round trip or planned
 itinerary. USGS items are labeled segments. Downloaded trails currently have no
 elevation profile, so gain/loss show Unavailable. Recorded walks retain their GPS
 elevation estimates. Downloading preserves route lines, not basemap tiles.
+
+Both track sections include Delete with confirmation. Active recordings must be
+stopped first. Deletion immediately hides the route locally and retains a pending
+deletion record for sync. Confirmed deletions suppress stale cloud revisions;
+failed uploads keep the deletion pending. Downloading the same trail again creates
+a new track without undoing the earlier deletion. After manually stopping a walk,
+a naming popup allows a custom name or keeping the existing name.

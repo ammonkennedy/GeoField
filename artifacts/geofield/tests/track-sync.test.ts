@@ -17,3 +17,27 @@ test('recording track is not uploaded or replaced by cloud',async()=>{const a=se
 test('simultaneous branches retain both versions',async()=>{const a=setup([]);a.store.list=async()=>['one','two'].map(revision=>({schema:1,revision,parent:'base',track:track({name:revision})}));await syncTrackRecords(a.store);assert.equal(a.data().length,2);assert.ok(a.data().some(t=>t.name.includes('other device copy')));await syncTrackRecords(a.store);assert.equal(a.data().length,2);});
 test('download errors never remove local tracks',async()=>{const a=setup([track({localRevision:undefined,cloudRevision:'rev1'})]);a.store.list=async()=>{throw Error('download failed');};await assert.rejects(syncTrackRecords(a.store));assert.equal(a.data().length,1);});
 test('malformed cloud data is rejected',()=>{assert.throws(()=>validateTrackSnapshot({schema:1,revision:'v',track:{...track(),points:[{latitude:999}]}}));});
+test('confirmed deletion syncs to another device and does not resurrect from a stale branch', async () => {
+ const deletedAt='2026-10-18T10:00:00Z';
+ const a=setup([track({deletedAt,visible:false,localRevision:'deleted',cloudRevision:'base'})]);
+ await syncTrackRecords(a.store);
+ assert.equal(a.data()[0].localRevision,undefined);
+ const b=setup([track({localRevision:undefined,cloudRevision:'base'})]);
+ b.store.list=async()=>[...await a.store.list(),{schema:1,revision:'stale',parent:'base',track:track({localRevision:undefined})}];
+ await syncTrackRecords(b.store);
+ assert.equal(b.data().length,1);assert.equal(b.data()[0].deletedAt,deletedAt);
+ await syncTrackRecords(b.store);assert.equal(b.data().length,1);
+});
+test('offline deletion stays pending and suppresses cloud downloads of the deleted track',async()=>{
+ const a=setup([track({deletedAt:'2026-10-18T10:00:00Z',localRevision:'deleted'})]);
+ a.store.put=async()=>{throw Error('offline');};
+ a.store.list=async()=>[{schema:1,revision:'stale',track:track({localRevision:undefined})}];
+ await assert.rejects(syncTrackRecords(a.store));
+ assert.equal(a.data().length,1);assert.equal(a.data()[0].localRevision,'deleted');assert.ok(a.data()[0].deletedAt);
+});
+test('deletion during an in-flight upload remains pending',async()=>{
+ const a=setup();const put=a.store.put;
+ a.store.put=async snapshot=>{await put(snapshot);a.store.save([track({deletedAt:'2026-10-18T10:00:00Z',localRevision:'deleted'})]);};
+ await syncTrackRecords(a.store);
+ assert.equal(a.data()[0].localRevision,'deleted');assert.ok(a.data()[0].deletedAt);assert.equal(a.data().length,1);
+});

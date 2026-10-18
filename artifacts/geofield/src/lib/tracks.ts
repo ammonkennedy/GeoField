@@ -7,11 +7,11 @@ import type { StoredTrack } from './track-sync';
 export type WalkingTrack = StoredTrack;
 export const TRACKS_UPDATED = 'geofield-tracks-updated';
 export const TRACK_STATUS_UPDATED = 'geofield-track-status';
-export function loadTracks(): WalkingTrack[] {
+export function loadTracks(includeDeleted = false): WalkingTrack[] {
   const tracks = readDurableArray<WalkingTrack>('geofield_tracks');
   const migrated = tracks.map(t => !t.localRevision && !t.cloudRevision ? { ...t, localRevision: crypto.randomUUID() } : t);
   if (migrated.some((t,i) => t !== tracks[i])) writeDurableArray('geofield_tracks', migrated);
-  return migrated;
+  return includeDeleted ? migrated : migrated.filter(track => !track.deletedAt);
 }
 export function storeTracks(tracks: WalkingTrack[]) {
   if (JSON.stringify(readDurableArray('geofield_tracks')) === JSON.stringify(tracks)) return;
@@ -19,7 +19,7 @@ export function storeTracks(tracks: WalkingTrack[]) {
   window.dispatchEvent(new Event(TRACKS_UPDATED));
 }
 function writeTracks(tracks: WalkingTrack[]) {
-  const current = loadTracks();
+  const current = loadTracks(true);
   storeTracks(tracks.map(t => {
     const old = current.find(o => o.id === t.id);
     // Visibility is a device preference, not a cloud edit.
@@ -44,7 +44,7 @@ export function trackingStatus() { return { activeId, message, stopping }; }
 function status(text: string) { message = text; window.dispatchEvent(new Event(TRACK_STATUS_UPDATED)); }
 export function updateTrack(id: string, patch: Pick<Partial<WalkingTrack>, 'name' | 'visible'>) {
   if (!getStorageAccountId()) throw new Error('Sign in to edit tracks.');
-  writeTracks(loadTracks().map(track => track.id === id ? { ...track, ...patch } : track));
+  writeTracks(loadTracks(true).map(track => track.id === id ? { ...track, ...patch } : track));
 }
 export async function stopTracking() {
   if (stopping) return;
@@ -57,7 +57,7 @@ export async function stopTracking() {
     }
     subscription = undefined;
     if (activeId && accountId === getStorageAccountId()) {
-      writeTracks(loadTracks().map(track => track.id === activeId ? { ...track, stoppedAt: new Date().toISOString() } : track));
+      writeTracks(loadTracks(true).map(track => track.id === activeId ? { ...track, stoppedAt: new Date().toISOString() } : track));
     }
     activeId = null; accountId = null;
     status('Recording stopped. Your track is saved and ready to sync.');
@@ -73,7 +73,7 @@ export async function startTracking() {
   if (stopping) throw new Error('Wait for the previous track to finish stopping.');
   const id = crypto.randomUUID();
   const track: WalkingTrack = { id, name: `Walk ${new Date().toLocaleString()}`, startedAt: new Date().toISOString(), points: [], visible: true };
-  writeTracks([...loadTracks(), track]);
+  writeTracks([...loadTracks(true), track]);
   activeId = id; segment = 0; lastFix = 0; status('Waiting for an accurate GPS position…');
   try {
     subscription = watchTrackLocation(position => {
@@ -86,7 +86,7 @@ export async function startTracking() {
         const point: TrackPoint = { latitude: c.latitude, longitude: c.longitude, accuracy: c.accuracy,
           timestamp: position.timestamp, elevation: c.altitude, elevationAccuracy: c.altitudeAccuracy, segment };
         if (validTrackPoint(point)) lastFix = position.timestamp;
-        const tracks = loadTracks(), current = tracks.find(t => t.id === id);
+        const tracks = loadTracks(true), current = tracks.find(t => t.id === id);
         if (!current) throw new Error('The active track is no longer available.');
         if (acceptTrackPoint(current.points, point)) {
           writeTracks(tracks.map(t => t.id === id ? { ...t, points: [...t.points, point] } : t));
@@ -118,8 +118,8 @@ export async function downloadTrail(trail: TrailDownload) {
     assertStorageAccount(owner);
     const now = new Date().toISOString();
     const points = trailGeometryPoints(geometry, Date.parse(now));
-    const tracks = loadTracks();
-    const duplicate = tracks.find(t => t.downloadedTrail?.source === trail.source && t.downloadedTrail.id === trail.id);
+    const tracks = loadTracks(true);
+    const duplicate = tracks.find(t => !t.deletedAt && t.downloadedTrail?.source === trail.source && t.downloadedTrail.id === trail.id);
     if (duplicate) { updateTrack(duplicate.id, { visible: true }); return duplicate.id; }
     const id = crypto.randomUUID();
     writeTracks([...tracks, { id, name: trail.name, startedAt: now, stoppedAt: now, visible: true, points,
@@ -129,4 +129,12 @@ export async function downloadTrail(trail: TrailDownload) {
     if (controller.signal.aborted) throw new Error('Trail download timed out. Check your connection and retry.');
     throw error;
   } finally { clearTimeout(timeout); }
+}
+
+export function deleteTrack(id: string) {
+  if (!getStorageAccountId()) throw new Error('Sign in to delete tracks.');
+  if (id === activeId) throw new Error('Stop recording before deleting this track.');
+  writeTracks(loadTracks(true).map(track => track.id === id ? {
+    ...track, deletedAt: new Date().toISOString(), visible: false, points: [],
+  } : track));
 }

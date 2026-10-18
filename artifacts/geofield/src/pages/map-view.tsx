@@ -546,7 +546,12 @@ export default function MapViewPage() {
         // Add any saved custom layers
         customLayersRef.current.forEach((layer) => safeAddCustomLayer(map, layer));
         placeMarkers(L, map);
-        geolocateControl.trigger();
+        // A saved-track link owns the initial view. Starting GPS follow here
+        // would move away from the trail as soon as a location fix arrives.
+        // The location control remains available for an explicit user tap.
+        if (!new URLSearchParams(window.location.search).has('track')) {
+          geolocateControl.trigger();
+        }
       });
 
       // Click handler — reads overlayLayerRef (never stale)
