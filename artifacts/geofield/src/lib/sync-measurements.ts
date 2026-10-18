@@ -17,6 +17,9 @@ function confirmsMeasurement<T extends MeasurementRecord>(
   saved: T | null,
   payload: T,
 ) {
+  // A deletion confirms the tombstone, not stale fields or dataset links.
+  if (payload.deletedAt && Object.keys(payload).every(key => key === "id" || key === "deletedAt"))
+    return Boolean(saved && saved.id === payload.id && saved.deletedAt);
   if (
     !saved ||
     saved.id !== payload.id ||
@@ -66,7 +69,7 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
   const errors: unknown[] = [];
   for (const item of before) {
     try {
-      if (Number(item.datasetId) < 0) {
+      if (!item.deletedAt && Number(item.datasetId) < 0) {
         if (item.localRevision) errors.push(new Error(`Measurement "${item.label || item.id}" is waiting for its dataset to sync. If the dataset is no longer available, open the measurement and choose an available dataset or Uncategorized.`));
         continue;
       }
@@ -75,10 +78,10 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
         existing = (await store.get(item.id)) ?? existing;
       if (!existing && item.cloudUpdatedAt && !item.localRevision) continue;
       if (existing && !item.localRevision) continue;
-      let prepared = store.prepare ? await store.prepare(item) : item;
+      let prepared = item.deletedAt ? { id: item.id, deletedAt: item.deletedAt } as T : store.prepare ? await store.prepare(item) : item;
       // Migrating a previously local-only photo must not replay old measurement
       // fields over newer edits (or a deletion) made on another device.
-      if (item.photoUploadOnly && existing)
+      if (!item.deletedAt && item.photoUploadOnly && existing)
         prepared = {
           ...existing,
           photo: prepared.photo,
@@ -88,6 +91,7 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
 
       if (
         existing &&
+        !existing.deletedAt &&
         item.localRevision &&
         item.cloudUpdatedAt &&
         existing.updatedAt !== item.cloudUpdatedAt &&
@@ -141,11 +145,11 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
             throw error;
           saved = confirmed;
         }
-      if (
+      if (!payload.deletedAt && (
         saved.id !== item.id ||
         String(saved.datasetId ?? "") !== String(payload.datasetId ?? "") ||
         (saved.deletedAt ?? null) !== (payload.deletedAt ?? null)
-      ) {
+      )) {
         throw new Error(
           "Cloud did not confirm the measurement's dataset assignment. Your edit is still saved on this device. Please try syncing again.",
         );
@@ -160,6 +164,12 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
           if (latest.id !== item.id) return latest;
           if (JSON.stringify(latest) !== JSON.stringify(item))
             return { ...latest, cloudUpdatedAt: saved.updatedAt };
+          if (item.deletedAt) {
+            // Retain recovery data locally, but never re-upload photos or stale
+            // fields just to acknowledge a cloud tombstone.
+            const { localRevision: _revision, ...deleted } = latest;
+            return { ...deleted, cloudUpdatedAt: saved.updatedAt, updatedAt: saved.updatedAt ?? deleted.updatedAt, photoUploadId: undefined, photoUploadOnly: undefined } as T;
+          }
           const { localRevision: _revision, ...confirmed } = saved;
           return {
             ...confirmed,

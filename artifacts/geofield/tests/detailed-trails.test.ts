@@ -39,7 +39,7 @@ test("service errors are reported instead of displaying empty coverage", async (
 test("clicking a visible line opens its loaded details without a network request", () => {
   const original = globalThis.document;
   let popupContent: any;
-  const node = () => ({ textContent: "", style: {}, children: [] as any[], append(...children: any[]) { this.children.push(...children); } });
+  const node = () => ({ textContent: "", style: {}, setAttribute() {}, children: [] as any[], append(...children: any[]) { this.children.push(...children); } });
   globalThis.document = { createElement: node } as any;
   class Popup {
     setLngLat() { return this; }
@@ -52,6 +52,7 @@ test("clicking a visible line opens its loaded details without a network request
     assert.equal(showDetailedTrailPopup(map as any, { x: 50, y: 12 }, [0,0], Popup as any), true);
     assert.equal(popupContent.children[0].textContent, "Red Rocks Park");
     assert.match(popupContent.children[1].textContent, /Mapped segment: 0.25 km/);
+    assert.equal(popupContent.children.at(-1).children[0].textContent, "Download");
     assert.equal(showDetailedTrailPopup(map as any, { x: 50, y: 30 }, [0,0], Popup as any), false);
   } finally { globalThis.document = original; }
 });

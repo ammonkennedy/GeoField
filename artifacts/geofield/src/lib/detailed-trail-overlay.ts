@@ -1,3 +1,4 @@
+import { trailDownloadButton } from './trail-download-button.ts';
 import type { Map, MapGeoJSONFeature, LngLatLike, Popup } from "maplibre-gl";
 import { EMPTY_TRAILS, loadDetailedTrails, trailSegmentDetails, type TrailBounds } from "./detailed-trails.ts";
 
@@ -124,6 +125,8 @@ export function showDetailedTrailPopup(map: Map, point: { x: number; y: number }
     if (!value) continue;
     const row = document.createElement("p"); row.textContent = value; content.append(row);
   }
+  const id = Number(properties.objectid ?? feature.id);
+  if (Number.isSafeInteger(id) && id > 0) content.append(trailDownloadButton({ source: 'usgs', id, name: detail.name }));
   popups.get(map)?.remove();
   popups.set(map, new PopupClass({ maxWidth: "300px" }).setLngLat(lngLat).setDOMContent(content).addTo(map));
   return true;

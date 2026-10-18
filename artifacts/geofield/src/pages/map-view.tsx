@@ -1,4 +1,7 @@
+import { trailDownloadButton } from '@/lib/trail-download-button';
+import { observeMapSize } from "@/lib/map-resize";
 import { FaultOverlay } from "@/components/FaultOverlay";
+import { TrackOverlay } from "@/components/TrackOverlay";
 import { getStoredMediaDataUrl } from "@/lib/media-storage";
 import { PrismOverlay } from "@/components/PrismOverlay";
 import { parseMacrostratSelection } from "@/lib/macrostrat-service";
@@ -7,7 +10,7 @@ import { applyBaseMap } from "@/lib/base-map";
 import { exportMapImage } from "@/lib/export-map";
 import { saveFile } from "@/lib/save-file";
 import { lookupHikingTrails } from "@/lib/hiking-trails";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Layout } from "@/components/Layout";
 import { useGetCurrentAuthUser, useGetSamples, useGetFolders } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
@@ -348,10 +351,9 @@ export default function MapViewPage() {
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [sampleSearch]);
 
-  useEffect(() => {
-    mapRef.current?.resize?.();
-    const timer = window.setTimeout(() => mapRef.current?.resize?.(), 100);
-    return () => window.clearTimeout(timer);
+  useLayoutEffect(() => {
+    mapRef.current?.resize();
+    mapRef.current?.triggerRepaint();
   }, [mapFullScreen]);
 
   useEffect(() => {
@@ -477,6 +479,7 @@ export default function MapViewPage() {
         container.removeEventListener("wheel", stopAutomaticFit);
         container.removeEventListener("touchstart", stopAutomaticFit);
       });
+      observeMapSize(map);
       mapRef.current = map;
       setPrismMap(map);
 
@@ -589,7 +592,7 @@ export default function MapViewPage() {
               link.href = `https://hiking.waymarkedtrails.org/#route?id=${route.id}&type=relation`;
               link.target = "_blank";
               link.rel = "noopener noreferrer";
-              section.append(title, distance, link);
+              section.append(title, distance, link, trailDownloadButton({ source: 'osm', id: route.id, name: route.name }));
               content.append(section);
             }
             if (routes.length) {
@@ -845,7 +848,7 @@ export default function MapViewPage() {
     });
 
     // Refresh marker data without resetting a view the user has chosen.
-    if (!fitMarkersRequested.current || exportModeRef.current || !allCoords.length) return;
+    if (new URLSearchParams(window.location.search).has('track') || !fitMarkersRequested.current || exportModeRef.current || !allCoords.length) return;
     fitMarkersRequested.current = false;
     if (allCoords.length === 1) {
       map.flyTo({ center: allCoords[0], zoom: 13 });
@@ -1125,6 +1128,7 @@ export default function MapViewPage() {
           </div>
         )}
 
+        {prismMap && <TrackOverlay map={prismMap} />}
         {overlayLayer === "faults" && prismMap && <FaultOverlay map={prismMap} exportMode={exportMode} />}
         {overlayLayer === "prism" && prismMap && <PrismOverlay map={prismMap} exportMode={exportMode} />}
 
@@ -1191,8 +1195,8 @@ export default function MapViewPage() {
             )}
           </div>
         )}
-        <div className="flex-1 relative">
-          <div ref={mapContainerRef} className={`h-full w-full overflow-hidden border border-border shadow-lg ${mapFullScreen ? "rounded-none" : "rounded-2xl"}`} />
+        <div className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden [contain:paint]">
+          <div ref={mapContainerRef} className={`maplibregl-map h-full w-full overflow-hidden border border-border shadow-lg ${mapFullScreen ? "rounded-none" : "rounded-2xl"}`} />
           {!exportMode && <button type="button" onClick={() => { setGeoInfo(null); setMapFullScreen((value) => !value); }} className="absolute left-3 top-3 z-[110] flex min-h-11 touch-manipulation items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur transition-colors hover:bg-muted" title={mapFullScreen ? "Return to normal map size" : "Make map full screen"} aria-label={mapFullScreen ? "Exit full-screen map" : "Open full-screen map"}>
             {mapFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             {mapFullScreen ? "Exit Full Screen" : "Full Screen"}

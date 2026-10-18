@@ -33,6 +33,9 @@
       "core-js",
       "core-js-pure",
       "esbuild"
-    ]
+    ],
+    "patchedDependencies": {
+      "@capacitor-community/background-geolocation@1.2.26": "patches/@capacitor-community__background-geolocation@1.2.26.patch"
+    }
   }
 }

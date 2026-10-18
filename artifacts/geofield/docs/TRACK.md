@@ -1,0 +1,67 @@
+# Walking tracks
+
+Open **Track** in the sidebar and choose **Activate**. Allow precise location.
+Native Android/iOS builds use background location so a walk can continue with
+another app open or the screen locked. Android also requests notification
+permission and shows a recording notification. Do not force-close GeoField.
+On the website, keep the page visible and screen awake; hidden intervals start
+a new segment when you return. Choose **Stop tracking** when finished.
+
+Each route includes its name, distance in miles, estimated ascent/descent in feet,
+recorded GPS time, a Map View visibility toggle, and JSON export. Routes appear
+as blue lines with green start markers and blue end markers. **View route** fits
+the map to that walk without hiding sample/measurement markers.
+
+Points are saved incrementally in account-scoped durable storage without needing
+internet. A reload/process exit preserves committed points and leaves the route
+interrupted rather than silently restarting GPS. Sign-out stops recording.
+Denied permissions, weak fixes, and storage failures are surfaced.
+
+## Account sync
+
+Stopped/interrupted tracks participate in the existing account sync flow. Active
+tracks stay local until stopped. Private AWS storage holds immutable revisions;
+uploads are read back and verified before clearing the pending flag. Failed
+uploads remain pending, and edits made during an upload remain pending too.
+Concurrent edits are preserved as an “other device copy” instead of discarded.
+Map visibility is a device preference. Cloud omission never deletes local tracks.
+The existing authenticated identity storage policy covers the new objects; no
+new Amplify data model is required.
+
+## Limits and verification
+
+GPS distance excludes poor fixes, stationary jitter, implausible jumps, and gaps
+between segments. Elevation gain excludes unknown/poor vertical accuracy and
+uses a noise threshold. These are estimates, not surveyed measurements. Uncached
+map tiles still need internet. Device storage is finite; a failed write stops
+recording and keeps previously committed points.
+
+Automated regression coverage includes track math and sync confirmation,
+failures, concurrent edits, active-recording protection, and malformed data.
+Android debug and iOS simulator builds have passed. Browser tests exercise
+recording, navigation, route rendering, stopping, persistence, visibility and
+permission denial using an isolated test account and injected GPS. Native GPS
+callbacks and watcher removal have been exercised on the Android emulator.
+Real outdoor accuracy, sustained locked-screen recording on physical phones,
+and live AWS synchronization between two devices still need field validation.
+
+The native dependency patch aligns its Swift package with Capacitor 8, keeps
+its Android service private, and makes GPS hardware optional for installation.
+Reinstall the native app after building: a website update alone cannot install
+these native changes. Review location/background-service declarations when
+preparing the next store submission.
+
+## Saved trails
+
+**Saved tracks** contains both recorded walks and downloaded hiking trails. In
+Map View, enable Hiking Trails, select a route/segment, then choose **Download**.
+USGS downloads fetch the full selected object instead of rendered tile geometry;
+marked OSM routes recursively include member ways. Duplicate downloads reuse the
+saved item. Invalid or incomplete service responses leave existing tracks intact.
+Downloads are account scoped, participate in Track sync, and retain source IDs.
+Select a saved track's title or **View route** to display and frame it on the map.
+
+Distances describe the downloaded mapped geometry, not a round trip or planned
+itinerary. USGS items are labeled segments. Downloaded trails currently have no
+elevation profile, so gain/loss show Unavailable. Recorded walks retain their GPS
+elevation estimates. Downloading preserves route lines, not basemap tiles.

@@ -1,7 +1,8 @@
+import { originalFromPhoto, readPhotoBytes } from '@/lib/photo-versions';
+import { readEditHistory, withEditHistory, type Stroke } from '@/lib/photo-edit-history';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-type Stroke = { color: string; width: number; points: { x: number; y: number }[] };
 const colors = ['#ef4444', '#fbbf24', '#22c55e', '#3b82f6', '#a855f7', '#ffffff', '#000000'];
 export function PhotoEditor({ src, onSave, onCancel, onDirty }: {
   src: string; onSave: (dataUrl: string) => Promise<void>; onCancel: () => void; onDirty: (dirty: boolean) => void;
@@ -9,6 +10,11 @@ export function PhotoEditor({ src, onSave, onCancel, onDirty }: {
   const canvas = useRef<HTMLCanvasElement>(null);
   const image = useRef<HTMLImageElement | null>(null);
   const strokes = useRef<Stroke[]>([]);
+  const originalImage = useRef<HTMLImageElement | null>(null);
+  const legacyBase = useRef<string | undefined>(undefined);
+  const [legacy, setLegacy] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const markDirty = () => { setDirty(true); onDirty(true); };
   const active = useRef<number | null>(null);
   const [color, setColor] = useState(colors[0]);
   const [width, setWidth] = useState(4);
@@ -29,19 +35,33 @@ export function PhotoEditor({ src, onSave, onCancel, onDirty }: {
     }
   };
   useEffect(() => {
-    const img = new Image(); let cancelled = false;
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    let cancelled = false;
+    const controller = new AbortController();
+    setReady(false);
+    const load = async (url: string) => { const img = new Image(); img.crossOrigin = 'anonymous'; img.src = url; await img.decode(); return img; };
+    void (async () => {
+      const bytes = await readPhotoBytes(src, controller.signal);
+      const history = readEditHistory(bytes);
+      const original = originalFromPhoto(bytes);
+      const base = history?.legacyBase || (history ? original || bytes : bytes);
+      const [img, clean] = await Promise.all([load(base), load(original || bytes)]);
       if (cancelled || !canvas.current) return;
       const scale = Math.min(1, 4096 / Math.max(img.naturalWidth, img.naturalHeight));
-      canvas.current.width = Math.round(img.naturalWidth * scale);
-      canvas.current.height = Math.round(img.naturalHeight * scale);
-      image.current = img;
-      try { redraw(); setReady(true); } catch { setError('Could not open this photo for editing.'); }
-    };
-    img.onerror = () => { if (!cancelled) setError('Could not load the photo. Sync it to this device and try again.'); };
-    img.src = src;
-    return () => { cancelled = true; };
+      canvas.current.width = history?.width || Math.round(img.naturalWidth * scale);
+      canvas.current.height = history?.height || Math.round(img.naturalHeight * scale);
+      image.current = img; originalImage.current = clean;
+      strokes.current = history?.strokes || [];
+      // Old flattened edits can be undone as a group; new strokes individually.
+      legacyBase.current = history?.legacyBase;
+      if (!history && original) {
+        const flat = document.createElement('canvas'); flat.width = canvas.current.width; flat.height = canvas.current.height;
+        flat.getContext('2d')!.drawImage(img, 0, 0, flat.width, flat.height);
+        legacyBase.current = flat.toDataURL('image/jpeg', 0.95);
+      }
+      setLegacy(Boolean(legacyBase.current)); setCount(strokes.current.length);
+      redraw(); setReady(true);
+    })().catch(error => { if (!cancelled) setError(error instanceof Error ? error.message : 'Could not open saved edits.'); });
+    return () => { cancelled = true; controller.abort(); };
   }, [src]);
   const point = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -56,16 +76,17 @@ export function PhotoEditor({ src, onSave, onCancel, onDirty }: {
         if (!ready || saving || active.current !== null || (event.pointerType === 'mouse' && event.button !== 0)) return;
         active.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId);
         strokes.current.push({ color, width: width * event.currentTarget.width / event.currentTarget.getBoundingClientRect().width, points: [point(event)] });
-        setCount(strokes.current.length); onDirty(true); redraw();
+        setCount(strokes.current.length); markDirty(); redraw();
       }}
       onPointerMove={event => { if (active.current !== event.pointerId) return; strokes.current[strokes.current.length - 1].points.push(point(event)); redraw(); }}
       onPointerUp={() => { active.current = null; }} onPointerCancel={() => { active.current = null; }} onLostPointerCapture={() => { active.current = null; }} />
+    {legacy && <p className="text-xs text-muted-foreground">Older saved edits can be undone together. New strokes can be undone individually.</p>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <div className="flex flex-wrap gap-2">
-      <Button type="button" variant="outline" disabled={!count || saving} onClick={() => { strokes.current.pop(); setCount(strokes.current.length); onDirty(strokes.current.length > 0); redraw(); }}>Undo</Button>
-      <Button type="button" disabled={!ready || !count || saving} onClick={async () => {
+      <Button type="button" variant="outline" disabled={!ready || (!count && !legacy) || saving} onClick={() => { if (strokes.current.length) strokes.current.pop(); else { image.current = originalImage.current; legacyBase.current = undefined; setLegacy(false); } setCount(strokes.current.length); markDirty(); redraw(); }}>Undo</Button>
+      <Button type="button" disabled={!ready || !dirty || saving} onClick={async () => {
         setSaving(true); setError('');
-        try { await onSave(canvas.current!.toDataURL('image/jpeg', 0.95)); onDirty(false); }
+        try { await onSave(withEditHistory(canvas.current!.toDataURL('image/jpeg', 0.95), { width: canvas.current!.width, height: canvas.current!.height, strokes: strokes.current, legacyBase: legacyBase.current })); onDirty(false); }
         catch (error) { setError(error instanceof Error ? error.message : 'Photo could not be saved. Your drawing is still here.'); }
         finally { setSaving(false); }
       }}>{saving ? 'Saving…' : 'Save edits'}</Button>

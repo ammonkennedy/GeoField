@@ -103,7 +103,7 @@ function NotesContent({ accountId }: { accountId: string }) {
     {note ? <>
       <Button variant="outline" onClick={back} disabled={addingPhotos}><ArrowLeft className="mr-2 h-4 w-4" />{folder ? folder.name : "All Notes"}</Button>
       <div className="space-y-4 rounded-xl border bg-card p-4 sm:p-6">
-        <div><Label htmlFor="note-title">Title</Label><Input id="note-title" maxLength={240} autoFocus value={draft?.title ?? note.title} onChange={(event) => save({ title: event.target.value })} placeholder="e.g. North ridge observations" disabled={Boolean(note.deletedAt)} /></div>
+        <div><Label htmlFor="note-title">Title</Label><Input id="note-title" maxLength={240} value={draft?.title ?? note.title} onChange={(event) => save({ title: event.target.value })} placeholder="e.g. North ridge observations" disabled={Boolean(note.deletedAt)} /></div>
         <p className="text-xs text-muted-foreground">Created {new Date(note.createdAt).toLocaleString()} · {draft ? "Unsaved changes" : note.localRevision ? "Saved on this device · waiting to sync" : "Synced with your account"}</p>
         <div><Label htmlFor="note-body">Field notes</Label><Textarea id="note-body" maxLength={50000} value={draft?.body ?? note.body} onChange={(event) => save({ body: event.target.value })} placeholder="Write your observations here…" className="min-h-[300px] text-base leading-relaxed" disabled={Boolean(note.deletedAt)} /></div>
         {draft && <Button onClick={() => save({})}>Save again</Button>}

@@ -1,6 +1,8 @@
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { FileOpener } from "@capacitor-community/file-opener";
+
+const AndroidFiles = registerPlugin<{ saveFile(options: { base64: string; filename: string; mimeType: string }): Promise<void> }>("GeoFieldFiles");
 
 export type SaveFileResult = "shared" | "downloaded";
 
@@ -34,6 +36,10 @@ async function stageNativePreview(blob: Blob, filename: string) {
  * followed by a native Quick Look preview, and retain normal downloads for web.
  */
 export async function saveFile(blob: Blob, filename: string, options: SaveFileOptions = {}): Promise<SaveFileResult> {
+  if (Capacitor.getPlatform() === "android") {
+    await AndroidFiles.saveFile({ base64: await blobToBase64(blob), filename, mimeType: blob.type || "application/octet-stream" });
+    return "downloaded";
+  }
   const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
 
   if (Capacitor.isNativePlatform() && typeof navigator.share === "function") {

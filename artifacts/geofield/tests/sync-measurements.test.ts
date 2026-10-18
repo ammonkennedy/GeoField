@@ -171,3 +171,36 @@ test("unresolved local dataset reports the blocked measurement without discardin
   assert.equal(scenario.local()[0].datasetId, '-123');
   assert.equal(scenario.local()[0].localRevision, 'edit-1');
 });
+
+for (const exists of [true, false]) {
+  test(`deleted measurement sync ignores missing dataset and photo (cloud exists: ${exists})`, async () => {
+    let local: any[] = [{...base, datasetId:'-123', deletedAt:'2026-10-07T12:00:00Z', photoUploadOnly:true, photoUploadId:'old'}];
+    let remote: any = exists ? {...base, localRevision:undefined} : null;
+    let writes = 0;
+    const write = async (item: any) => {
+      assert.deepEqual(Object.keys(item).sort(), ['deletedAt','id']);
+      writes++; remote = {...item, updatedAt:'2026-10-07T12:01:00Z'}; return remote;
+    };
+    const store = {load:()=>structuredClone(local), save:(items:any[])=>{local=items;}, list:async()=>remote?[remote]:[], get:async()=>remote,
+      prepare:async()=>{throw new Error('Must not load deleted photo');}, create:write, update:write};
+    await syncMeasurementRecords(store); await syncMeasurementRecords(store);
+    assert.equal(writes,1); assert.equal(local[0].localRevision,undefined);
+    assert.equal(local[0].photo,'local-photo'); assert.equal(local[0].datasetId,'-123'); assert.ok(local[0].deletedAt);
+  });
+}
+test('already deleted cloud record acknowledges deletion despite different fields and timestamp', async () => {
+  const scenario = setup({...base,deletedAt:'2026-10-07T12:00:00Z'} as any);
+  scenario.setRemote({...base,datasetId:null,deletedAt:'2026-10-06T12:00:00Z',localRevision:undefined} as any);
+  await syncMeasurementRecords(scenario.store);
+  assert.equal(scenario.writes.length,0); assert.equal(scenario.local()[0].localRevision,undefined);
+});
+test('failed deletion stays pending; restoring during deletion is not acknowledged as saved', async () => {
+  const scenario = setup({...base,deletedAt:'2026-10-07T12:00:00Z'} as any);
+  scenario.store.update=async()=>{throw new Error('offline');};
+  await assert.rejects(syncMeasurementRecords(scenario.store),/offline/);
+  assert.equal(scenario.local()[0].localRevision,'edit-1');
+  scenario.store.update=async item=>{scenario.setLocal([{...base,localRevision:'restored'}]); return item;};
+  await syncMeasurementRecords(scenario.store);
+  assert.equal(scenario.local()[0].localRevision,'restored');
+  assert.equal((scenario.local()[0] as any).deletedAt,undefined);
+});

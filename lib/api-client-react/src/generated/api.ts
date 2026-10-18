@@ -694,6 +694,8 @@ function asStrikeDipMeasurement(record: any): CloudStrikeDipMeasurement {
 }
 
 function strikeDipInput(data: Partial<CloudStrikeDipMeasurement>) {
+  // Deletion must not depend on stale/invalid measurement fields or a removed dataset.
+  if (data.deletedAt && Object.keys(data).every(key => ["id", "deletedAt", "createdAt", "updatedAt"].includes(key))) return { deletedAt: data.deletedAt };
   const input = cleanObject({
     photoCaption: data.photoCaption,
     measurementType: data.measurementType ?? "plane", datasetId: normalizeFolderId(data.datasetId) ?? undefined, label: data.label, strike: data.strike, dip: data.dip,

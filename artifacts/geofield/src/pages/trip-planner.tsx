@@ -1,3 +1,4 @@
+import { observeMapSize } from "@/lib/map-resize";
 import { resolveDatasetId } from "@/lib/dataset-identity";
 import { ensureMacrostratLayer, setMacrostratOpacity, renderedMacrostratUnit } from "@/lib/macrostrat-layer";
 import { parseMacrostratSelection } from "@/lib/macrostrat-service";
@@ -539,6 +540,7 @@ export default function TripPlannerPage() {
             pitchWithRotate: true,
             touchPitch: true,
           });
+          observeMapSize(map);
           mapInstanceRef.current = map;
 
           map.addControl(new L.NavigationControl({ visualizePitch: true }), "top-right");
@@ -1186,7 +1188,7 @@ export default function TripPlannerPage() {
             </div>
 
             {/* Map container */}
-            <div className="relative flex-1 overflow-hidden">
+            <div className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden [contain:paint]">
               <button type="button" onClick={() => { setGeoInfo(null); setMapFullScreen((value) => !value); }} className="absolute left-3 top-3 z-10 flex min-h-11 items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold shadow-lg backdrop-blur" aria-label={mapFullScreen ? "Exit full-screen trip map" : "Open full-screen trip map"}>
                 {mapFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}{mapFullScreen ? "Exit Full Screen" : "Full Screen"}
               </button>

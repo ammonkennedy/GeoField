@@ -21,7 +21,12 @@
       }
     },
     "android": {
-      "package": "com.geofield.mobile"
+      "package": "com.geofield.mobile",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -54,6 +59,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "861ed630-a0b6-41d0-bdd3-b13b20a201de"
+      }
     }
   }
 }

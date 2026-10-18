@@ -1,6 +1,6 @@
 const SCOPED_COLLECTIONS = new Set([
   "geofield_offline_queue", "geofield_local_datasets", "geofield_strike_dip",
-  "geofield_cloud_samples", "geofield_recently_deleted", "geofield_trips",
+  "geofield_cloud_samples", "geofield_recently_deleted", "geofield_trips", "geofield_tracks",
 ]);
 
 export function getStorageAccountId(): string | null {

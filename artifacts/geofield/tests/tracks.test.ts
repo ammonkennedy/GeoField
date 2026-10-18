@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { acceptTrackPoint, distanceMeters, trackSegments, trackStats, type TrackPoint } from '../src/lib/track-math.ts';
+const point = (patch: Partial<TrackPoint> = {}): TrackPoint => ({latitude:40,longitude:-111,timestamp:10000,accuracy:4,elevation:1000,elevationAccuracy:3,segment:0,...patch});
+test('distance uses meters and latitude/longitude in correct order',()=>{const d=distanceMeters(point(),point({latitude:40.001}));assert.ok(d>111&&d<112);});
+test('stationary jitter, stale positions, coarse fixes and impossible jumps are excluded',()=>{const p=point();for(const q of [point({timestamp:11000}),point({latitude:40.1,timestamp:12000}),point({latitude:40.0001,timestamp:20000,accuracy:100}),point({timestamp:9000}),point({latitude:NaN})])assert.equal(acceptTrackPoint([p],q),false);assert.equal(acceptTrackPoint([p],point({latitude:40.0001,timestamp:20000})),true);});
+test('missing segments never inflate mileage, duration or draw connecting lines',()=>{const points=[point(),point({latitude:40.001,timestamp:110000}),point({latitude:41,timestamp:210000,segment:1}),point({latitude:41.001,timestamp:310000,segment:1})];const s=trackStats(points);assert.ok(s.distance>222&&s.distance<223);assert.equal(s.seconds,200);assert.equal(trackSegments(points).length,2);});
+test('elevation jitter is suppressed and real climbs and descents accumulate',()=>{const points=[1000,1001,999,1002,1010,1009,1000].map(elevation=>point({elevation}));const s=trackStats(points);assert.equal(s.gain,10);assert.equal(s.loss,10);});
+test('missing elevation is not treated as sea level',()=>{const s=trackStats([point({elevation:null,elevationAccuracy:null})]);assert.equal(s.hasElevation,false);assert.equal(s.minimumElevation,null);assert.equal(s.gain,0);});
+test('invalid height accuracy does not inflate gain',()=>{assert.equal(trackStats([point(),point({elevation:2000,elevationAccuracy:100})]).gain,0);});

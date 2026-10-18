@@ -1,3 +1,5 @@
+import { syncTracks } from '@/lib/sync-tracks';
+import { loadTracks, trackingStatus, TRACKS_UPDATED } from '@/lib/tracks';
 import { loadNoteFolders, NOTE_FOLDERS_UPDATED } from "@/lib/note-folders";
 import { syncNoteFolders } from "@/lib/sync-note-folders";
 import { syncTrips } from "@/lib/sync-trips";
@@ -113,6 +115,7 @@ function getPendingSyncItems(accountId = "") {
     ...getSyncableQueue().map(record => item("Sample", record.queuedId, record.payload.sampleId || "Unnamed sample", record.deletedAt, record.payload.folderId)),
     ...loadMeasurements(true).filter(record => record.localRevision).map(record => item("Measurement", record.id, record.label?.trim() || (record.measurementType === "lineation" ? "Lineation" : "Strike and Dip"), record.deletedAt, record.datasetId)),
     ...getPendingLocalDatasets().map(record => item("Dataset", record.id, record.name, record.deletedAt)),
+    ...loadTracks().filter(record => record.localRevision && record.id !== trackingStatus().activeId).map(record => item("Track", record.id, record.name, false)),
     ...loadTrips(true).filter(record => record.localRevision).map(record => item("Trip", record.id, record.name, record.deletedAt, record.datasetId)),
     ...loadFieldNotes(accountId).filter(record => record.localRevision).map(record => item("Note", record.id, record.title || "Untitled note", record.deletedAt)),
     ...loadNoteFolders(accountId).filter(record => record.localRevision).map(record => item("Note folder", record.id, record.name, record.deletedAt)),
@@ -231,6 +234,7 @@ export function useOfflineSync() {
     window.addEventListener(NOTE_FOLDERS_UPDATED, refreshCount);
     window.addEventListener(FIELD_NOTES_UPDATED, refreshCount);
     window.addEventListener(TRIPS_UPDATED, refreshCount);
+    window.addEventListener(TRACKS_UPDATED, refreshCount);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshCount);
     window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
@@ -239,6 +243,7 @@ export function useOfflineSync() {
       window.removeEventListener(NOTE_FOLDERS_UPDATED, refreshCount);
       window.removeEventListener(FIELD_NOTES_UPDATED, refreshCount);
       window.removeEventListener(TRIPS_UPDATED, refreshCount);
+      window.removeEventListener(TRACKS_UPDATED, refreshCount);
       window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
       window.removeEventListener(QUEUE_UPDATED_EVENT, refreshCount);
       window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
@@ -346,6 +351,7 @@ export function useOfflineSync() {
             syncFieldNotes(accountId),
             syncNoteFolders(accountId),
             syncTrips(accountId),
+            syncTracks(accountId),
           ]);
           // Wait for every operation before releasing the sync lock. An early
           // Promise.all rejection previously left uploads running behind retries.
@@ -399,7 +405,8 @@ export function useOfflineSync() {
             ...getSyncableQueue().map(item => `sample "${item.payload.sampleId || item.queuedId}"`),
             ...loadMeasurements(true).filter(item => item.localRevision).map(item => `measurement "${item.label || item.id}"`),
             ...getPendingLocalDatasets().map(item => `dataset "${item.name}"`),
-            ...loadTrips(true).filter(item => item.localRevision).map(item => `trip "${item.name}"`),
+            ...loadTracks().filter(record => record.localRevision && record.id !== trackingStatus().activeId).map(record => `track "${record.name}"`),
+    ...loadTrips(true).filter(item => item.localRevision).map(item => `trip "${item.name}"`),
             ...loadFieldNotes(accountId).filter(item => item.localRevision).map(item => `note "${item.title || item.id}"`),
             ...loadNoteFolders(accountId).filter(item => item.localRevision).map(item => `note folder "${item.name}"`),
           ];
@@ -439,8 +446,9 @@ export function useOfflineSync() {
     window.addEventListener(NOTE_FOLDERS_UPDATED, changed);
     window.addEventListener(FIELD_NOTES_UPDATED, changed);
     window.addEventListener(TRIPS_UPDATED, changed);
+    window.addEventListener(TRACKS_UPDATED, changed);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, changed);
-    return () => { clearTimeout(timer); window.removeEventListener(NOTE_FOLDERS_UPDATED, changed); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
+    return () => { clearTimeout(timer); window.removeEventListener(NOTE_FOLDERS_UPDATED, changed); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(TRACKS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
   }, [accountId, sync]);
   const rebuildCloudCache = useCallback(() => runSync(true), [runSync]);
   useEffect(() => {

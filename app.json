@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "4dd14e44-41a2-4d37-80dd-a8dc5e21a2d2"
+      }
+    },
+    "android": {
+      "package": "com.ammonkennedy.workspace"
+    }
+  }
+}

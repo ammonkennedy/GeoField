@@ -13,6 +13,7 @@ import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT
 import { GeoFieldLogo } from "@/components/GeoFieldLogo";
 import { clearCachedCloudSamples } from "@/lib/cloud-samples";
 import { leaveGuestMode } from "@/lib/guest-access";
+import { stopTracking } from "@/lib/tracks";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -39,6 +40,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
   const handleSignOut = async () => {
+    await stopTracking();
     await signOutUser();
     leaveGuestMode();
     clearCachedCloudSamples();
@@ -273,6 +275,10 @@ export function Layout({ children }: { children: ReactNode }) {
               {location === "/figures" && <ChevronRight className="h-4 w-4 shrink-0" />}
             </Link>
           </div>
+
+          <Link href="/track" onClick={() => setSidebarOpen(false)} className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium", location === "/track" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted")}>
+            <MapPin className="h-4 w-4" /><span>Track</span>
+          </Link>
 
           {/* Trips */}
           <div className="px-4">

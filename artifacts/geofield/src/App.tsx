@@ -13,6 +13,7 @@ import FieldNotesPage from "@/pages/field-notes";
 import StrikeDipPage from "@/pages/strike-dip";
 import AccountSettingsPage from "@/pages/account-settings";
 import FiguresPage from "@/pages/figures";
+import TrackPage from "@/pages/track";
 import SupportPage from "@/pages/support";
 import NotFound from "@/pages/not-found";
 import { isGuestMode } from "@/lib/guest-access";
@@ -61,6 +62,9 @@ function Router() {
       </Route>
       <Route path="/notes">
         <AccessibleRoute component={FieldNotesPage} />
+      </Route>
+      <Route path="/track">
+        <AccountRoute component={TrackPage} />
       </Route>
       <Route path="/figures">
         <AccessibleRoute component={FiguresPage} />

@@ -624,10 +624,10 @@ export default function SampleEntry() {
               const isSelected = currentType === type.id;
               const Icon = type.icon;
               return (
-                <div key={type.id} onClick={() => !isEdit && setValue("sampleType", type.id, { shouldValidate: true })} className={cn("relative overflow-hidden rounded-xl border p-4 cursor-pointer transition-all duration-300", isSelected ? "border-primary ring-2 ring-primary/20 shadow-md bg-card" : isEdit ? "opacity-50 cursor-not-allowed bg-muted/50 border-transparent" : "border-border bg-card hover:border-primary/50 hover:shadow-sm")}>
-                  {isSelected && <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full" />}
-                  <div className="flex items-center gap-4 relative z-10"><div className={cn("p-3 rounded-lg", type.bg, type.color)}><Icon className="w-6 h-6" /></div><span className="font-semibold text-lg">{type.label}</span></div>
-                </div>
+                <button type="button" key={type.id} disabled={isEdit} aria-pressed={isSelected} onClick={() => setValue("sampleType", type.id, { shouldValidate: true })} className={cn("relative overflow-hidden rounded-xl border p-4 text-left cursor-pointer transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary", isSelected ? "border-primary ring-2 ring-primary/20 shadow-md bg-card" : isEdit ? "opacity-50 cursor-not-allowed bg-muted/50 border-transparent" : "border-border bg-card hover:border-primary/50 hover:shadow-sm")}>
+                  {isSelected && <span className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-primary/10 to-transparent rounded-bl-full" />}
+                  <span className="flex items-center gap-4 relative z-10"><span className={cn("p-3 rounded-lg", type.bg, type.color)}><Icon className="w-6 h-6" /></span><span className="font-semibold text-lg">{type.label}</span></span>
+                </button>
               );
             })}
           </div>

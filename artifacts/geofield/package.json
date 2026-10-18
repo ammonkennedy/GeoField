@@ -9,11 +9,16 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:strike-dip": "node --test src/lib/strike-dip-math.test.ts",
-    "test:macrostrat": "node --test src/lib/macrostrat.test.ts"
+    "test:macrostrat": "node --test src/lib/macrostrat.test.ts",
+    "android:build": "bash scripts/android-build.sh",
+    "android:open": "cap open android",
+    "android:release": "bash scripts/android-release.sh"
   },
   "dependencies": {
+    "@capacitor-community/background-geolocation": "1.2.26",
     "@capacitor-community/file-opener": "^8.0.1",
     "@capacitor-community/speech-recognition": "^7.0.1",
+    "@capacitor/android": "8.4.2",
     "@capacitor/core": "^8.4.2",
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/ios": "^8.4.2",
