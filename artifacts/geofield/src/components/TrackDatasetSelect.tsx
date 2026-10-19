@@ -16,7 +16,7 @@ export function TrackDatasetSelect({ track, onChange }: { track: WalkingTrack; o
   const selected = String(resolveDatasetId(track.datasetId, local) ?? '');
   return <label className="block space-y-2 text-sm font-medium">
     <span>Dataset</span>
-    <select aria-label={`Dataset for ${track.name}`} value={selected} onChange={event => onChange(event.target.value || null)} className="w-full rounded-xl border border-input bg-background px-3 py-3">
+    <select aria-label={`Dataset for ${track.name}`} value={selected} onChange={event => onChange(event.target.value || null)} className="w-full rounded-xl border border-input bg-card px-3 py-3">
       <option value="">No dataset</option>
       {selected && !options.some(folder => String(folder.id) === selected) && <option value={selected}>Assigned dataset (unavailable)</option>}
       {options.map(folder => <option key={String(folder.id)} value={String(folder.id)}>{folder.name}</option>)}

@@ -366,7 +366,7 @@ export default function StrikeDipPage() {
             Dataset
           </Label>
           <select
-            className="flex h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 py-1 text-sm"
+            className="flex h-9 min-w-0 flex-1 rounded-md border border-input bg-card px-3 py-1 text-sm"
             value={selectedDatasetId}
             onChange={(e) => setSelectedDatasetId(e.target.value)}
           >

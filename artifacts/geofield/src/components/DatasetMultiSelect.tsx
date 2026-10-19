@@ -22,7 +22,7 @@ export function DatasetMultiSelect({ id, options, value, onChange, identities = 
           <ChevronDown className="h-4 w-4 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent onEscapeKeyDown={event => event.stopPropagation()} align="start" className="z-[210] max-h-64 w-72 max-w-[calc(100vw-2rem)]" aria-label="Datasets">
+      <DropdownMenuContent onEscapeKeyDown={event => event.stopPropagation()} align="start" className="z-[210] max-h-64 w-72 max-w-[calc(100vw-2rem)] bg-card text-card-foreground" aria-label="Datasets">
         <DropdownMenuCheckboxItem checked={all ? true : count > 0 ? 'indeterminate' : false} onCheckedChange={() => onChange(all ? [] : 'all')} onSelect={event => event.preventDefault()} className="min-h-11 font-medium [&>span]:rounded-sm [&>span]:border [&>span]:border-input">
           Select all
         </DropdownMenuCheckboxItem>
