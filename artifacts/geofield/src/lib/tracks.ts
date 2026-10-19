@@ -42,7 +42,7 @@ document.addEventListener('visibilitychange', () => {
 });
 export function trackingStatus() { return { activeId, message, stopping }; }
 function status(text: string) { message = text; window.dispatchEvent(new Event(TRACK_STATUS_UPDATED)); }
-export function updateTrack(id: string, patch: Pick<Partial<WalkingTrack>, 'name' | 'visible'>) {
+export function updateTrack(id: string, patch: Pick<Partial<WalkingTrack>, 'name' | 'visible' | 'datasetId'>) {
   if (!getStorageAccountId()) throw new Error('Sign in to edit tracks.');
   writeTracks(loadTracks(true).map(track => track.id === id ? { ...track, ...patch } : track));
 }

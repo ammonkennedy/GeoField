@@ -1,3 +1,4 @@
+import { capturePhotoLocation, withPhotoLocation } from "@/lib/photo-location";
 import { capturePhoto } from "@/lib/capture-photo";
 import { preservePhotoDirection } from "@/lib/photo-direction";
 import { FolderDialog } from "@/components/FolderDialog";
@@ -339,9 +340,10 @@ export default function SampleEntry() {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    await saveMediaFile(file, activeSlotRef.current);
+    await saveMediaFile(file, activeSlotRef.current, e.target === photoCaptureInputRef.current);
   };
-  const saveMediaFile = async (file: File, slotIndex: number) => {
+  const saveMediaFile = async (file: File, slotIndex: number, camera = false) => {
+    const location = camera ? capturePhotoLocation() : Promise.resolve(null);
     const setSlot = (slot: MediaSlot) =>
       setMediaSlots((prev) => {
         const next = [...prev] as [MediaSlot, MediaSlot, MediaSlot];
@@ -373,7 +375,7 @@ export default function SampleEntry() {
       vid.onerror = () => { URL.revokeObjectURL(url); toast({ title: "Could not read video", description: "Try a different format (MP4 recommended)." }); };
     } else {
       try {
-        setSlot({ type: "photo", dataUrl: await preservePhotoDirection(await compressImage(file), file), fileName: file.name, mimeType: file.type, sizeBytes: file.size });
+        setSlot({ type: "photo", dataUrl: withPhotoLocation(await preservePhotoDirection(await compressImage(file), file), await location), fileName: file.name, mimeType: file.type, sizeBytes: file.size });
       } catch {
         const reader = new FileReader();
         reader.onload = (ev) => setSlot({ type: "photo", dataUrl: ev.target?.result as string, fileName: file.name, mimeType: file.type, sizeBytes: file.size });

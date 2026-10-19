@@ -1,6 +1,8 @@
+import { prepareNoteVideo } from "@/lib/note-media";
+import { saveFile } from "@/lib/save-file";
 import { capturePhoto } from "@/lib/capture-photo";
 import { preservePhotoDirection } from "@/lib/photo-direction";
-import { getStorageAccountId } from "@/lib/storage-account";
+import { assertStorageAccount, getStorageAccountId } from "@/lib/storage-account";
 import { LabeledPhoto } from "@/components/LabeledPhoto";
 import { createNoteFolder, loadNoteFolders, updateFolderNotes, NOTE_FOLDERS_UPDATED } from "@/lib/note-folders";
 import { useEffect, useRef, useState } from "react";
@@ -11,23 +13,44 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Camera, ImagePlus, Plus, ArrowLeft, Trash2, Undo2, NotebookPen, FolderOpen, X } from "lucide-react";
+import { Camera, ImagePlus, Video, FileVideo, Download, Plus, ArrowLeft, Trash2, Undo2, NotebookPen, FolderOpen, X } from "lucide-react";
 import { Link } from "wouter";
 import { createFieldNote, editFieldNote, loadFieldNotes, FIELD_NOTES_UPDATED, prepareNotePhoto, type FieldNote, type NotePhoto } from "@/lib/field-notes";
 import { storeMediaDataUrl, getStoredMediaDataUrl } from "@/lib/media-storage";
 
-function NoteImage({ photo, onSave, onEdit }: { photo: NotePhoto; onSave?: (label: string) => void; onEdit?: (dataUrl: string) => Promise<void> }) {
+function NoteAttachment({ photo, onSave, onEdit }: { photo: NotePhoto; onSave?: (label: string) => void; onEdit?: (dataUrl: string) => Promise<void> }) {
   const [url, setUrl] = useState("");
+  const [playbackError, setPlaybackError] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   useEffect(() => {
     let active = true;
+    let objectUrl: string | undefined;
+    setUrl(""); setPlaybackError(false); setDownloadError("");
     const load = async () => {
       let image = photo.localKey ? await getStoredMediaDataUrl(photo.localKey).catch(() => null) : null;
       if (!image && photo.cloudKey) image = await resolveSampleMediaUrl(photo.cloudKey);
+      if (image?.startsWith('data:') && photo.kind === 'video') {
+        const blob = await (await fetch(image)).blob();
+        if (!active) return;
+        objectUrl = URL.createObjectURL(blob); image = objectUrl;
+      }
       if (active) setUrl(image || "");
     };
     void load().catch(() => { if (active) setUrl(""); });
-    return () => { active = false; };
-  }, [photo.localKey, photo.cloudKey]);
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [photo.localKey, photo.cloudKey, photo.kind]);
+  if (photo.kind === "video") return <div className="min-w-0 space-y-2 rounded-lg border p-2">
+    {url ? <video src={url} controls playsInline preload="metadata" aria-label={photo.fileName} className="aspect-video w-full rounded bg-black" onError={() => setPlaybackError(true)} /> : <p className="text-sm text-muted-foreground">Video unavailable on this device while offline.</p>}
+    <p className="break-words text-xs text-muted-foreground">{photo.fileName}</p>
+    {photo.caption && <p className="whitespace-pre-wrap break-words text-sm">{photo.caption}</p>}
+    {playbackError && <p role="alert" className="text-xs">This device cannot play this video. Download it to open in another player.</p>}
+    {url && <Button size="sm" variant="outline" onClick={async () => {
+      setDownloadError("");
+      try { const response = await fetch(url); if (!response.ok) throw new Error(); await saveFile(await response.blob(), photo.fileName); }
+      catch (error) { if (!(error instanceof Error && error.name === "AbortError")) setDownloadError("Could not download the video. Please try again."); }
+    }}><Download className="mr-2 h-4 w-4" />Download video</Button>}
+    {downloadError && <p role="alert" className="text-xs text-destructive">{downloadError}</p>}
+  </div>;
   return url ? <LabeledPhoto src={url} alt={photo.fileName} caption={photo.caption} onSave={onSave} onEdit={onEdit} /> : <div className="flex h-40 items-center justify-center rounded-lg bg-muted p-3 text-sm text-muted-foreground">Photo unavailable on this device while offline.</div>;
 }
 
@@ -46,10 +69,12 @@ function NotesContent({ accountId }: { accountId: string }) {
   const [search, setSearch] = useState("");
   const [showDeleted, setShowDeleted] = useState(false);
   const [error, setError] = useState("");
-  const [addingPhotos, setAddingPhotos] = useState(false);
+  const [addingMedia, setAddingMedia] = useState(false);
   const [draft, setDraft] = useState<{ title: string; body: string } | null>(null);
   const camera = useRef<HTMLInputElement>(null);
   const library = useRef<HTMLInputElement>(null);
+  const videoCamera = useRef<HTMLInputElement>(null);
+  const videoLibrary = useRef<HTMLInputElement>(null);
   const note = notes.find((item) => item.id === selected);
   useEffect(() => {
     const refresh = () => { setNotes(loadFieldNotes(accountId)); setFolders(loadNoteFolders(accountId)); };
@@ -66,18 +91,27 @@ function NotesContent({ accountId }: { accountId: string }) {
     try { editFieldNote(accountId, note.id, (current) => ({ ...current, ...next })); setDraft(null); setError(""); }
     catch { setError("Your latest text could not be saved. Keep this page open and try Save again."); }
   };
-  const addPhotos = async (files: FileList | File[] | null) => {
-    if (!note || !files?.length) return;
+  const addAttachments = async (files: FileList | File[] | null, kind: "photo" | "video" = "photo") => {
+    if (!note || note.deletedAt || !files?.length) return;
     const id = note.id;
-    setAddingPhotos(true); setError("");
+    // Snapshot the picker list before resetting its input.
+    const chosen = Array.from(files);
+    setAddingMedia(true); setError("");
     try {
-      for (const file of Array.from(files)) {
-        const dataUrl = await preservePhotoDirection(await prepareNotePhoto(file), file);
-        const photo = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: file.name, mimeType: "image/jpeg" });
-        editFieldNote(accountId, id, (current) => ({ ...current, photos: [...current.photos, { id: photo.id, fileName: file.name, localKey: photo.storageKey }] }));
+      for (const file of chosen) {
+        assertStorageAccount(accountId);
+        const prepared = kind === "video" ? await prepareNoteVideo(file)
+          : { dataUrl: await preservePhotoDirection(await prepareNotePhoto(file), file), mimeType: "image/jpeg" };
+        assertStorageAccount(accountId);
+        const media = await storeMediaDataUrl({ kind, ...prepared, fileName: file.name });
+        assertStorageAccount(accountId);
+        editFieldNote(accountId, id, (current) => {
+          if (current.deletedAt) throw new Error("This note was deleted while saving. Restore it before adding attachments.");
+          return { ...current, photos: [...current.photos, { id: media.id, fileName: file.name, localKey: media.storageKey, kind, mimeType: prepared.mimeType }] };
+        });
       }
-    } catch (error) { setError(error instanceof Error ? error.message : "Could not save the photo. Please try again."); }
-    finally { setAddingPhotos(false); }
+    } catch (error) { setError(error instanceof Error ? error.message : "Could not save the attachment. Please try again."); }
+    finally { setAddingMedia(false); }
   };
   const back = () => { if (!draft || confirm("Your latest text is not saved. Leave this note anyway?")) { setSelected(null); setDraft(null); setError(""); } };
   const visible = notes.filter((item) => (!folder || folder.noteIds.includes(item.id)) && Boolean(item.deletedAt) === showDeleted && `${item.title} ${item.body}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => {
@@ -101,15 +135,20 @@ function NotesContent({ accountId }: { accountId: string }) {
     </div>
     {error && <p role="alert" className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
     {note ? <>
-      <Button variant="outline" onClick={back} disabled={addingPhotos}><ArrowLeft className="mr-2 h-4 w-4" />{folder ? folder.name : "All Notes"}</Button>
+      <Button variant="outline" onClick={back} disabled={addingMedia}><ArrowLeft className="mr-2 h-4 w-4" />{folder ? folder.name : "All Notes"}</Button>
       <div className="space-y-4 rounded-xl border bg-card p-4 sm:p-6">
         <div><Label htmlFor="note-title">Title</Label><Input id="note-title" maxLength={240} value={draft?.title ?? note.title} onChange={(event) => save({ title: event.target.value })} placeholder="e.g. North ridge observations" disabled={Boolean(note.deletedAt)} /></div>
         <p className="text-xs text-muted-foreground">Created {new Date(note.createdAt).toLocaleString()} · {draft ? "Unsaved changes" : note.localRevision ? "Saved on this device · waiting to sync" : "Synced with your account"}</p>
         <div><Label htmlFor="note-body">Field notes</Label><Textarea id="note-body" maxLength={50000} value={draft?.body ?? note.body} onChange={(event) => save({ body: event.target.value })} placeholder="Write your observations here…" className="min-h-[300px] text-base leading-relaxed" disabled={Boolean(note.deletedAt)} /></div>
         {draft && <Button onClick={() => save({})}>Save again</Button>}
-        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">Photos (optional)</h2>{!note.deletedAt && <div className="flex gap-2"><Button variant="outline" disabled={addingPhotos || Boolean(draft)} onClick={() => void capturePhoto(() => camera.current?.click(), file => addPhotos([file]), setError)}><Camera className="mr-2 h-4 w-4" />Take Photo</Button><Button variant="outline" disabled={addingPhotos || Boolean(draft)} onClick={() => library.current?.click()}><ImagePlus className="mr-2 h-4 w-4" />Add Photos</Button></div>}</div>
-        {addingPhotos && <p role="status" className="text-sm">Saving photos…</p>}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{note.photos.map((photo) => <div key={photo.id} className="relative"><NoteImage photo={photo} onEdit={note.deletedAt ? undefined : async dataUrl => {
+        <div className="space-y-2"><h2 className="font-semibold">Photos &amp; videos (optional)</h2>{!note.deletedAt && <div className="flex flex-wrap gap-2">
+          <Button variant="outline" disabled={addingMedia || Boolean(draft)} onClick={() => void capturePhoto(() => camera.current?.click(), file => addAttachments([file]), setError)}><Camera className="mr-2 h-4 w-4" />Take Photo</Button>
+          <Button variant="outline" disabled={addingMedia || Boolean(draft)} onClick={() => library.current?.click()}><ImagePlus className="mr-2 h-4 w-4" />Add Photos</Button>
+          <Button variant="outline" disabled={addingMedia || Boolean(draft)} onClick={() => videoCamera.current?.click()}><Video className="mr-2 h-4 w-4" />Take Video</Button>
+          <Button variant="outline" disabled={addingMedia || Boolean(draft)} onClick={() => videoLibrary.current?.click()}><FileVideo className="mr-2 h-4 w-4" />Add Videos</Button>
+        </div>}<p className="text-xs text-muted-foreground">Videos up to 50 MB each.</p></div>
+        {addingMedia && <p role="status" className="text-sm">Saving attachments…</p>}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">{note.photos.map((photo) => <div key={photo.id} className={photo.kind === "video" ? "relative col-span-2 sm:col-span-3" : "relative"}><NoteAttachment photo={photo} onEdit={note.deletedAt ? undefined : async dataUrl => {
           const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: "edited-photo.jpg", mimeType: "image/jpeg" });
           if (getStorageAccountId() !== accountId) throw new Error("Account changed. Reopen this photo.");
           editFieldNote(accountId, note.id, current => {
@@ -123,17 +162,19 @@ function NotesContent({ accountId }: { accountId: string }) {
             if (current.deletedAt || !current.photos.some(item => item.id === photo.id)) throw new Error("This photo is no longer available in the note.");
             return { ...current, photos: current.photos.map(item => item.id === photo.id ? { ...item, caption: label } : item) };
           });
-        }} />{!note.deletedAt && <Button size="icon" variant="secondary" className="absolute right-1 top-1" aria-label={`Remove ${photo.fileName}`} onClick={() => { if (!confirm("Remove this photo from the note?")) return; try { editFieldNote(accountId, note.id, (current) => ({ ...current, photos: current.photos.filter((item) => item.id !== photo.id) })); } catch { setError("Could not remove photo. Please try again."); } }}><X className="h-4 w-4" /></Button>}</div>)}</div>
-        <input ref={camera} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => { void addPhotos(event.target.files); event.target.value = ""; }} />
-        <input ref={library} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { void addPhotos(event.target.files); event.target.value = ""; }} />
-        <Button variant="outline" disabled={addingPhotos || Boolean(draft)} onClick={() => {
+        }} />{!note.deletedAt && <Button size="icon" variant="secondary" className="absolute right-1 top-1" aria-label={`Remove ${photo.fileName}`} onClick={() => { if (!confirm(`Remove this ${photo.kind === "video" ? "video" : "photo"} from the note?`)) return; try { editFieldNote(accountId, note.id, (current) => ({ ...current, photos: current.photos.filter((item) => item.id !== photo.id) })); } catch { setError("Could not remove attachment. Please try again."); } }}><X className="h-4 w-4" /></Button>}</div>)}</div>
+        <input ref={camera} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => { void addAttachments(event.target.files); event.target.value = ""; }} />
+        <input ref={library} type="file" accept="image/*" multiple className="hidden" onChange={(event) => { void addAttachments(event.target.files); event.target.value = ""; }} />
+        <input ref={videoCamera} aria-label="Record note video" type="file" accept="video/*" capture="environment" className="hidden" onChange={event => { void addAttachments(event.target.files, "video"); event.target.value = ""; }} />
+        <input ref={videoLibrary} aria-label="Choose note videos" type="file" accept="video/*" multiple className="hidden" onChange={event => { void addAttachments(event.target.files, "video"); event.target.value = ""; }} />
+        <Button variant="outline" disabled={addingMedia || Boolean(draft)} onClick={() => {
           if (!note.deletedAt && !confirm("Move this note to Recently deleted? You can restore it later.")) return;
           try { editFieldNote(accountId, note.id, (current) => ({ ...current, deletedAt: note.deletedAt ? null : new Date().toISOString() })); setSelected(null); }
           catch { setError("Could not update the note. Please try again."); }
         }}>{note.deletedAt ? <Undo2 className="mr-2 h-4 w-4" /> : <Trash2 className="mr-2 h-4 w-4" />}{note.deletedAt ? "Restore Note" : "Delete Note"}</Button>
       </div>
     </> : <>
-      <p className="text-muted-foreground">Write field observations and keep related photos together. Notes save automatically, work offline, and sync with your account when connected.</p>
+      <p className="text-muted-foreground">Write field observations and keep related photos and videos together. Notes save automatically, work offline, and sync with your account when connected.</p>
       {folder ? <div className="space-y-3">
         <Button variant="outline" onClick={() => { setFolderId(null); setSearch(""); setShowDeleted(false); }}><ArrowLeft className="mr-2 h-4 w-4" />All Notes</Button>
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
@@ -150,7 +191,7 @@ function NotesContent({ accountId }: { accountId: string }) {
       </div>}
       <div className="flex gap-2"><Input aria-label="Search notes" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes…" /><Button variant="outline" onClick={() => setShowDeleted(!showDeleted)}>{showDeleted ? "Active Notes" : "Recently deleted"}</Button></div>
       {!visible.length && <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">{showDeleted ? "No deleted notes." : folder ? "No notes in this folder yet. Add existing notes or create a note." : "No notes yet. Create a note to start writing."}</div>}
-      <div className="space-y-3">{visible.map((item) => <div key={item.id} className="rounded-xl border bg-card overflow-hidden"><button className="block w-full p-4 text-left hover:bg-muted/50" onClick={() => open(item)}><h2 className="font-semibold">{item.title || "Untitled note"}</h2><p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-muted-foreground">{item.body || "No text yet"}</p><p className="mt-2 text-xs text-muted-foreground">Created {new Date(item.createdAt).toLocaleString()} · {item.photos.length} photo{item.photos.length === 1 ? "" : "s"}</p></button>
+      <div className="space-y-3">{visible.map((item) => <div key={item.id} className="rounded-xl border bg-card overflow-hidden"><button className="block w-full p-4 text-left hover:bg-muted/50" onClick={() => open(item)}><h2 className="font-semibold">{item.title || "Untitled note"}</h2><p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-muted-foreground">{item.body || "No text yet"}</p><p className="mt-2 text-xs text-muted-foreground">Created {new Date(item.createdAt).toLocaleString()} · {item.photos.filter(media => media.kind !== "video").length} photos · {item.photos.filter(media => media.kind === "video").length} videos</p></button>
         {folder && !showDeleted && <Button variant="ghost" size="sm" className="mb-2 ml-2" onClick={() => { try { updateFolderNotes(accountId, folder.id, [item.id], true); } catch { setError("Could not remove the note from this folder. Please try again."); } }}>Remove from folder</Button>}
       </div>)}</div>
     </>}
@@ -189,5 +230,5 @@ function NotesContent({ accountId }: { accountId: string }) {
 
 export default function FieldNotesPage() {
   const { data } = useGetCurrentAuthUser();
-  return <Layout>{data?.user ? <NotesContent key={String(data.user.id)} accountId={String(data.user.id)} /> : <div className="space-y-4"><h1 className="text-3xl font-bold">Field Notes</h1><p>Sign in to save field notes and photos.</p><Link href="/login"><Button>Sign In</Button></Link></div>}</Layout>;
+  return <Layout>{data?.user ? <NotesContent key={String(data.user.id)} accountId={String(data.user.id)} /> : <div className="space-y-4"><h1 className="text-3xl font-bold">Field Notes</h1><p>Sign in to save field notes, photos, and videos.</p><Link href="/login"><Button>Sign In</Button></Link></div>}</Layout>;
 }

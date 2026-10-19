@@ -1,3 +1,7 @@
+import { trackIdAtPoint, trackPopupContent } from "@/lib/track-map";
+import { loadTracks, TRACKS_UPDATED } from '@/lib/tracks';
+import { DatasetMultiSelect } from "@/components/DatasetMultiSelect";
+import { datasetOptions, datasetSelected, datasetSelectionLabel, type DatasetSelection } from "@/lib/dataset-selection";
 import { trailDownloadButton } from '@/lib/trail-download-button';
 import { observeMapSize } from "@/lib/map-resize";
 import { FaultOverlay } from "@/components/FaultOverlay";
@@ -12,9 +16,9 @@ import { saveFile } from "@/lib/save-file";
 import { lookupHikingTrails } from "@/lib/hiking-trails";
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Layout } from "@/components/Layout";
-import { useGetCurrentAuthUser, useGetSamples, useGetFolders } from "@workspace/api-client-react";
+import { resolveSampleMediaUrl, useGetCurrentAuthUser, useGetSamples, useGetFolders } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
-import { MapPin, FolderOpen, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search, Loader2, Maximize2, Minimize2 } from "lucide-react";
+import { MapPin, Layers, Satellite, Map as MapIcon, Mountain, Plus, Upload, X as XIcon, Search, Loader2, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -205,7 +209,7 @@ export default function MapViewPage() {
   const [, setLocation] = useLocation();
   const { data: authData } = useGetCurrentAuthUser();
   const fitMarkersRequested = useRef(true);
-  const [selectedFolderId, setSelectedFolderId] = useState<number | string | "all">("all");
+  const [selectedFolderId, setSelectedFolderId] = useState<DatasetSelection>("all");
   const [baseLayer, setBaseLayer] = useState<BaseLayer>("satellite");
   const baseLayerRef = useRef<BaseLayer>("satellite");
   const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
@@ -213,6 +217,7 @@ export default function MapViewPage() {
   const [terrain, setTerrain] = useState(false);
   const trailRequestRef = useRef<AbortController | null>(null);
   const trailPopupRef = useRef<any>(null);
+  const selectedTrackRef = useRef<string | null>(null);
   const [geoInfo, setGeoInfo] = useState<GeoInfo | null>(null);
   const [customLayers, setCustomLayers] = useState<CustomMapLayer[]>(loadCustomLayers);
   const [queuedSamples, setQueuedSamples] = useState(() => getQueue(true));
@@ -230,6 +235,8 @@ export default function MapViewPage() {
   useEffect(() => { exportModeRef.current = exportMode; }, [exportMode]);
   useEffect(() => () => { if (exportImage) URL.revokeObjectURL(exportImage.url); }, [exportImage]);
   const [mapFullScreen, setMapFullScreen] = useState(false);
+  const scrollBeforeFullScreen = useRef<number | null>(null);
+  const [fullScreenInsets, setFullScreenInsets] = useState({ top: 0, left: 0, right: 0 });
   const [layerModalOpen, setLayerModalOpen] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
   const [newLayerColor, setNewLayerColor] = useState("#e63946");
@@ -238,6 +245,12 @@ export default function MapViewPage() {
   const [newLayerFileName, setNewLayerFileName] = useState("");
   const [newLayerFileSummary, setNewLayerFileSummary] = useState("");
   const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
+  const [tracks, setTracks] = useState(loadTracks);
+  useEffect(() => {
+    const refresh = () => setTracks(loadTracks());
+    window.addEventListener(TRACKS_UPDATED, refresh);
+    return () => window.removeEventListener(TRACKS_UPDATED, refresh);
+  }, []);
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
 
   const { data: folders } = useGetFolders();
@@ -254,6 +267,14 @@ export default function MapViewPage() {
   const hasLegacyAirSamples = allSamples.some((sample: any) => sample.sampleType === "air");
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
+  const datasetChoices = datasetOptions(allFolders, localDatasets, [...allSamples.map(sample => sample.folderId), ...measurements.map(item => item.datasetId), ...tracks.map(item => item.datasetId)]);
+
+  useEffect(() => {
+    if (!selectedTrackRef.current) return;
+    const track = tracks.find(item => item.id === selectedTrackRef.current && item.visible && datasetSelected(selectedFolderId, item.datasetId, localDatasets));
+    if (track) trailPopupRef.current?.setDOMContent(trackPopupContent(track));
+    else { trailPopupRef.current?.remove(); selectedTrackRef.current = null; }
+  }, [tracks, selectedFolderId, localDatasets]);
 
   const mapRef = useRef<any>(null);
   const [prismMap, setPrismMap] = useState<any>(null);
@@ -310,11 +331,11 @@ export default function MapViewPage() {
   }
 
   const filteredSamples = (allSamples || []).filter((s) =>
-    selectedFolderId === "all" ? true : String(s.folderId ?? "") === String(selectedFolderId)
+    datasetSelected(selectedFolderId, s.folderId, localDatasets)
   );
   const samplesWithCoords = filteredSamples.filter((s) => parseCoords((s.fields as any)?.location));
   const filteredMeasurements = measurements.filter((measurement) =>
-    selectedFolderId === "all" ? true : String(measurement.datasetId ?? "") === String(selectedFolderId)
+    datasetSelected(selectedFolderId, measurement.datasetId, localDatasets)
   );
   const measurementsWithCoords = filteredMeasurements.filter(measurementCoords);
   const searchableSamples = (allSamples || [])
@@ -351,10 +372,33 @@ export default function MapViewPage() {
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [sampleSearch]);
 
+  // Fixed positioning keeps the map out of WKWebView's scrolling content layer.
+  // Measure the app pane so the mobile header and desktop sidebar stay accessible.
   useLayoutEffect(() => {
+    if (!mapFullScreen) return;
+    const pane = mapContainerRef.current?.closest('main');
+    if (!pane) return;
+    const update = () => {
+      const bounds = pane.getBoundingClientRect();
+      setFullScreenInsets({ top: Math.max(0, bounds.top), left: Math.max(0, bounds.left), right: Math.max(0, window.innerWidth - bounds.right) });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(pane);
+    window.addEventListener('resize', update);
+    window.visualViewport?.addEventListener('resize', update);
+    return () => { observer.disconnect(); window.removeEventListener('resize', update); window.visualViewport?.removeEventListener('resize', update); };
+  }, [mapFullScreen]);
+
+  useLayoutEffect(() => {
+    if (!mapFullScreen && scrollBeforeFullScreen.current !== null) {
+      const scroller = document.getElementById('geofield-page-scroll');
+      if (scroller) scroller.scrollTop = scrollBeforeFullScreen.current;
+      scrollBeforeFullScreen.current = null;
+    }
     mapRef.current?.resize();
     mapRef.current?.triggerRepaint();
-  }, [mapFullScreen]);
+  }, [mapFullScreen, fullScreenInsets]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -536,7 +580,8 @@ export default function MapViewPage() {
       }, "top-right");
       map.addControl(new L.ScaleControl(), "bottom-left");
 
-      map.on("load", () => {
+      // Local pins and GPS must not wait for remote basemap tiles to finish.
+      map.once("style.load", () => {
         mapLoadedRef.current = true;
         applyBaseMap(map, baseLayerRef.current);
         if (terrainRef.current) map.setTerrain({ source: "terrain", exaggeration: 1.5 });
@@ -557,6 +602,22 @@ export default function MapViewPage() {
       // Click handler — reads overlayLayerRef (never stale)
       map.on("click", async (e: any) => {
         if (exportModeRef.current) return;
+        const trackId = trackIdAtPoint(map, e.point);
+        const track = trackId ? loadTracks().find(item => item.id === trackId && item.visible) : undefined;
+        if (track) {
+          trailRequestRef.current?.abort();
+          geologyRequestRef.current?.abort();
+          setGeoInfo(null);
+          popupRef.current?.remove();
+          trailPopupRef.current?.remove();
+          selectedTrackRef.current = track.id;
+          const popup = new L.Popup({ maxWidth: "min(300px, calc(100% - 24px))" })
+            .setLngLat(e.lngLat).setDOMContent(trackPopupContent(track)).addTo(map);
+          trailPopupRef.current = popup;
+          popup.on("close", () => { if (trailPopupRef.current === popup) selectedTrackRef.current = null; });
+          return;
+        }
+        selectedTrackRef.current = null;
         const over = overlayLayerRef.current;
         if (over === "none" || over === "prism" || over === "faults") return;
         if (over === "trails") {
@@ -720,7 +781,7 @@ export default function MapViewPage() {
     popupRef.current = popup;
 
     const currentFiltered = (allSamples || []).filter((s) =>
-      selectedFolderId === "all" ? true : String(s.folderId ?? "") === String(selectedFolderId)
+      datasetSelected(selectedFolderId, s.folderId, localDatasets)
     );
 
     const allCoords: [number, number][] = [];
@@ -737,16 +798,11 @@ export default function MapViewPage() {
       const dateStr = (sample.fields as any)?.collectionDate
         ? new Date((sample.fields as any).collectionDate).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
         : "";
-      // Show only the first media slot in the popup
       const fields = sample.fields as any;
-      const firstMedia = Array.isArray(fields?.media) ? fields.media[0] : null;
-      const photoHtml = firstMedia?.type === "video"
-        ? `<video src="${firstMedia.dataUrl}" style="width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:8px;border:none;" muted playsinline controls></video>`
-        : (firstMedia?.kind || firstMedia?.type) === "photo"
-          ? `<img style="width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:8px;"/>`
-          : fields?.photo
-            ? `<img style="width:100%;height:80px;object-fit:cover;border-radius:6px;margin-bottom:8px;"/>`
-            : "";
+      const firstPhotoIndex = Array.isArray(fields?.media) ? fields.media.findIndex((item: any) => (item?.kind || item?.type) === "photo") : -1;
+      const firstMedia = firstPhotoIndex >= 0 ? fields.media[firstPhotoIndex] : null;
+      const photoHtml = firstMedia || fields?.photo
+        ? `<img alt="Sample photo" style="width:100%;height:140px;object-fit:cover;border-radius:6px;margin-bottom:8px;"/>` : "";
 
       const el = document.createElement("div");
       el.innerHTML = isFutureSite
@@ -774,14 +830,16 @@ export default function MapViewPage() {
           .addTo(map);
         const image = popup.getElement().querySelector("img");
         if (image) {
-          const previewUrl = firstMedia?.dataUrl || firstMedia?.cloudUrl || (!firstMedia ? fields?.photo : undefined);
-          if (typeof previewUrl === "string" && /^(data:image\/|blob:|https?:)/i.test(previewUrl)) image.src = previewUrl;
-          else if (firstMedia?.localKey || firstMedia?.storageKey) {
-            void getStoredMediaDataUrl(firstMedia.localKey || firstMedia.storageKey).then(url => { if (url && image.isConnected) image.src = url; }).catch(() => {});
-          }
+          void (async () => {
+            const key = firstMedia?.localKey || firstMedia?.storageKey;
+            const local = key ? await getStoredMediaDataUrl(key).catch(() => null) : null;
+            const previewUrl = local || firstMedia?.dataUrl || firstMedia?.cloudUrl || (!firstMedia ? fields?.photo : undefined)
+              || (firstMedia?.storageKey?.startsWith("media/") ? await resolveSampleMediaUrl(firstMedia.storageKey) : null);
+            if (typeof previewUrl === "string" && /^(data:image\/|blob:|https?:)/i.test(previewUrl) && image.isConnected) image.src = previewUrl;
+          })().catch(() => { if (image.isConnected) image.alt = "Photo unavailable offline"; });
           const photoFrame = document.createElement("div"); photoFrame.style.position = "relative";
           image.before(photoFrame); photoFrame.append(image);
-          const showPhoto = (read = false) => setLocation(`/sample/${sample.id}?photo=0${read ? "&label=read" : ""}`);
+          const showPhoto = (read = false) => setLocation(`/sample/${sample.id}?photo=${Math.max(0, firstPhotoIndex)}${read ? "&label=read" : ""}`);
           image.style.cursor = "pointer";
           image.setAttribute("role", "button"); image.setAttribute("tabindex", "0"); image.setAttribute("aria-label", "View sample photo");
           image.addEventListener("click", () => showPhoto());
@@ -800,7 +858,7 @@ export default function MapViewPage() {
     });
 
     const currentMeasurements = measurements.filter((measurement) =>
-      selectedFolderId === "all" ? true : String(measurement.datasetId ?? "") === String(selectedFolderId)
+      datasetSelected(selectedFolderId, measurement.datasetId, localDatasets)
     );
     currentMeasurements.forEach((measurement) => {
       const coords = measurementCoords(measurement);
@@ -835,6 +893,7 @@ export default function MapViewPage() {
           .setLngLat([coords[1], coords[0]])
           .setHTML(`
             <div style="font-family:system-ui,sans-serif;min-width:190px;">
+              ${measurement.photo || measurement.photoLocalKey || measurement.photoKey ? '<img alt="Measurement photo" style="width:100%;height:140px;object-fit:cover;border-radius:6px;margin-bottom:8px;"/>' : ""}
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                 <span style="color:#60a5fa;font-size:22px;font-weight:800;">${isLineation ? "↑" : "⊢"}</span>
                 <div><strong style="font-size:13px;">${escapeHtml(measurement.label || (isLineation ? "Lineation" : "Strike & Dip"))}</strong><div style="font-size:10px;color:#7c3aed;font-weight:700;text-transform:uppercase;">Structural measurement</div></div>
@@ -848,6 +907,14 @@ export default function MapViewPage() {
               <a href="/strike-dip" style="display:block;margin-top:10px;background:#7c3aed;color:white;text-align:center;border-radius:6px;padding:6px;font-size:12px;text-decoration:none;font-weight:600;">View Measurements →</a>
             </div>`)
           .addTo(map);
+        const image = popup.getElement().querySelector("img") as HTMLImageElement | null;
+        if (image) {
+          void (async () => {
+            const local = measurement.photoLocalKey ? await getStoredMediaDataUrl(measurement.photoLocalKey).catch(() => null) : null;
+            const url = local || measurement.photo || (measurement.photoKey ? await resolveSampleMediaUrl(measurement.photoKey) : null);
+            if (url && image.isConnected) image.src = url;
+          })().catch(() => { if (image.isConnected) image.alt = "Photo unavailable offline"; });
+        }
       });
       markersRef.current.push(marker);
     });
@@ -877,11 +944,11 @@ export default function MapViewPage() {
       if (mapLoadedRef.current) placeMarkers(L, map);
       else {
         onLoad = () => { if (!cancelled && mapRef.current === map) placeMarkers(L, map); };
-        map.once("load", onLoad);
+        map.once("style.load", onLoad);
       }
     });
-    return () => { cancelled = true; if (onLoad) map.off("load", onLoad); };
-  }, [allSamples, measurements, selectedFolderId]);
+    return () => { cancelled = true; if (onLoad) map.off("style.load", onLoad); };
+  }, [allSamples, measurements, selectedFolderId, localDatasets, prismMap]);
 
   function focusSample(coords: [number, number]) {
     fitMarkersRequested.current = false;
@@ -943,9 +1010,9 @@ export default function MapViewPage() {
   }
 
   return (
-    <Layout>
-      <div className="flex flex-col gap-4 mb-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <Layout lockPageScroll={mapFullScreen}>
+      <div className="min-w-0 flex flex-col gap-4 mb-4">
+        <div className="flex min-w-0 flex-col sm:flex-row sm:flex-wrap sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold font-display flex items-center gap-3">
               <MapPin className="text-primary w-8 h-8" />
@@ -954,11 +1021,11 @@ export default function MapViewPage() {
             <p className="text-muted-foreground mt-1">
               {samplesWithCoords.length} sample{samplesWithCoords.length !== 1 ? "s" : ""} and {measurementsWithCoords.length} structural measurement{measurementsWithCoords.length !== 1 ? "s" : ""} plotted
               {selectedFolderId !== "all" && (
-                <span className="ml-1">from <strong>{allFolders.find((f: any) => String(f.id) === String(selectedFolderId))?.name}</strong></span>
+                <span className="ml-1">from <strong>{datasetSelectionLabel(selectedFolderId, datasetChoices, localDatasets)}</strong></span>
               )}
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex min-w-0 max-w-full flex-col sm:flex-row sm:flex-wrap gap-2">
             <Button onClick={startMapExport} disabled={exportBusy || exportMode}>Export</Button>
             <form className="relative" onSubmit={handleMapSearch}>
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -1009,17 +1076,7 @@ export default function MapViewPage() {
                 </div>
               )}
             </form>
-            <div className="relative">
-              <select
-                className="flex items-center pl-8 pr-4 h-9 rounded-lg border border-border bg-card text-sm font-medium shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none w-full sm:w-auto"
-                value={selectedFolderId}
-                onChange={(e) => { fitMarkersRequested.current = true; setSelectedFolderId(e.target.value === "all" ? "all" : e.target.value); }}
-              >
-                <option value="all">All Datasets</option>
-                {allFolders.map((f: any) => <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-              <FolderOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-            </div>
+            <DatasetMultiSelect options={datasetChoices} identities={localDatasets} value={selectedFolderId} onChange={selection => { fitMarkersRequested.current = true; setSelectedFolderId(selection); }} />
           </div>
         </div>
 
@@ -1049,9 +1106,9 @@ export default function MapViewPage() {
           </button>
 
           {/* Overlay */}
-          <div className="relative">
+          <div className="relative min-w-0 max-w-full">
             <select
-              className="flex items-center pl-8 pr-4 h-9 rounded-lg border border-border bg-card text-sm font-medium shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
+              className="max-w-full flex items-center pl-8 pr-4 h-9 rounded-lg border border-border bg-card text-sm font-medium shadow-sm cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
               value={overlayLayer}
               onChange={(e) => { setOverlayLayer(e.target.value as OverlayLayer); setGeoInfo(null); }}
             >
@@ -1088,7 +1145,7 @@ export default function MapViewPage() {
           </Button>
 
           {/* Legend */}
-          <div className="flex gap-3 ml-auto flex-wrap">
+          <div className="flex min-w-0 gap-3 ml-auto flex-wrap">
             {Object.entries(TYPE_COLORS)
               .filter(([type]) => type !== "air" || hasLegacyAirSamples)
               .map(([type, color]) => (
@@ -1133,7 +1190,7 @@ export default function MapViewPage() {
           </div>
         )}
 
-        {prismMap && <TrackOverlay map={prismMap} />}
+        {prismMap && <TrackOverlay map={prismMap} selection={selectedFolderId} identities={localDatasets} />}
         {overlayLayer === "faults" && prismMap && <FaultOverlay map={prismMap} exportMode={exportMode} />}
         {overlayLayer === "prism" && prismMap && <PrismOverlay map={prismMap} exportMode={exportMode} />}
 
@@ -1160,20 +1217,21 @@ export default function MapViewPage() {
         </div>
       )}
       <div
-        className={mapFullScreen ? "geofield-fullscreen-map absolute inset-0 z-[90] flex bg-background" : "relative flex gap-4"}
+        className={mapFullScreen ? "geofield-map-frame geofield-fullscreen-map fixed bottom-0 z-[90] flex min-w-0 overflow-hidden overscroll-none bg-background" : "geofield-map-frame relative flex min-w-0 max-w-full gap-4"}
         style={{
-          height: mapFullScreen ? "100%" : "calc(100vh - 320px)",
+          ...(mapFullScreen ? fullScreenInsets : {}),
+          height: mapFullScreen ? undefined : "calc(100dvh - 320px)",
           minHeight: mapFullScreen ? 0 : "400px",
         }}
       >
         {geoInfo && (
-          <div className="w-72 shrink-0 bg-card border border-border rounded-2xl shadow-lg overflow-y-auto p-5 space-y-3 z-10">
+          <div className="absolute bottom-3 left-3 right-3 max-h-[55%] min-w-0 break-words bg-card border border-border rounded-2xl shadow-lg overflow-y-auto overscroll-contain p-5 space-y-3 z-20 sm:static sm:max-h-full sm:w-72 sm:shrink-0">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold font-display text-sm flex items-center gap-2">
                 <Layers className="w-4 h-4 text-primary" />
                 {overlayLayer === "geology" ? "Rock Formation" : overlayLayer === "trails" ? "Trail Info" : "Soil Data"}
               </h3>
-              <button onClick={() => setGeoInfo(null)} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
+              <button aria-label="Close map details" onClick={() => setGeoInfo(null)} className="flex h-10 w-10 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
             </div>
             {geoInfo.lngLat && (
               <p className="text-xs text-muted-foreground">📍 {formatCoord(geoInfo.lngLat[1])}, {formatCoord(geoInfo.lngLat[0])}</p>
@@ -1202,7 +1260,7 @@ export default function MapViewPage() {
         )}
         <div className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden [contain:paint]">
           <div ref={mapContainerRef} className={`maplibregl-map h-full w-full overflow-hidden border border-border shadow-lg ${mapFullScreen ? "rounded-none" : "rounded-2xl"}`} />
-          {!exportMode && <button type="button" onClick={() => { setGeoInfo(null); setMapFullScreen((value) => !value); }} className="absolute left-3 top-3 z-[110] flex min-h-11 touch-manipulation items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur transition-colors hover:bg-muted" title={mapFullScreen ? "Return to normal map size" : "Make map full screen"} aria-label={mapFullScreen ? "Exit full-screen map" : "Open full-screen map"}>
+          {!exportMode && <button type="button" onClick={() => { setGeoInfo(null); if (!mapFullScreen) scrollBeforeFullScreen.current = document.getElementById("geofield-page-scroll")?.scrollTop ?? 0; setMapFullScreen((value) => !value); }} className="absolute left-3 top-3 z-[110] flex min-h-11 touch-manipulation items-center gap-2 rounded-lg border border-border bg-card/95 px-3 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur transition-colors hover:bg-muted" title={mapFullScreen ? "Return to normal map size" : "Make map full screen"} aria-label={mapFullScreen ? "Exit full-screen map" : "Open full-screen map"}>
             {mapFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             {mapFullScreen ? "Exit Full Screen" : "Full Screen"}
           </button>}

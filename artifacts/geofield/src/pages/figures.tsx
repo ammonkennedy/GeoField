@@ -1,5 +1,6 @@
+import { DatasetMultiSelect } from "@/components/DatasetMultiSelect";
+import { datasetOptions, datasetSelected, datasetSelectionLabel, type DatasetSelection } from "@/lib/dataset-selection";
 import { loadMeasurements, STRIKE_DIP_UPDATED_EVENT } from "@/lib/strike-dip-measurements";
-import { resolveDatasetId } from "@/lib/dataset-identity";
 import { useEffect, useMemo, useState } from "react";
 import { BarChart2, FolderOpen } from "lucide-react";
 import { useGetFolders, useGetSamples } from "@workspace/api-client-react";
@@ -14,7 +15,7 @@ export default function FiguresPage() {
   const { data: cloudSamples } = useGetSamples();
   const { data: cloudDatasets } = useGetFolders();
   const [measurements, setMeasurements] = useState(loadMeasurements);
-  const [selection, setSelection] = useState("all");
+  const [selection, setSelection] = useState<DatasetSelection>("all");
   const [queuedSamples, setQueuedSamples] = useState(() => getQueue(true));
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
@@ -55,12 +56,10 @@ export default function FiguresPage() {
     updatedAt: item.queuedAt,
   }));
   const allSamples = mergeCloudAndLocal((mergeCloudAndLocal(cloudSamples ?? [], cachedCloudSamples) as any[]).filter((sample) => !queuedSamples.some((item) => String(item.targetId ?? item.queuedId) === String(sample.id))), localSamples as any[]) as any[];
-  const selectedSamples = selection === "all"
-    ? allSamples
-    : allSamples.filter((sample) => String(resolveDatasetId(sample.folderId, localDatasets) ?? "") === String(resolveDatasetId(selection, localDatasets)));
-  const selectedDataset = datasets.find((dataset: any) => String(resolveDatasetId(dataset.id, localDatasets)) === String(resolveDatasetId(selection, localDatasets)));
-  const selectedMeasurements = selection === "all" ? measurements : measurements.filter(item => String(resolveDatasetId(item.datasetId, localDatasets) ?? "") === String(resolveDatasetId(selection, localDatasets)));
-  const selectionName = selection === "all" ? "All Samples & Measurements" : selectedDataset?.name || "Selected Dataset";
+  const options = datasetOptions(datasets, localDatasets, [...allSamples.map(sample => sample.folderId), ...measurements.map(item => item.datasetId)]);
+  const selectedSamples = allSamples.filter(sample => datasetSelected(selection, sample.folderId, localDatasets));
+  const selectedMeasurements = measurements.filter(item => datasetSelected(selection, item.datasetId, localDatasets));
+  const selectionName = datasetSelectionLabel(selection, options, localDatasets);
 
   return (
     <Layout>
@@ -70,7 +69,7 @@ export default function FiguresPage() {
             <BarChart2 className="h-8 w-8 text-primary" />
             Generate Figures
           </h1>
-          <p className="mt-1 text-muted-foreground">Create organized, publication-ready charts from an entire account or a single dataset.</p>
+          <p className="mt-1 text-muted-foreground">Create organized, publication-ready charts from selected datasets or an entire account.</p>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -78,19 +77,7 @@ export default function FiguresPage() {
             <FolderOpen className="h-5 w-5 text-primary" />
             <Label htmlFor="figure-dataset" className="font-semibold">Data to include</Label>
           </div>
-          <select
-            id="figure-dataset"
-            className="mt-3 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
-            value={selection}
-            onChange={(event) => setSelection(event.target.value)}
-          >
-            <option value="all">All Samples & Measurements ({allSamples.length + measurements.length})</option>
-            {datasets.map((dataset: any) => {
-              const count = allSamples.filter((sample) => String(resolveDatasetId(sample.folderId, localDatasets) ?? "") === String(resolveDatasetId(dataset.id, localDatasets))).length;
-              const measurementCount = measurements.filter(item => String(resolveDatasetId(item.datasetId, localDatasets) ?? "") === String(resolveDatasetId(dataset.id, localDatasets))).length;
-              return <option key={dataset.id} value={String(dataset.id)}>{dataset.name} ({count} samples, {measurementCount} measurements)</option>;
-            })}
-          </select>
+          <div className="mt-3"><DatasetMultiSelect id="figure-dataset" options={options} identities={localDatasets} value={selection} onChange={setSelection} /></div>
           <p className="mt-2 text-xs text-muted-foreground">{selectedSamples.length} sample{selectedSamples.length === 1 ? "" : "s"} and {selectedMeasurements.length} measurements selected.</p>
         </div>
 

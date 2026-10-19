@@ -41,3 +41,12 @@ test('deletion during an in-flight upload remains pending',async()=>{
  await syncTrackRecords(a.store);
  assert.equal(a.data()[0].localRevision,'deleted');assert.ok(a.data()[0].deletedAt);assert.equal(a.data().length,1);
 });
+test('dataset assignment and removal survive confirmed sync to another device',async()=>{
+ const a=setup([track({datasetId:'dataset-cloud-id'})]);
+ await syncTrackRecords(a.store);
+ const b=setup([]);b.store.list=a.store.list;
+ await syncTrackRecords(b.store);assert.equal(b.data()[0].datasetId,'dataset-cloud-id');
+ a.store.save([{...a.data()[0],datasetId:null,localRevision:'unassign'}]);
+ await syncTrackRecords(a.store);await syncTrackRecords(b.store);
+ assert.equal(b.data()[0].datasetId,null);
+});

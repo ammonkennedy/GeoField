@@ -1,3 +1,4 @@
+import { DatasetTracks } from '@/components/DatasetTracks';
 import { BulkRecords } from "@/components/BulkRecords";
 import { MeasurementRow } from "@/components/MeasurementRow";
 import { applyMeasurementEdit } from "@/lib/measurement-edit";
@@ -56,6 +57,7 @@ export default function Dashboard() {
   const shouldLoadServerSamples = !isLocalFolder;
 
   const { data: samples, isLoading } = useGetSamples(shouldLoadServerSamples && activeFolderId ? { folderId: activeFolderId } : undefined);
+  const { data: exportCloudSamples } = useGetSamples();
   const { data: folders } = useGetFolders();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -111,9 +113,8 @@ export default function Dashboard() {
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
   const activeFolder = allFolders.find((f: any) => String(resolveDatasetId(f.id, localDatasets)) === String(activeFolderId));
 
-  const localSamples = queuedSamples
+  const allLocalSamples = queuedSamples
     .filter((item) => !item.deletedAt)
-    .filter((item) => !activeFolderId || String(resolveDatasetId(item.payload.folderId, localDatasets) ?? "") === String(activeFolderId))
     .map((item, index) => ({
       id: item.queuedId,
       targetId: item.targetId,
@@ -123,6 +124,9 @@ export default function Dashboard() {
       createdAt: item.queuedAt,
       isOffline: true,
     }));
+
+  const localSamples = allLocalSamples.filter(sample => !activeFolderId || String(sample.folderId ?? "") === String(activeFolderId));
+  const exportSamples = mergeCloudAndLocal((mergeCloudAndLocal(exportCloudSamples ?? [], cachedCloudSamples) as any[]).filter(sample => !queuedSamples.some(item => String(item.targetId ?? item.queuedId) === String(sample.id))), allLocalSamples as any[]);
 
   const cachedForView = cachedCloudSamples.filter((sample) => !activeFolderId || String(resolveDatasetId(sample.folderId, localDatasets) ?? "") === String(activeFolderId));
   const serverSamples = isLocalFolder ? [] : mergeCloudAndLocal(samples ?? [], cachedForView);
@@ -388,13 +392,14 @@ export default function Dashboard() {
         </div>
       )}
 
+      {activeFolder && activeFolderId != null && <DatasetTracks datasetId={activeFolderId} localDatasets={localDatasets} />}
+
       <ExportDialog
         open={exportOpen}
         onOpenChange={setExportOpen}
-        samples={allSamples}
+        samples={exportSamples}
         measurements={measurements}
         initialSelection={activeFolderId ?? "all"}
-        lockSelection={Boolean(activeFolderId)}
       />
 
       <Dialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>

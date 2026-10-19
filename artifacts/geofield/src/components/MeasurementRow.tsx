@@ -1,3 +1,4 @@
+import { capturePhotoLocation, withPhotoLocation } from "@/lib/photo-location";
 import { capturePhoto } from "@/lib/capture-photo";
 import { preservePhotoDirection } from "@/lib/photo-direction";
 import { useState, useEffect, useRef } from "react";
@@ -100,12 +101,13 @@ export function MeasurementRow({
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
-    await savePhotoFile(file);
+    await savePhotoFile(file, e.target === cameraInputRef.current);
   };
-  const savePhotoFile = async (file: File) => {
+  const savePhotoFile = async (file: File, camera = false) => {
+    const location = camera ? capturePhotoLocation() : Promise.resolve(null);
     try {
       const accountId = getStorageAccountId();
-      const dataUrl = await preservePhotoDirection(await compressImage(file), file);
+      const dataUrl = withPhotoLocation(await preservePhotoDirection(await compressImage(file), file), await location);
       const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: file.name, mimeType: "image/jpeg" });
       if (!accountId || getStorageAccountId() !== accountId) return;
       const latest = loadMeasurements().find((item) => item.id === measurement.id);

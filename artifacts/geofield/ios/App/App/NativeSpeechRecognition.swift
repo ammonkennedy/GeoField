@@ -278,11 +278,13 @@ public final class GeoFieldPhotoLibraryPlugin: CAPPlugin, CAPBridgedPlugin {
 
 /// Rear-camera direction is sampled at our shutter action, not when the picker closes.
 @objc(GeoFieldCameraPlugin)
-public final class GeoFieldCameraPlugin: CAPPlugin, CAPBridgedPlugin, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+public final class GeoFieldCameraPlugin: CAPPlugin, CAPBridgedPlugin, UIImagePickerControllerDelegate, UINavigationControllerDelegate, CLLocationManagerDelegate {
     public let identifier = "GeoFieldCameraPlugin"
     public let jsName = "GeoFieldCamera"
     public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "capture", returnType: CAPPluginReturnPromise)]
     private let motion = CMMotionManager()
+    private let locationManager = CLLocationManager()
+    private var photoLocation: JSObject?
     private var pending: CAPPluginCall?
     private var picker: UIImagePickerController?
     private var shutter: UIButton?
@@ -311,6 +313,10 @@ public final class GeoFieldCameraPlugin: CAPPlugin, CAPBridgedPlugin, UIImagePic
             pending?.reject("Close the other camera or system dialog and try again."); pending = nil; return
         }
         direction = nil
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.startUpdatingLocation()
         if motion.isDeviceMotionAvailable && CMMotionManager.availableAttitudeReferenceFrames().contains(.xMagneticNorthZVertical) {
             motion.deviceMotionUpdateInterval = 1.0 / 30.0
             motion.showsDeviceMovementDisplay = true
@@ -363,6 +369,10 @@ public final class GeoFieldCameraPlugin: CAPPlugin, CAPBridgedPlugin, UIImagePic
                 direction = ["degrees": bearing, "reference": "magnetic", "accuracy": quality]
             }
         }
+        photoLocation = nil
+        if let fix = locationManager.location, fix.horizontalAccuracy >= 0, abs(fix.timestamp.timeIntervalSinceNow) <= 10 {
+            photoLocation = ["latitude": fix.coordinate.latitude, "longitude": fix.coordinate.longitude, "accuracy": fix.horizontalAccuracy, "timestamp": fix.timestamp.timeIntervalSince1970 * 1000]
+        }
         shutter?.isEnabled = false
         camera.takePicture()
     }
@@ -378,6 +388,7 @@ public final class GeoFieldCameraPlugin: CAPPlugin, CAPBridgedPlugin, UIImagePic
         guard let jpeg = normalized.jpegData(compressionQuality: 0.85) else { failPhoto(); return }
         var result: JSObject = ["base64": jpeg.base64EncodedString()]
         if let direction { result["direction"] = direction }
+        if let photoLocation { result["location"] = photoLocation }
         finish(result)
     }
     private func failPhoto() {
@@ -388,5 +399,5 @@ public final class GeoFieldCameraPlugin: CAPPlugin, CAPBridgedPlugin, UIImagePic
         let call = pending; cleanup()
         picker?.dismiss(animated: true) { call?.resolve(result) }; picker = nil
     }
-    private func cleanup() { motion.stopDeviceMotionUpdates(); pending = nil; direction = nil; shutter = nil }
+    private func cleanup() { locationManager.stopUpdatingLocation(); photoLocation = nil; motion.stopDeviceMotionUpdates(); pending = nil; direction = nil; shutter = nil }
 }

@@ -1,11 +1,15 @@
-import { useEffect } from 'react';
+import { TRACK_MAP_SOURCE, trackIdAtPoint } from '@/lib/track-map';
+import { datasetSelected, type DatasetSelection } from '@/lib/dataset-selection';
+import type { DatasetIdentity } from '@/lib/dataset-identity';
+import { useEffect, useRef } from 'react';
 import type { Map } from 'maplibre-gl';
 import { loadTracks, TRACKS_UPDATED } from '@/lib/tracks';
 import { trackSegments } from '@/lib/track-math';
 
-export function TrackOverlay({ map }: { map: Map }) {
+export function TrackOverlay({ map, selection, identities }: { map: Map; selection: DatasetSelection; identities: DatasetIdentity[] }) {
+  const framedMap = useRef<{ map: Map; id: string | null } | null>(null);
   useEffect(() => {
-    const sourceId = 'geofield-walking-tracks';
+    const sourceId = TRACK_MAP_SOURCE;
     let removed = false;
     const onRemove = () => { removed = true; };
     map.on('remove', onRemove);
@@ -13,7 +17,7 @@ export function TrackOverlay({ map }: { map: Map }) {
       // Tile downloads can keep isStyleLoaded false even though the style can
       // accept our offline GeoJSON. Do not hide tracks behind network loading.
       if (removed || !map.getStyle()?.layers) return;
-      const tracks = loadTracks().filter(t => t.visible);
+      const tracks = loadTracks().filter(t => t.visible && datasetSelected(selection, t.datasetId, identities));
       const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: tracks.flatMap(track =>
         trackSegments(track.points).map(coordinates => ({ type: 'Feature' as const,
           properties: { id: track.id, name: track.name }, geometry: { type: 'LineString' as const, coordinates } }))) };
@@ -39,7 +43,8 @@ export function TrackOverlay({ map }: { map: Map }) {
     const fit = () => {
       const id = new URLSearchParams(window.location.search).get('track');
       const points = loadTracks().find(t => t.id === id)?.points;
-      if (!points?.length) return;
+      if (!points?.length || (framedMap.current?.map === map && framedMap.current.id === id)) return;
+      framedMap.current = { map, id };
       let west = points[0].longitude, east = west, south = points[0].latitude, north = south;
       for (const p of points) { west = Math.min(west, p.longitude); east = Math.max(east, p.longitude); south = Math.min(south, p.latitude); north = Math.max(north, p.latitude); }
       map.fitBounds([[west, south], [east, north]], { padding: 50, maxZoom: 17, duration: 0 });
@@ -47,17 +52,23 @@ export function TrackOverlay({ map }: { map: Map }) {
     const loaded = () => { refresh(); fit(); };
     refresh();
     if (map.getStyle()?.layers) fit();
+    const hover = (event: import('maplibre-gl').MapMouseEvent) => {
+      map.getCanvas().style.cursor = trackIdAtPoint(map, event.point) ? 'pointer' : '';
+    };
+    map.on('mousemove', hover);
     map.on('load', loaded);
     map.on('style.load', refresh);
     window.addEventListener(TRACKS_UPDATED, refresh);
     window.addEventListener('popstate', fit);
     return () => {
+      map.off('mousemove', hover);
+      if (!removed) map.getCanvas().style.cursor = '';
       map.off('style.load', refresh); map.off('load', loaded); map.off('remove', onRemove); window.removeEventListener(TRACKS_UPDATED, refresh);
       window.removeEventListener('popstate', fit);
       if (removed) return;
       for (const id of [sourceId + '-ends', sourceId, sourceId + '-outline']) if (map.getLayer(id)) map.removeLayer(id);
       if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
-  }, [map]);
+  }, [map, selection, identities]);
   return null;
 }

@@ -98,8 +98,8 @@ export function markLocalDatasetSynced(id: number | string, cloudId: string, rev
   reassignMeasurementsDataset(id, cloudId);
 }
 
-function nextLocalDatasetId() {
-  const used = new Set(getLocalDatasets(true).map((item) => item.id));
+function nextLocalDatasetId(datasets = getLocalDatasets(true)) {
+  const used = new Set(datasets.map((item) => item.id));
   let id = -Date.now();
   while (used.has(id)) id--;
   return id;
@@ -176,10 +176,28 @@ export async function restoreLocalDataset(item: LocalDeletedItem) {
 /** Apply explicit cloud deletions; never infer deletion from an incomplete list. */
 export function reconcileLocalDatasets(remote: Array<{ id: string | number; name: string; description?: string | null; deletedAt?: string | null }>) {
   const byId = new Map(remote.map((item) => [String(item.id), item]));
-  saveLocalDatasets(getLocalDatasets(true).map((local) => {
+  const datasets = getLocalDatasets(true);
+  const reconciled = datasets.map((local) => {
     const cloud = local.cloudId ? byId.get(local.cloudId) : undefined;
     return cloud && !local.localRevision ? { ...local, name: cloud.name, description: cloud.description ?? "", deletedAt: cloud.deletedAt ?? null } : local;
-  }));
+  });
+  const knownCloudIds = new Set(reconciled.map((local) => local.cloudId).filter((id): id is string => Boolean(id)));
+  for (const cloud of remote) {
+    const cloudId = String(cloud.id);
+    if (cloud.deletedAt || knownCloudIds.has(cloudId)) continue;
+    reconciled.push({
+      id: nextLocalDatasetId(reconciled),
+      cloudId,
+      name: cloud.name,
+      description: cloud.description ?? "",
+      createdAt: "createdAt" in cloud && typeof cloud.createdAt === "string" ? cloud.createdAt : new Date().toISOString(),
+      isLocal: true,
+      syncStatus: "synced",
+      syncedAt: new Date().toISOString(),
+    });
+    knownCloudIds.add(cloudId);
+  }
+  saveLocalDatasets(reconciled);
 }
 
 /** Give a downloaded trip a local dataset alias without creating another cloud dataset. */

@@ -1,3 +1,4 @@
+import { TrackDatasetSelect } from '@/components/TrackDatasetSelect';
 import { useEffect, useState } from 'react';
 import { Link } from 'wouter';
 import { Route, Play, Square, MapPin, Trash2 } from 'lucide-react';
@@ -54,6 +55,7 @@ export default function TrackPage() {
         <Link href={`/map?track=${encodeURIComponent(track.id)}`} onClick={() => run(() => updateTrack(track.id, { visible: true }))} className="block text-lg font-semibold text-primary hover:underline">{track.name}</Link>
         <Input key={`${track.id}:${track.name}`} aria-label="Track name" defaultValue={track.name} onBlur={e => run(() => updateTrack(track.id, { name: e.target.value.trim() || track.name }))} />
         <p className="text-xs text-muted-foreground">{new Date(track.startedAt).toLocaleString()} · {track.downloadedTrail ? (track.downloadedTrail.source === 'usgs' ? 'Downloaded trail segment · USGS' : 'Downloaded route · © OpenStreetMap contributors') : status.activeId === track.id ? 'Recording' : track.stoppedAt ? 'Saved' : 'Interrupted — saved points retained'} · {track.localRevision ? (status.activeId === track.id ? 'Syncs when stopped' : 'Waiting to sync') : 'Synced'}</p>
+        <TrackDatasetSelect track={track} onChange={datasetId => run(() => updateTrack(track.id, { datasetId }))} />
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[['Distance', `${(stats.distance / 1609.344).toFixed(2)} mi`], ['Elevation gain', stats.hasElevation ? `${Math.round(stats.gain * 3.28084)} ft` : 'Unavailable'], ['Elevation loss', stats.hasElevation ? `${Math.round(stats.loss * 3.28084)} ft` : 'Unavailable'], [track.downloadedTrail ? 'Coverage' : 'GPS time', track.downloadedTrail ? (track.downloadedTrail.source === 'usgs' ? 'Segment' : 'Mapped route') : `${Math.floor(stats.seconds / 60)} min`]].map(([label,value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="text-xl font-semibold text-primary">{value}</dd></div>)}
         </dl>

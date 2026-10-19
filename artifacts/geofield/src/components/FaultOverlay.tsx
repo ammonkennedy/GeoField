@@ -1,3 +1,4 @@
+import { trackIdAtPoint } from '@/lib/track-map';
 import { useEffect, useRef, useState } from 'react';
 import { Popup, type Map as MapLibreMap, type MapMouseEvent } from 'maplibre-gl';
 
@@ -35,7 +36,7 @@ export function FaultOverlay({ map, exportMode }: { map: MapLibreMap; exportMode
       if (e.sourceId === SOURCE) setMessage('Fault lines could not load. Try again.');
     };
     const click = (e: MapMouseEvent) => {
-      if (ignoreClick.current || !map.getLayer(LINE)) return;
+      if (ignoreClick.current || trackIdAtPoint(map, e.point) || !map.getLayer(LINE)) return;
       popup?.remove();
       // Inspect only rendered lines within a small touch target, never a remote nearest-fault result.
       const hits = map.queryRenderedFeatures([[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]], { layers: [LINE] });

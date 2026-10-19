@@ -1,3 +1,4 @@
+import { trackIdAtPoint } from '@/lib/track-map';
 import { useEffect, useRef, useState } from 'react';
 import { Popup, type Map as MapLibreMap } from 'maplibre-gl';
 import { Button } from '@/components/ui/button';
@@ -51,7 +52,7 @@ export function PrismOverlay({ map, exportMode }: { map: MapLibreMap; exportMode
       map.addLayer({ id: 'prism-climate', type: 'raster', source: 'prism-climate', paint: { 'raster-opacity': 0.65, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 } });
     };
     const click = (event: any) => {
-      if (ignoreClick.current) return;
+      if (ignoreClick.current || trackIdAtPoint(map, event.point)) return;
       popup.current?.remove();
       if (map.getLayer('prism-selected')) map.removeLayer('prism-selected');
       if (map.getSource('prism-selected')) map.removeSource('prism-selected');
@@ -76,11 +77,11 @@ export function PrismOverlay({ map, exportMode }: { map: MapLibreMap; exportMode
         const note = document.createElement('p'); note.style.marginTop = '8px'; note.textContent = 'Modeled ~4 km cell. Temperature minimum/maximum are averages of daily lows/highs, not record extremes. These are climate normals, not current weather.'; content.append(note);
       }
       const source = document.createElement('p'); source.style.marginTop = '8px'; source.textContent = `PRISM Group, Oregon State University · https://prism.oregonstate.edu · accessed ${data.accessed}`; content.append(source);
-      popup.current = new Popup({ maxWidth: '330px' }).setLngLat(event.lngLat).setDOMContent(content).addTo(map);
+      popup.current = new Popup({ maxWidth: 'min(330px, calc(100% - 24px))' }).setLngLat(event.lngLat).setDOMContent(content).addTo(map);
     };
     const attributionElement = document.createElement('div');
     attributionElement.className = 'maplibregl-ctrl maplibregl-ctrl-attrib';
-    attributionElement.style.maxWidth = 'min(420px, 75vw)';
+    attributionElement.classList.add('geofield-prism-attribution');
     attributionElement.textContent = `PRISM Group, Oregon State University · https://prism.oregonstate.edu · accessed ${data.accessed} · 1991–2020, 4 km`;
     const attribution = { onAdd: () => attributionElement, onRemove: () => attributionElement.remove() };
     map.addControl(attribution, 'bottom-right');
@@ -106,10 +107,10 @@ export function PrismOverlay({ map, exportMode }: { map: MapLibreMap; exportMode
     const b = map.getBounds();
     return cropPrism(data, [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
   }
-  return <section className="w-full rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-sm space-y-2" aria-label="PRISM climate overlay">
+  return <section className="min-w-0 w-full max-w-full break-words rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-sm space-y-2" aria-label="PRISM climate overlay">
     <div className="flex flex-wrap items-center gap-2">
       <strong>PRISM climate · 1991–2020</strong>
-      <select aria-label="Climate variable" className="rounded border bg-background p-1.5" value={variable} onChange={e => setVariable(e.target.value as PrismVariable)}>
+      <select aria-label="Climate variable" className="min-w-0 max-w-full rounded border bg-background p-1.5" value={variable} onChange={e => setVariable(e.target.value as PrismVariable)}>
         {PRISM_VARIABLES.map(v => <option key={v} value={v}>{PRISM_LABELS[v]}</option>)}
       </select>
       <Button variant="outline" size="sm" disabled={busy} onClick={() => void run(async () => { setData(await loadPrism()); setSelectedRegion(''); setMessage('Full contiguous U.S. layer loaded.'); })}>Load full U.S. layer</Button>
@@ -129,7 +130,7 @@ export function PrismOverlay({ map, exportMode }: { map: MapLibreMap; exportMode
       })}>Export visible region CSV</Button>
     </div>
     {regions.length > 0 && <div className="flex flex-wrap gap-2 items-center">
-      <select aria-label="Downloaded climate regions" className="max-w-full rounded border bg-background p-1.5" value={selectedRegion} disabled={busy} onChange={e => {
+      <select aria-label="Downloaded climate regions" className="min-w-0 max-w-full rounded border bg-background p-1.5" value={selectedRegion} disabled={busy} onChange={e => {
         const region = regions.find(r => r.id === e.target.value); if (!region) return;
         setSelectedRegion(region.id); setData(region.data);
         const [w,s,east,n] = prismBounds(region.data.grid); map.fitBounds([[w,s],[east,n]], { padding: 35 });

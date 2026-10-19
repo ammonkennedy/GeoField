@@ -1,9 +1,10 @@
+import { DatasetMultiSelect } from "./DatasetMultiSelect";
+import { datasetOptions, datasetSelected, datasetSelectionLabel, type DatasetSelection } from "@/lib/dataset-selection";
 import { useEffect, useState, useMemo } from "react";
 import { useGetFolders } from "@workspace/api-client-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { Download, FolderOpen, Layers, ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Download, ChevronRight } from "lucide-react";
 import { ExportCustomizerDialog } from "./ExportCustomizerDialog";
 import { exportDatasetWorkbookWithConfig, getSampleColumns, SAMPLE_TYPE_SHEETS, type SampleTypeSheetKey } from "@/lib/export";
 import { DEFAULT_FORMAT_CONFIG, STRIKE_DIP_COLUMNS } from "@/lib/export-config";
@@ -18,11 +19,10 @@ interface ExportDialogProps {
   samples?: any[];
   measurements?: StrikeDipMeasurement[];
   initialSelection?: Selection;
-  lockSelection?: boolean;
 }
 
-export function ExportDialog({ open, onOpenChange, samples = [], measurements = [], initialSelection = "all", lockSelection = false }: ExportDialogProps) {
-  const [selected, setSelected] = useState<Selection>(initialSelection);
+export function ExportDialog({ open, onOpenChange, samples = [], measurements = [], initialSelection = "all" }: ExportDialogProps) {
+  const [selected, setSelected] = useState<DatasetSelection>(initialSelection === "all" ? "all" : [initialSelection === "uncategorized" ? "" : String(initialSelection)]);
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [localDatasets, setLocalDatasets] = useState<LocalDataset[]>(getLocalDatasets);
   const { data: folders } = useGetFolders();
@@ -32,7 +32,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
   const allFolders = [...(folders || []), ...visibleLocalDatasets];
 
   useEffect(() => {
-    if (open) setSelected(initialSelection);
+    if (open) setSelected(initialSelection === "all" ? "all" : [initialSelection === "uncategorized" ? "" : String(initialSelection)]);
   }, [initialSelection, open]);
 
   useEffect(() => {
@@ -45,42 +45,15 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
     };
   }, []);
 
-  const samplesToExport = useMemo(() => {
-    if (!allSamples) return [];
-    if (selected === "all") return allSamples;
-    if (selected === "uncategorized") return allSamples.filter((s) => !s.folderId);
-    return allSamples.filter((s) => String(s.folderId ?? "") === String(selected));
-  }, [allSamples, selected]);
-
-  const measurementsToExport = useMemo(() => {
-    if (!allMeasurements) return [];
-    if (selected === "all") return allMeasurements;
-    if (selected === "uncategorized") return allMeasurements.filter((m) => !m.datasetId);
-    return allMeasurements.filter((m) => String(m.datasetId ?? "") === String(selected));
-  }, [allMeasurements, selected]);
-
+  const options = datasetOptions(allFolders, localDatasets, [...allSamples.map(sample => sample.folderId), ...allMeasurements.map(item => item.datasetId)]);
+  const samplesToExport = useMemo(() => allSamples.filter(sample => datasetSelected(selected, sample.folderId, localDatasets)), [allSamples, selected, localDatasets]);
+  const measurementsToExport = useMemo(() => allMeasurements.filter(item => datasetSelected(selected, item.datasetId, localDatasets)), [allMeasurements, selected, localDatasets]);
   const sampleCount = samplesToExport.length;
   const measurementCount = measurementsToExport.length;
   const count = sampleCount + measurementCount;
-  const selectedFolder =
-    selected !== "all" && selected !== "uncategorized"
-      ? allFolders.find((f: any) => String(f.id) === String(selected))
-      : null;
-  const displayedFolders = lockSelection && selectedFolder ? [selectedFolder] : allFolders;
-  const uncategorizedCount = (allSamples || []).filter((s) => !s.folderId).length;
-  const uncategorizedMeasurementCount = (allMeasurements || []).filter((m) => !m.datasetId).length;
-
-  const folderName = selectedFolder
-    ? selectedFolder.name
-    : selected === "uncategorized"
-    ? "Uncategorized"
-    : "All Data";
-
-  const filename = selectedFolder
-    ? `geofield-${selectedFolder.name.replace(/\s+/g, "-").toLowerCase()}`
-    : selected === "uncategorized"
-    ? "geofield-uncategorized"
-    : "geofield-all";
+  const folderName = datasetSelectionLabel(selected, options, localDatasets);
+  const filename = selected === "all" ? "geofield-all" : selected.length === 1
+    ? `geofield-${folderName.replace(/\s+/g, "-").toLowerCase()}` : "geofield-selected-datasets";
 
   // Match the workbook's visible sheet order so the user can predict the file.
   const sheetGroups = useMemo(
@@ -119,46 +92,11 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
 
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Choose a dataset to export samples and measurements together.
+              Choose datasets to export samples and measurements together.
             </p>
 
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {!lockSelection && (
-                <OptionRow
-                  icon={<Layers className="w-4 h-4" />}
-                  label="All Data"
-                  count={(allSamples?.length ?? 0) + (allMeasurements?.length ?? 0)}
-                  detail={`${allSamples?.length ?? 0} samples · ${allMeasurements?.length ?? 0} measurements`}
-                  selected={selected === "all"}
-                  onClick={() => setSelected("all")}
-                />
-              )}
-              {displayedFolders.map((folder: any) => (
-                <OptionRow
-                  key={folder.id}
-                  icon={<FolderOpen className="w-4 h-4" />}
-                  label={`${folder.name}${folder.isLocal ? " (local)" : ""}`}
-                  count={
-                    (allSamples || []).filter((s) => String(s.folderId ?? "") === String(folder.id)).length +
-                    (allMeasurements || []).filter((m) => String(m.datasetId ?? "") === String(folder.id)).length
-                  }
-                  detail={`${(allSamples || []).filter((s) => String(s.folderId ?? "") === String(folder.id)).length} samples · ${(allMeasurements || []).filter((m) => String(m.datasetId ?? "") === String(folder.id)).length} measurements`}
-                  selected={String(selected) === String(folder.id)}
-                  onClick={() => setSelected(folder.id)}
-                />
-              ))}
-              {(!lockSelection || selected === "uncategorized") && (uncategorizedCount + uncategorizedMeasurementCount) > 0 && (
-                <OptionRow
-                  icon={<FolderOpen className="w-4 h-4 opacity-40" />}
-                  label="Uncategorized"
-                  count={uncategorizedCount + uncategorizedMeasurementCount}
-                  detail={`${uncategorizedCount} samples · ${uncategorizedMeasurementCount} measurements`}
-                  selected={selected === "uncategorized"}
-                  onClick={() => setSelected("uncategorized")}
-                  muted
-                />
-              )}
-            </div>
+            <DatasetMultiSelect options={options} identities={localDatasets} value={selected} onChange={setSelected} />
+            <p className="text-sm text-muted-foreground">{sampleCount} samples · {measurementCount} measurements selected</p>
 
             <div className="flex gap-3 pt-2 border-t">
               <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
@@ -213,41 +151,5 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
         }}
       />
     </>
-  );
-}
-
-function OptionRow({
-  icon, label, count, detail, selected, onClick, muted,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  count: number;
-  detail?: string;
-  selected: boolean;
-  onClick: () => void;
-  muted?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "w-full flex items-center justify-between px-4 py-3 rounded-xl border text-sm font-medium transition-all text-left",
-        selected
-          ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20"
-          : "border-border bg-card hover:border-primary/30 hover:bg-muted/40"
-      )}
-    >
-      <div className="flex items-center gap-3">
-        <span className={muted ? "opacity-50" : ""}>{icon}</span>
-        <span className="min-w-0">
-          <span className={cn("block truncate max-w-[220px]", muted && "text-muted-foreground")}>{label}</span>
-          {detail && <span className="block text-xs font-normal text-muted-foreground">{detail}</span>}
-        </span>
-      </div>
-      <span className="text-xs bg-muted px-2 py-0.5 rounded-full text-muted-foreground font-mono shrink-0 ml-2">
-        {count}
-      </span>
-    </button>
   );
 }

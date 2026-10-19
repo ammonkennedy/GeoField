@@ -1,3 +1,4 @@
+import { photoLocation, withPhotoLocation } from './photo-location.ts';
 import { originalFromPhoto } from './photo-versions.ts';
 export interface PhotoDirection { degrees: number; reference: 'magnetic' | 'true'; accuracy?: 'low' | 'medium' | 'high'; }
 const MAGIC = 'GeoFieldDirectionV1:';
@@ -60,7 +61,7 @@ export function withPhotoDirection(jpeg: string, direction: PhotoDirection | nul
 }
 export async function preservePhotoDirection(jpeg: string, file: File): Promise<string> {
   const buffer = new Uint8Array(await file.arrayBuffer());
-  return withPhotoDirection(jpeg, photoDirection(url(buffer)));
+  return withPhotoLocation(withPhotoDirection(jpeg, photoDirection(url(buffer))), photoLocation(url(buffer)));
 }
 export function directionLabel(direction: PhotoDirection | null): string {
   if (!direction) return 'Direction unavailable';

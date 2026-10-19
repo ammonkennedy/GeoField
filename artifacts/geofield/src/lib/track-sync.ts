@@ -3,6 +3,7 @@ export interface TrackData {
   id: string; name: string; startedAt: string; stoppedAt?: string;
   points: TrackPoint[];
   deletedAt?: string;
+  datasetId?: string | number | null;
   downloadedTrail?: { source: "usgs" | "osm"; id: number };
 }
 export interface StoredTrack extends TrackData {
@@ -12,7 +13,7 @@ export interface TrackSnapshot {
   schema: 1; revision: string; parent?: string; track: TrackData;
 }
 export function trackPayload(t: TrackData): TrackData {
-  return { id: t.id, name: t.name, startedAt: t.startedAt, stoppedAt: t.stoppedAt, points: t.points, ...(t.deletedAt ? { deletedAt: t.deletedAt } : {}), ...(t.downloadedTrail ? { downloadedTrail: t.downloadedTrail } : {}) };
+  return { id: t.id, name: t.name, startedAt: t.startedAt, stoppedAt: t.stoppedAt, points: t.points, ...(t.datasetId !== undefined ? { datasetId: t.datasetId } : {}), ...(t.deletedAt ? { deletedAt: t.deletedAt } : {}), ...(t.downloadedTrail ? { downloadedTrail: t.downloadedTrail } : {}) };
 }
 export function validateTrackSnapshot(value: unknown): TrackSnapshot {
   const s = value as TrackSnapshot;
@@ -24,6 +25,7 @@ export function validateTrackSnapshot(value: unknown): TrackSnapshot {
       (s.track.downloadedTrail !== undefined && (!s.track.downloadedTrail ||
         !['usgs', 'osm'].includes(s.track.downloadedTrail.source) || !Number.isSafeInteger(s.track.downloadedTrail.id) || s.track.downloadedTrail.id <= 0)) ||
       (s.track.deletedAt !== undefined && !Number.isFinite(Date.parse(s.track.deletedAt))) ||
+      (s.track.datasetId !== undefined && s.track.datasetId !== null && typeof s.track.datasetId !== 'string' && (typeof s.track.datasetId !== 'number' || !Number.isFinite(s.track.datasetId))) ||
       !Array.isArray(s.track.points) || s.track.points.some(p => !validTrackPoint(p) ||
         !Number.isInteger(p.segment) || p.segment < 0 ||
         (p.elevation !== null && !Number.isFinite(p.elevation)) ||

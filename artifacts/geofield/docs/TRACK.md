@@ -60,6 +60,9 @@ marked OSM routes recursively include member ways. Duplicate downloads reuse the
 saved item. Invalid or incomplete service responses leave existing tracks intact.
 Downloads are account scoped, participate in Track sync, and retain source IDs.
 Select a saved track's title or **View route** to display and frame it on the map.
+Tap a saved blue track or its endpoint on the map for its name, distance,
+elevation gain/loss, and GPS time or downloaded-source coverage. Details use
+local track data and take priority over other overlay popups.
 
 Distances describe the downloaded mapped geometry, not a round trip or planned
 itinerary. USGS items are labeled segments. Downloaded trails currently have no
@@ -72,3 +75,9 @@ deletion record for sync. Confirmed deletions suppress stale cloud revisions;
 failed uploads keep the deletion pending. Downloading the same trail again creates
 a new track without undoing the earlier deletion. After manually stopping a walk,
 a naming popup allows a custom name or keeping the existing name.
+
+Each custom/downloaded track has a Dataset dropdown, including No dataset.
+Assignments persist locally and in cloud revisions. Tracks assigned to an offline
+local dataset wait for that dataset's cloud ID before upload. Dataset pages list
+assigned tracks below samples and structural measurements; selecting a track
+opens its route on the map. Deleted tracks are excluded.

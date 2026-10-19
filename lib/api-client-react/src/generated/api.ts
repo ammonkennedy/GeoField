@@ -789,7 +789,7 @@ export interface CloudFieldNote {
   id: string;
   title: string;
   body: string;
-  photos: Array<{ id: string; fileName: string; cloudKey: string; caption?: string }>;
+  photos: Array<{ id: string; fileName: string; cloudKey: string; caption?: string; kind?: "photo" | "video"; mimeType?: string }>;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;

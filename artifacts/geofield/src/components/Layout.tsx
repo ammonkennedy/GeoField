@@ -15,7 +15,7 @@ import { clearCachedCloudSamples } from "@/lib/cloud-samples";
 import { leaveGuestMode } from "@/lib/guest-access";
 import { stopTracking } from "@/lib/tracks";
 
-export function Layout({ children }: { children: ReactNode }) {
+export function Layout({ children, lockPageScroll = false }: { children: ReactNode; lockPageScroll?: boolean }) {
   const [location] = useLocation();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -215,70 +215,30 @@ export function Layout({ children }: { children: ReactNode }) {
           {/* Main Nav */}
           <div className="px-4">
             <h3 className="text-[11px] font-bold text-muted-foreground uppercase tracking-[0.18em] mb-3 px-2">Views</h3>
-            <nav className="space-y-1.5">
-              <Link
-                href="/"
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-                  location === "/" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-                onClick={() => setSidebarOpen(false)}
-              >
-                <MapPin className="w-4 h-4" />
-                All Samples
-              </Link>
-              <Link
-                href="/map"
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
-                  location === "/map" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-                onClick={() => setSidebarOpen(false)}
-              >
-                <Map className="w-4 h-4" />
-                Map View
-              </Link>
+            <nav aria-label="Views" className="space-y-1.5">
+              {[
+                { href: "/", label: "All Samples", icon: MapPin },
+                { href: "/map", label: "Map View", icon: Map },
+                { href: "/strike-dip", label: "Clinometer", icon: Compass },
+                { href: "/notes", label: "Notes", icon: NotebookPen },
+                { href: "/figures", label: "Generate Figures", icon: BarChart2 },
+                { href: "/track", label: "Track", icon: MapPin },
+              ].map(({ href, label, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+                    location === href ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="flex-1">{label}</span>
+                </Link>
+              ))}
             </nav>
           </div>
-
-          {/* Measurements */}
-          <div className="px-4">
-            <Link
-              href="/strike-dip"
-              className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-200 font-medium",
-                location === "/strike-dip"
-                  ? "bg-primary text-primary-foreground shadow-md"
-                  : "text-foreground hover:bg-muted"
-              )}
-              onClick={() => setSidebarOpen(false)}
-            >
-              <Compass className="w-4 h-4 opacity-80 shrink-0" />
-              <span className="flex-1">Clinometer</span>
-              {location === "/strike-dip" && <ChevronRight className="w-4 h-4 shrink-0" />}
-            </Link>
-            <Link href="/notes" onClick={() => setSidebarOpen(false)} className={cn("mt-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium", location === "/notes" ? "bg-primary text-primary-foreground shadow-md" : "text-foreground hover:bg-muted")}>
-              <NotebookPen className="h-4 w-4 shrink-0 opacity-80" />
-              <span className="flex-1">Notes</span>
-              {location === "/notes" && <ChevronRight className="h-4 w-4 shrink-0" />}
-            </Link>
-            <Link
-              href="/figures"
-              className={cn(
-                "mt-1 flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
-                location === "/figures" ? "bg-primary text-primary-foreground shadow-md" : "text-foreground hover:bg-muted"
-              )}
-              onClick={() => setSidebarOpen(false)}
-            >
-              <BarChart2 className="h-4 w-4 shrink-0 opacity-80" />
-              <span className="flex-1">Generate Figures</span>
-              {location === "/figures" && <ChevronRight className="h-4 w-4 shrink-0" />}
-            </Link>
-          </div>
-
-          <Link href="/track" onClick={() => setSidebarOpen(false)} className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium", location === "/track" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted")}>
-            <MapPin className="h-4 w-4" /><span>Track</span>
-          </Link>
 
           {/* Trips */}
           <div className="px-4">
@@ -434,7 +394,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Main Content */}
       <main
         className={cn(
-          "relative flex min-h-0 flex-1 flex-col max-w-full overflow-hidden md:min-h-screen",
+          "relative flex min-h-0 min-w-0 flex-1 flex-col max-w-full overflow-hidden md:min-h-screen",
           sidebarOpen && "pointer-events-none touch-none select-none md:pointer-events-auto md:touch-auto md:select-auto"
         )}
         inert={sidebarOpen ? true : undefined}
@@ -452,7 +412,8 @@ export function Layout({ children }: { children: ReactNode }) {
 
         <div
           id="geofield-page-scroll"
-          className="mx-auto min-h-0 w-full flex-1 overflow-y-auto overscroll-y-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch] md:max-w-6xl md:overflow-visible md:p-8"
+          style={lockPageScroll ? { overflow: "hidden", overscrollBehavior: "none" } : undefined}
+          className="mx-auto min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch] md:max-w-6xl md:overflow-visible md:p-8"
         >
           {children}
         </div>

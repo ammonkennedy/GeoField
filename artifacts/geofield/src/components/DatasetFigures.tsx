@@ -110,10 +110,12 @@ function BarFigure({
   data,
   paramLabel,
   paramUnit,
+  labelPoints,
 }: {
   data: any[];
   paramLabel: string;
   paramUnit: string;
+  labelPoints: boolean;
 }) {
   return (
     <FigureViewport data={data}>
@@ -139,7 +141,7 @@ function BarFigure({
           {data.map((d, i) => (
             <Cell key={i} fill={TYPE_COLORS[d.type] || "#8884d8"} opacity={0.85} />
           ))}
-          <LabelList dataKey="value" position="top" style={{ fontSize: 10 }} />
+          <LabelList dataKey={labelPoints ? "name" : "value"} position="top" style={{ fontSize: 10, fill: "#374151" }} />
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -159,7 +161,7 @@ function ScatterTooltip({ active, payload }: any) {
   );
 }
 
-function ScatterFigure({ data, xLabel, yLabel }: { data: any[]; xLabel: string; yLabel: string }) {
+function ScatterFigure({ data, xLabel, yLabel, labelPoints }: { data: any[]; xLabel: string; yLabel: string; labelPoints: boolean }) {
   return (
     <FigureViewport data={data}>
     <ResponsiveContainer width="100%" height="100%">
@@ -172,6 +174,7 @@ function ScatterFigure({ data, xLabel, yLabel }: { data: any[]; xLabel: string; 
           {data.map((d, i) => (
             <Cell key={i} fill={TYPE_COLORS[d.type] || "#8884d8"} />
           ))}
+          {labelPoints && <LabelList dataKey="name" position="top" offset={8} style={{ fontSize: 10, fill: "#374151" }} />}
         </Scatter>
       </ScatterChart>
     </ResponsiveContainer>
@@ -187,12 +190,13 @@ function quantile(sorted: number[], percentile: number) {
   return sorted[lower] + ((sorted[lower + 1] ?? sorted[lower]) - sorted[lower]) * fraction;
 }
 
-function BoxFigure({ data, paramLabel, paramUnit }: { data: any[]; paramLabel: string; paramUnit: string }) {
+function BoxFigure({ data, paramLabel, paramUnit, labelPoints }: { data: any[]; paramLabel: string; paramUnit: string; labelPoints: boolean }) {
   const types = [...new Set(data.map((item) => item.type))];
   const groups = [
-    { label: "All Samples", values: data.map((item) => item.value) },
+    { label: "All Samples", points: data, values: data.map((item) => item.value) },
     ...types.map((type) => ({
       label: String(type).replace("_", "/"),
+      points: data.filter((item) => item.type === type),
       values: data.filter((item) => item.type === type).map((item) => item.value),
     })),
   ].map((group) => {
@@ -241,6 +245,15 @@ function BoxFigure({ data, paramLabel, paramUnit }: { data: any[]; paramLabel: s
                 <line x1={x - 18} x2={x + 18} y1={y(group.min)} y2={y(group.min)} stroke={color} strokeWidth="2" />
                 <rect x={x - 30} y={y(group.q3)} width="60" height={Math.max(1, y(group.q1) - y(group.q3))} fill={color} fillOpacity="0.25" stroke={color} strokeWidth="2" rx="3" />
                 <line x1={x - 30} x2={x + 30} y1={y(group.median)} y2={y(group.median)} stroke={color} strokeWidth="3" />
+                {labelPoints && group.points.map((point, pointIndex) => {
+                  const pointX = x - 20 + (pointIndex % 5) * 10;
+                  return (
+                    <g key={pointIndex}>
+                      <circle cx={pointX} cy={y(point.value)} r={3} fill={color} />
+                      <text x={pointX + 5} y={y(point.value) - 5} fontSize="10" fill="#374151">{point.name}</text>
+                    </g>
+                  );
+                })}
                 <text x={x} y={height - 35} textAnchor="middle" fontSize="11" fill="#374151" style={{ textTransform: "capitalize" }}>{group.label}</text>
                 <text x={x} y={height - 18} textAnchor="middle" fontSize="10" fill="#6b7280">n={group.values.length}</text>
               </g>
@@ -258,6 +271,7 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
   const [selectedParam, setSelectedParam] = useState<string>("");
   const [scatterXParam, setScatterXParam] = useState<string>("");
   const [chartType, setChartType] = useState<ChartType>("bar");
+  const [labelPoints, setLabelPoints] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
@@ -532,6 +546,10 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                         </p>
                       </div>
                       <div className="flex flex-wrap items-start gap-4">
+                        <label className="flex min-h-9 cursor-pointer items-center gap-2 text-sm" data-html2canvas-ignore="true">
+                          <input type="checkbox" checked={labelPoints} onChange={(event) => setLabelPoints(event.target.checked)} className="h-4 w-4 accent-primary" />
+                          Label points
+                        </label>
                         {stats && (
                           <div className="flex gap-4 text-center text-xs">
                             <div><p className="text-muted-foreground">Min</p><p className="font-semibold">{stats.min}</p></div>
@@ -558,19 +576,21 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                       <BarFigure
                         key={selectedParam}
                         data={chartData}
+                        labelPoints={labelPoints}
                         paramLabel={paramMeta?.label ?? ""}
                         paramUnit={paramMeta?.unit ?? ""}
                       />
                     )}
                     {chartType === "scatter" && (
                       scatterXParam && scatterData.length > 0
-                        ? <ScatterFigure key={`${selectedParam}:${scatterXParam}`} data={scatterData} xLabel={`${scatterXMeta?.label ?? ""}${scatterXMeta?.unit ? ` (${scatterXMeta.unit})` : ""}`} yLabel={`${paramMeta?.label ?? ""}${paramMeta?.unit ? ` (${paramMeta.unit})` : ""}`} />
+                        ? <ScatterFigure key={`${selectedParam}:${scatterXParam}`} data={scatterData} labelPoints={labelPoints} xLabel={`${scatterXMeta?.label ?? ""}${scatterXMeta?.unit ? ` (${scatterXMeta.unit})` : ""}`} yLabel={`${paramMeta?.label ?? ""}${paramMeta?.unit ? ` (${paramMeta.unit})` : ""}`} />
                         : <div className="py-16 text-center text-sm text-muted-foreground">{scatterXParam ? "No records contain values for both selected parameters." : "Choose an X-axis parameter to generate the scatter plot."}</div>
                     )}
                     {chartType === "box" && (
                       <BoxFigure
                         key={selectedParam}
                         data={chartData}
+                        labelPoints={labelPoints}
                         paramLabel={paramMeta?.label ?? ""}
                         paramUnit={paramMeta?.unit ?? ""}
                       />

@@ -1,6 +1,9 @@
 import { readDurableArray, writeDurableArray } from "./durable-storage.ts";
 
+/** The existing photos collection also carries videos; missing kind means photo. */
 export interface NotePhoto {
+  kind?: "photo" | "video";
+  mimeType?: string;
   id: string;
   fileName: string;
   caption?: string;

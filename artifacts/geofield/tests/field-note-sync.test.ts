@@ -121,3 +121,55 @@ test("photo labels survive upload and cache; dropped captions are not acknowledg
  assert.equal(scenario.local()[0].photos[0].caption, 'Revised label');
  assert.equal(scenario.local()[0].localRevision, 'caption-edit');
 });
+
+test('videos retain format and associations on upload and another device offline cache', async () => {
+  const scenario = setup();
+  const video: NotePhoto = { id: 'video-1', fileName: 'outcrop.mov', kind: 'video', mimeType: 'video/quicktime', localKey: 'local-video' };
+  scenario.store.save([{ ...note, photos: [...note.photos, video] }]);
+  await syncNoteRecords(scenario.store);
+  assert.equal(scenario.remote()[0].photos[1].kind, 'video');
+  assert.equal(scenario.remote()[0].photos[1].mimeType, 'video/quicktime');
+  assert.equal(scenario.local()[0].photos[1].localKey, 'local-video');
+  scenario.store.save([]);
+  await syncNoteRecords(scenario.store);
+  assert.equal(scenario.local()[0].photos[1].kind, 'video');
+  assert.equal(scenario.local()[0].photos[1].localKey, 'downloaded-photo');
+});
+
+test('failed video upload preserves the full pending note and does not publish partial attachments', async () => {
+  const scenario = setup();
+  const pending = { ...note, photos: [...note.photos, { id: 'video', fileName: 'clip.mp4', kind: 'video' as const, mimeType: 'video/mp4', localKey: 'video-bytes' }] };
+  scenario.store.save([pending]);
+  const upload = scenario.store.uploadPhoto;
+  scenario.store.uploadPhoto = async (id, media) => {
+    if (media.kind === 'video') throw new Error('Video upload interrupted');
+    return upload(id, media);
+  };
+  await assert.rejects(syncNoteRecords(scenario.store), /Video upload interrupted/);
+  assert.deepEqual(scenario.local(), [pending]);
+  assert.deepEqual(scenario.remote(), []);
+});
+
+test('cloud confirmation must preserve video kind and MIME type', async () => {
+  for (const missing of ['kind', 'mimeType'] as const) {
+    const scenario = setup();
+    scenario.store.save([{ ...note, photos: [{ id: 'video', fileName: 'clip', kind: 'video', mimeType: 'video/quicktime', localKey: 'video-bytes' }] }]);
+    const write = scenario.store.write;
+    scenario.store.write = async (record, exists) => write({ ...record, photos: record.photos.map(photo => ({ ...photo, [missing]: undefined })) }, exists);
+    await assert.rejects(syncNoteRecords(scenario.store), /confirm/);
+    assert.equal(scenario.local()[0].localRevision, 'revision-1');
+  }
+});
+
+test('video removal during upload is not resurrected by the acknowledgment', async () => {
+  const scenario = setup();
+  scenario.store.save([{ ...note, photos: [{ id: 'video', fileName: 'clip.mp4', kind: 'video', mimeType: 'video/mp4', localKey: 'video-bytes' }] }]);
+  const upload = scenario.store.uploadPhoto;
+  scenario.store.uploadPhoto = async (id, media) => {
+    scenario.store.save([{ ...note, photos: [], localRevision: 'video-removed' }]);
+    return upload(id, media);
+  };
+  await syncNoteRecords(scenario.store);
+  assert.deepEqual(scenario.local()[0].photos, []);
+  assert.equal(scenario.local()[0].localRevision, 'video-removed');
+});

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createLocalDataset, markLocalDatasetSynced, updateLocalDataset, deleteLocalDataset, getLocalDatasets, getPendingLocalDatasets, reconcileLocalDatasets } from "../src/lib/local-datasets.ts";
+import { createLocalDataset, markLocalDatasetSynced, updateLocalDataset, deleteLocalDataset, getLocalDatasets, getPendingLocalDatasets, getVisibleLocalDatasets, reconcileLocalDatasets } from "../src/lib/local-datasets.ts";
 import { saveMeasurements, loadMeasurements, deleteMeasurement, restoreMeasurement } from "../src/lib/strike-dip-measurements.ts";
 import { getLocalDeletedItems } from "../src/lib/recently-deleted.ts";
 function setup() {
@@ -22,6 +22,20 @@ test("dataset deletion is durable, preserves measurements, and remains pending u
 test("cloud dataset deletion hides its local mirror without deleting samples or measurements", () => {
  setup();const folder=createLocalDataset({name:"Dataset"});markLocalDatasetSynced(folder.id,"cloud",folder.localRevision);
  reconcileLocalDatasets([{id:"cloud",name:"Dataset",deletedAt:"2026-09-18T12:00:00Z"}]);assert.equal(getLocalDatasets().length,0);assert.equal(getLocalDatasets(true).length,1);
+});
+test("account datasets are durably mirrored for offline use without duplicate entries", () => {
+ setup();
+ const remote = [{ id: "account-folder", name: "Field sites", description: "Season 1" }];
+ reconcileLocalDatasets(remote);
+ const cached = getLocalDatasets();
+ assert.equal(cached.length, 1);
+ assert.equal(cached[0].cloudId, "account-folder");
+ assert.deepEqual(getVisibleLocalDatasets(cached, undefined).map(item => item.name), ["Field sites"]);
+ assert.equal(getPendingLocalDatasets().length, 0);
+ reconcileLocalDatasets(remote);
+ assert.equal(getLocalDatasets().length, 1);
+ reconcileLocalDatasets([{ ...remote[0], name: "Updated field sites" }]);
+ assert.equal(getLocalDatasets()[0].name, "Updated field sites");
 });
 test("measurement deletion keeps a sync tombstone and restoration keeps the photo", () => {
  setup();saveMeasurements([{id:"m",label:"Outcrop",strike:"10",dip:"20",photo:"local-photo"} as any]);
