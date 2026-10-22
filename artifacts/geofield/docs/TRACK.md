@@ -8,9 +8,10 @@ On the website, keep the page visible and screen awake; hidden intervals start
 a new segment when you return. Choose **Stop tracking** when finished.
 
 Each route includes its name, distance in miles, estimated ascent/descent in feet,
-recorded GPS time, a Map View visibility toggle, and JSON export. Routes appear
-as blue lines with green start markers and blue end markers. **View route** fits
-the map to that walk without hiding sample/measurement markers.
+recorded GPS time and JSON export. Saved routes appear in green. **View route**
+opens Map View with **Hiking Trails and Tracks** selected and fits the map to
+the chosen route without automatically following GPS. There is no visibility
+checkbox on track cards.
 
 Points are saved in account-scoped IndexedDB transactions without needing
 internet. Track geometry no longer competes with samples and preferences for the

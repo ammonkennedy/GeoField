@@ -82,7 +82,7 @@ export async function startTracking() {
   if (!accountId) throw new Error('Sign in before recording a track.');
   if (stopping) throw new Error('Wait for the previous track to finish stopping.');
   const id = crypto.randomUUID();
-  const track: WalkingTrack = { id, name: `Walk ${new Date().toLocaleString()}`, startedAt: new Date().toISOString(), points: [], visible: true };
+  const track: WalkingTrack = { id, name: "Custom Trail", startedAt: new Date().toISOString(), points: [], visible: true };
   starting = true;
   const recordingOwner = accountId;
   try {

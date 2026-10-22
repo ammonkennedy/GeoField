@@ -1,3 +1,4 @@
+import { loadTrips, TRIPS_UPDATED } from "@/lib/trips";
 import { DatasetTracks } from '@/components/DatasetTracks';
 import { BulkRecords } from "@/components/BulkRecords";
 import { MeasurementRow } from "@/components/MeasurementRow";
@@ -12,7 +13,7 @@ import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar, Cloud, Database, Compass } from "lucide-react";
+import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar, Cloud, Database, Compass, Route } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useSamplesMutations, useFoldersMutations } from "@/hooks/use-geofield";
 import { ExportDialog } from "@/components/ExportDialog";
@@ -65,7 +66,19 @@ export default function Dashboard() {
   const [exportOpen, setExportOpen] = useState(false);
   const [queuedSamples, setQueuedSamples] = useState(() => getQueue(true));
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
+  const [trips, setTrips] = useState(() => loadTrips());
   const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
+
+  useEffect(() => {
+    const refreshTrips = () => setTrips(loadTrips());
+    refreshTrips();
+    window.addEventListener(TRIPS_UPDATED, refreshTrips);
+    window.addEventListener("storage", refreshTrips);
+    return () => {
+      window.removeEventListener(TRIPS_UPDATED, refreshTrips);
+      window.removeEventListener("storage", refreshTrips);
+    };
+  }, [authData?.user?.id]);
 
   const { deleteSample } = useSamplesMutations();
   const { deleteFolder } = useFoldersMutations();
@@ -229,7 +242,9 @@ export default function Dashboard() {
           {[
             { label: "Samples", value: totalSamples, icon: Database },
             { label: "Measurements", value: totalMeasurements, icon: Compass },
-            { label: "Mapped", value: mappedSamples, icon: MapPin },
+            activeFolder
+              ? { label: "Mapped", value: mappedSamples, icon: MapPin }
+              : { label: "Trips", value: trips.length, icon: Route },
             activeFolder
               ? { label: "Pending Sync", value: pendingSamples, icon: Cloud }
               : { label: "Datasets", value: datasetCount, icon: FolderOpen },

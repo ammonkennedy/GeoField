@@ -1,5 +1,5 @@
 import { addUserHeading } from "@/lib/map-user-heading";
-import { trackIdAtPoint, trackPopupContent } from "@/lib/track-map";
+import { TRACK_MAP_SOURCE, trackIdAtPoint, trackPopupContent } from "@/lib/track-map";
 import { loadTracks, TRACKS_UPDATED } from '@/lib/tracks';
 import { DatasetMultiSelect } from "@/components/DatasetMultiSelect";
 import { datasetOptions, datasetSelected, datasetSelectionLabel, type DatasetSelection } from "@/lib/dataset-selection";
@@ -194,6 +194,10 @@ function safeAddOverlay(map: any, overlay: OverlayLayer, geologyOpacity = MACROS
       });
       map.addLayer({ id: "trails-overlay", type: "raster", source: "trails-src", paint: { "raster-opacity": 0.9 } });
       addDetailedTrails(map);
+      // Saved routes should cover the general trail geometry underneath.
+      for (const id of [TRACK_MAP_SOURCE + "-outline", TRACK_MAP_SOURCE, TRACK_MAP_SOURCE + "-ends"]) {
+        if (map.getLayer(id)) map.moveLayer(id);
+      }
     }
   } catch {}
 }
@@ -213,7 +217,7 @@ export default function MapViewPage() {
   const [selectedFolderId, setSelectedFolderId] = useState<DatasetSelection>("all");
   const [baseLayer, setBaseLayer] = useState<BaseLayer>("satellite");
   const baseLayerRef = useRef<BaseLayer>("satellite");
-  const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>("none");
+  const [overlayLayer, setOverlayLayer] = useState<OverlayLayer>(() => new URLSearchParams(window.location.search).has("track") ? "trails" : "none");
   const [geologyOpacity, setGeologyOpacity] = useState(MACROSTRAT_DEFAULT_OPACITY);
   const [terrain, setTerrain] = useState(false);
   const trailRequestRef = useRef<AbortController | null>(null);
@@ -272,10 +276,10 @@ export default function MapViewPage() {
 
   useEffect(() => {
     if (!selectedTrackRef.current) return;
-    const track = tracks.find(item => item.id === selectedTrackRef.current && item.visible && datasetSelected(selectedFolderId, item.datasetId, localDatasets));
+    const track = tracks.find(item => item.id === selectedTrackRef.current && (overlayLayer === "trails" || (item.visible && datasetSelected(selectedFolderId, item.datasetId, localDatasets))));
     if (track) trailPopupRef.current?.setDOMContent(trackPopupContent(track));
     else { trailPopupRef.current?.remove(); selectedTrackRef.current = null; }
-  }, [tracks, selectedFolderId, localDatasets]);
+  }, [tracks, selectedFolderId, localDatasets, overlayLayer]);
 
   const mapRef = useRef<any>(null);
   const [prismMap, setPrismMap] = useState<any>(null);
@@ -285,7 +289,7 @@ export default function MapViewPage() {
   const layerFileInputRef = useRef<HTMLInputElement>(null);
   const customLayersRef = useRef<CustomMapLayer[]>(loadCustomLayers());
   // Use refs for values accessed inside async / event-handler closures to avoid stale captures
-  const overlayLayerRef = useRef<OverlayLayer>("none");
+  const overlayLayerRef = useRef<OverlayLayer>(overlayLayer);
   const terrainRef = useRef(false);
   const mapLoadedRef = useRef(false);
   const geologyOpacityRef = useRef(MACROSTRAT_DEFAULT_OPACITY);
@@ -605,7 +609,7 @@ export default function MapViewPage() {
       map.on("click", async (e: any) => {
         if (exportModeRef.current) return;
         const trackId = trackIdAtPoint(map, e.point);
-        const track = trackId ? loadTracks().find(item => item.id === trackId && item.visible) : undefined;
+        const track = trackId ? loadTracks().find(item => item.id === trackId && (overlayLayerRef.current === "trails" || item.visible)) : undefined;
         if (track) {
           trailRequestRef.current?.abort();
           geologyRequestRef.current?.abort();
@@ -1119,7 +1123,7 @@ export default function MapViewPage() {
               <option value="soil">Soil Types</option>
               <option value="prism">PRISM Climate</option>
               <option value="faults">Active Faults (Global &amp; U.S.)</option>
-              <option value="trails">Hiking Trails (Waymarked)</option>
+              <option value="trails">Hiking Trails and Tracks</option>
             </select>
             <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           </div>
@@ -1192,7 +1196,7 @@ export default function MapViewPage() {
           </div>
         )}
 
-        {prismMap && <TrackOverlay map={prismMap} selection={selectedFolderId} identities={localDatasets} />}
+        {prismMap && <TrackOverlay map={prismMap} selection={selectedFolderId} identities={localDatasets} showAll={overlayLayer === "trails"} />}
         {overlayLayer === "faults" && prismMap && <FaultOverlay map={prismMap} exportMode={exportMode} />}
         {overlayLayer === "prism" && prismMap && <PrismOverlay map={prismMap} exportMode={exportMode} />}
 
@@ -1201,7 +1205,7 @@ export default function MapViewPage() {
             <Layers className="w-3.5 h-3.5 text-primary shrink-0" />
             {overlayLayer === "geology"
               ? "Click anywhere to get rock formation and geological age data."
-              : overlayLayer === "trails" ? "Zoom in for smaller U.S. trails. Tap blue trails for segment details or marked routes for route information." : "Click a visible USDA soil map unit to get SSURGO classification data (US coverage)."}
+              : overlayLayer === "trails" ? "Green: your recorded and downloaded tracks. Blue: general trails. Zoom in for smaller U.S. trails; tap a trail or track for details." : "Click a visible USDA soil map unit to get SSURGO classification data (US coverage)."}
           </div>
         )}
 

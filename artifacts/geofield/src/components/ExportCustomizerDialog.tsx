@@ -47,7 +47,7 @@ export function ExportCustomizerDialog({
 }: ExportCustomizerDialogProps) {
   const [columns, setColumns] = useState<ExportColumn[]>(initialColumns);
   const [groups, setGroups] = useState<ExportSheetGroup[]>(initialGroups);
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(initialGroups.slice(0, 1).map((group) => group.key)));
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set<string>());
   const grouped = groups.length > 0;
   const [sheetName, setSheetName] = useState(initialConfig.sheetName);
   const [orientation, setOrientation] = useState<ExportFormatConfig["orientation"]>(initialConfig.orientation || "normal");
@@ -66,7 +66,7 @@ export function ExportCustomizerDialog({
     initializedForOpen.current = true;
     setColumns(initialColumns);
     setGroups(initialGroups);
-    setOpenGroups(new Set(initialGroups.slice(0, 1).map((group) => group.key)));
+    setOpenGroups(new Set<string>());
     setSheetName(initialConfig.sheetName);
     setOrientation(initialConfig.orientation || "normal");
     setCustomRows(initialConfig.customRows || []);
@@ -256,8 +256,8 @@ export function ExportCustomizerDialog({
             />
           </div>}
 
-          {/* Orientation */}
-          <div className="space-y-2">
+          {/* Single-sheet layout; grouped exports use each sheet’s own control. */}
+          {!grouped && <div className="space-y-2">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Spreadsheet Layout
             </Label>
@@ -266,7 +266,6 @@ export function ExportCustomizerDialog({
               onClick={() => {
                 const next = orientation === "normal" ? "transposed" : "normal";
                 setOrientation(next);
-                setGroups(current => current.map(group => ({ ...group, orientation: next })));
               }}
               className={cn(
                 "w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-all",
@@ -292,7 +291,7 @@ export function ExportCustomizerDialog({
                 Flip
               </span>
             </button>
-          </div>
+          </div>}
 
           {/* Custom rows */}
           {!grouped && <div className="space-y-3">
@@ -363,8 +362,7 @@ export function ExportCustomizerDialog({
           {grouped ? (
             <div className="space-y-3">
               <div>
-                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Workbook sheets</Label>
-                <p className="mt-1 text-xs text-muted-foreground">Only these non-empty sheets will be created, in the order shown. Open a sheet to customize its parameters.</p>
+                <p className="text-xs text-muted-foreground">Each sheet records a different sample type, set default for each sample type by selecting the button.</p>
               </div>
               {groups.map((group, groupIndex) => {
                 const isOpen = openGroups.has(group.key);

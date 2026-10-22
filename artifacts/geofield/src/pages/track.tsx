@@ -1,6 +1,6 @@
 import { TrackDatasetSelect } from '@/components/TrackDatasetSelect';
 import { useEffect, useState } from 'react';
-import { Link, useLocation } from 'wouter';
+import { Link } from 'wouter';
 import { Route, Play, Square, MapPin, Trash2 } from 'lucide-react';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import { trackStats } from '@/lib/track-math';
 import { saveFile } from '@/lib/save-file';
 
 export default function TrackPage() {
-  const [, navigate] = useLocation();
   const [tracks, setTracks] = useState(() => loadTracks());
   const [status, setStatus] = useState(trackingStatus);
   const [error, setError] = useState('');
@@ -53,18 +52,17 @@ export default function TrackPage() {
         {group.map(track => {
       const stats = trackStats(track.points);
       return <article key={track.id} className="rounded-2xl border bg-card p-5 space-y-4">
-        <Link href={`/map?track=${encodeURIComponent(track.id)}`} onClick={event => { event.preventDefault(); void run(async () => { await updateTrack(track.id, { visible: true }); navigate(`/map?track=${encodeURIComponent(track.id)}`); }); }} className="block text-lg font-semibold text-primary hover:underline">{track.name}</Link>
+        <Link href={`/map?track=${encodeURIComponent(track.id)}`} className="block text-lg font-semibold text-primary hover:underline">{track.name}</Link>
         <Input key={`${track.id}:${track.name}`} aria-label="Track name" defaultValue={track.name} onBlur={e => run(() => updateTrack(track.id, { name: e.target.value.trim() || track.name }))} />
-        <p className="text-xs text-muted-foreground">{new Date(track.startedAt).toLocaleString()} · {track.downloadedTrail ? (track.downloadedTrail.source === 'usgs' ? 'Downloaded trail segment · USGS' : 'Downloaded route · © OpenStreetMap contributors') : status.activeId === track.id ? 'Recording' : track.stoppedAt ? 'Saved' : 'Interrupted — saved points retained'} · {track.localRevision ? (status.activeId === track.id ? 'Syncs when stopped' : 'Waiting to sync') : 'Synced'}</p>
+        <p className="text-xs text-muted-foreground">{track.downloadedTrail ? (track.downloadedTrail.source === 'usgs' ? 'Downloaded trail segment · USGS' : 'Downloaded route · © OpenStreetMap contributors') : status.activeId === track.id ? 'Recording' : track.stoppedAt ? 'Saved' : 'Interrupted — saved points retained'} · {track.localRevision ? (status.activeId === track.id ? 'Syncs when stopped' : 'Waiting to sync') : 'Synced'}</p>
         <TrackDatasetSelect track={track} onChange={datasetId => run(() => updateTrack(track.id, { datasetId }))} />
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[['Distance', `${(stats.distance / 1609.344).toFixed(2)} mi`], ['Elevation gain', stats.hasElevation ? `${Math.round(stats.gain * 3.28084)} ft` : 'Unavailable'], ['Elevation loss', stats.hasElevation ? `${Math.round(stats.loss * 3.28084)} ft` : 'Unavailable'], [track.downloadedTrail ? 'Coverage' : 'GPS time', track.downloadedTrail ? (track.downloadedTrail.source === 'usgs' ? 'Segment' : 'Mapped route') : `${Math.floor(stats.seconds / 60)} min`]].map(([label,value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="text-xl font-semibold text-primary">{value}</dd></div>)}
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {[['Date', new Date(track.startedAt).toLocaleDateString()], [track.downloadedTrail ? 'Saved time' : 'Start time', new Date(track.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })], ['Distance', `${(stats.distance / 1609.344).toFixed(2)} mi`], ['Elevation gain', stats.hasElevation ? `${Math.round(stats.gain * 3.28084)} ft` : 'Unavailable'], ['Elevation loss', stats.hasElevation ? `${Math.round(stats.loss * 3.28084)} ft` : 'Unavailable'], [track.downloadedTrail ? 'Coverage' : 'GPS time', track.downloadedTrail ? (track.downloadedTrail.source === 'usgs' ? 'Segment' : 'Mapped route') : `${Math.floor(stats.seconds / 60)} min`]].map(([label,value]) => <div key={label}><dt className="text-xs text-muted-foreground">{label}</dt><dd className="text-xl font-semibold text-primary">{value}</dd></div>)}
         </dl>
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={track.visible} onChange={e => run(() => updateTrack(track.id, { visible: e.target.checked }))} />Show in Map View</label>
-          <Link href={`/map?track=${encodeURIComponent(track.id)}`} onClick={event => { event.preventDefault(); void run(async () => { await updateTrack(track.id, { visible: true }); navigate(`/map?track=${encodeURIComponent(track.id)}`); }); }}><Button variant="outline" disabled={!track.points.length}><MapPin className="mr-2 h-4 w-4" />View route</Button></Link>
-          <Button variant="destructive" disabled={status.activeId === track.id} onClick={() => { setDeleteError(''); setDeletingTrack({ id: track.id, name: track.name }); }}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
-          <Button variant="outline" disabled={!track.points.length} onClick={async () => { try { await saveFile(new Blob([JSON.stringify(track, null, 2)], { type: 'application/json' }), `geofield-track-${track.id}.json`); } catch (e) { setError(e instanceof Error ? e.message : 'Export failed.'); } }}>Export track</Button>
+        <div className="grid grid-cols-3 items-center gap-2">
+          <Button asChild variant="outline" className={`min-w-0 px-1 text-xs sm:px-3 sm:text-sm ${!track.points.length ? "pointer-events-none opacity-50" : ""}`}><Link href={`/map?track=${encodeURIComponent(track.id)}`} aria-disabled={!track.points.length} tabIndex={track.points.length ? undefined : -1} onClick={event => { if (!track.points.length) event.preventDefault(); }}><MapPin className="mr-1 hidden h-4 w-4 shrink-0 sm:block" />View route</Link></Button>
+          <Button variant="destructive" className="min-w-0 px-1 text-xs sm:px-3 sm:text-sm" disabled={status.activeId === track.id} onClick={() => { setDeleteError(''); setDeletingTrack({ id: track.id, name: track.name }); }}><Trash2 className="mr-1 hidden h-4 w-4 shrink-0 sm:block" />Delete</Button>
+          <Button variant="outline" className="min-w-0 px-1 text-xs sm:px-3 sm:text-sm" disabled={!track.points.length} onClick={async () => { try { await saveFile(new Blob([JSON.stringify(track, null, 2)], { type: 'application/json' }), `geofield-track-${track.id}.json`); } catch (e) { setError(e instanceof Error ? e.message : 'Export failed.'); } }}>Export track</Button>
         </div>
       </article>;
     })}
