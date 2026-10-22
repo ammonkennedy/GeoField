@@ -10,12 +10,15 @@ import {
   DEFAULT_FORMAT_CONFIG,
 } from "@/lib/export-config";
 
+import { loadExportDefault, saveExportDefault, applyDefaultColumns } from "@/lib/export-defaults";
+
 export interface ExportSheetGroup {
   key: string;
   label: string;
   count: number;
   columns: ExportColumn[];
   customRows?: ExportCustomRow[];
+  orientation?: ExportFormatConfig["orientation"];
 }
 
 interface ExportCustomizerDialogProps {
@@ -53,6 +56,8 @@ export function ExportCustomizerDialog({
   const [choosingRowTarget, setChoosingRowTarget] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [defaultStatus, setDefaultStatus] = useState("");
+  const defaultKey = (key: string) => key === "strikedip" ? "measurements" : key;
   const initializedForOpen = useRef(false);
   useEffect(() => {
     if (!open) { initializedForOpen.current = false; return; }
@@ -68,20 +73,40 @@ export function ExportCustomizerDialog({
     setFileName(initialFileName);
     setChoosingRowTarget(false);
     setExportError("");
-  }, [open, initialColumns, initialGroups, initialConfig, initialFileName]);
-
-  const handleOpenChange = (v: boolean) => {
-    if (v) {
-      setColumns(initialColumns);
-      setGroups(initialGroups);
-      setOpenGroups(new Set(initialGroups.slice(0, 1).map((group) => group.key)));
-      setSheetName(initialConfig.sheetName);
-      setOrientation(initialConfig.orientation || "normal");
-      setCustomRows(initialConfig.customRows || []);
-      setFileName(initialFileName);
-      setChoosingRowTarget(false);
+    setDefaultStatus("");
+    try {
+      const saved = loadExportDefault(defaultKey(configKey));
+      if (saved) {
+        setColumns(applyDefaultColumns(initialColumns, saved.columns));
+        setCustomRows(saved.customRows);
+        setOrientation(saved.orientation);
+        setSheetName(saved.sheetName || initialConfig.sheetName);
+      }
+      setGroups(initialGroups.map(group => {
+        const preset = loadExportDefault(defaultKey(group.key));
+        return preset ? { ...group, columns: applyDefaultColumns(group.columns, preset.columns), customRows: preset.customRows, orientation: preset.orientation } : group;
+      }));
+    } catch (error: any) {
+      setExportError(error?.message || "Saved defaults could not be loaded.");
     }
-    onOpenChange(v);
+  }, [open, initialColumns, initialGroups, initialConfig, initialFileName, configKey]);
+
+  const handleOpenChange = (value: boolean) => onOpenChange(value);
+
+  const setDefault = (group?: ExportSheetGroup) => {
+    try {
+      saveExportDefault({
+        key: defaultKey(group?.key ?? configKey),
+        columns: group?.columns ?? columns,
+        customRows: group?.customRows ?? customRows,
+        orientation: group?.orientation ?? orientation,
+        sheetName: group ? undefined : sheetName,
+      });
+      setExportError("");
+      setDefaultStatus(group ? `Default saved for ${group.label}.` : "Default saved.");
+    } catch (error: any) {
+      setExportError(error?.message || "The default could not be saved.");
+    }
   };
 
   const moveColumn = (from: number, to: number) => {
@@ -215,6 +240,9 @@ export function ExportCustomizerDialog({
             <p className="text-xs text-muted-foreground">A date and time are added automatically so the file is easy to identify.</p>
           </div>
 
+          {defaultStatus && <p role="status" className="text-sm text-primary">{defaultStatus}</p>}
+          {!grouped && <Button type="button" variant="outline" onClick={() => setDefault()}>Set default</Button>}
+
           {/* Sheet name */}
           {!grouped && <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -235,7 +263,11 @@ export function ExportCustomizerDialog({
             </Label>
             <button
               type="button"
-              onClick={() => setOrientation((current) => current === "normal" ? "transposed" : "normal")}
+              onClick={() => {
+                const next = orientation === "normal" ? "transposed" : "normal";
+                setOrientation(next);
+                setGroups(current => current.map(group => ({ ...group, orientation: next })));
+              }}
               className={cn(
                 "w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-all",
                 orientation === "transposed"
@@ -354,7 +386,11 @@ export function ExportCustomizerDialog({
                     </button>
                     {isOpen && (
                       <div className="space-y-2 border-t bg-muted/20 p-3">
-                        <div className="flex justify-end gap-2 text-xs">
+                        <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
+                          <Button type="button" variant="outline" size="sm" onClick={() => setDefault(group)}>Set default</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => setGroups(current => current.map(item => item.key === group.key ? { ...item, orientation: (item.orientation ?? orientation) === "normal" ? "transposed" : "normal" } : item))}>
+                            {(group.orientation ?? orientation) === "normal" ? "Records as rows" : "Parameters as rows"}
+                          </Button>
                           <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => updateGroupColumns(group.key, (items) => items.map((item) => ({ ...item, enabled: true })))}>All</button>
                           <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => updateGroupColumns(group.key, (items) => items.map((item) => ({ ...item, enabled: false })))}>None</button>
                         </div>

@@ -1,3 +1,4 @@
+import { updateDatasetWithAuthorization } from "../dataset-authorization";
 import { requestWithCaptionFallback } from "../measurement-caption-request";
 import { captureAccountAuthorization } from "../account-authorization";
 import { isNetworkError, requireCloudSession } from "../cloud-session";
@@ -133,9 +134,9 @@ export async function requireCloudSyncSession() {
   });
 }
 
-async function accountRequestOptions(expectedAccountId?: string) {
+async function accountRequestOptions(expectedAccountId?: string, forceRefresh = false) {
   const accountId = expectedAccountId ?? (await getCurrentUser()).userId;
-  return captureAccountAuthorization(accountId, fetchAuthSession, () => offlineAccount.isSignedOut());
+  return captureAccountAuthorization(accountId, () => fetchAuthSession({ forceRefresh }), () => offlineAccount.isSignedOut());
 }
 
 async function hasCurrentUser() {
@@ -433,8 +434,12 @@ export function useCreateFolder(options?: MutationOptions<Folder, { data: Create
 
 export async function updateFolder({ id, data, accountId }: { id: string | number; data: CreateFolderRequest; accountId?: string }): Promise<Folder> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before updating datasets.");
-  const result = await client.models.Dataset.update(cleanObject({ id: String(id), name: data.name, description: data.description ?? "", updatedAt: nowIso() }), await accountRequestOptions(accountId));
-  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  const updatingAccount = accountId ?? (await getCurrentUser()).userId;
+  const input = cleanObject({ id: String(id), name: data.name, description: data.description ?? "", updatedAt: nowIso() });
+  const result = await updateDatasetWithAuthorization(
+    async forceRefresh => client.models.Dataset.update(input, await accountRequestOptions(updatingAccount, forceRefresh)),
+    `"${data.name}"`,
+  );
   return asFolder(result.data);
 }
 export function useUpdateFolder(options?: MutationOptions<Folder, { id: string | number; data: CreateFolderRequest }>) {
@@ -455,8 +460,11 @@ export async function deleteFolder({ id, accountId }: { id: string | number; acc
     if (detached.errors?.length) throw new Error(errorMessage(detached.errors));
     if (!detached.data) throw new Error("Cloud did not confirm that the dataset contents were preserved. Please retry.");
   }
-  const result = await client.models.Dataset.update({ id: String(id), deletedAt: nowIso(), updatedAt: nowIso() }, authorization);
-  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  const input = { id: String(id), deletedAt: nowIso(), updatedAt: nowIso() };
+  await updateDatasetWithAuthorization(
+    async forceRefresh => client.models.Dataset.update(input, await accountRequestOptions(deletingAccount, forceRefresh)),
+    String(id),
+  );
 }
 
 export async function getRecentlyDeletedFolders(): Promise<Array<Folder & { deletedAt: string }>> {
@@ -476,8 +484,12 @@ export async function getRecentlyDeletedFolders(): Promise<Array<Folder & { dele
 }
 
 export async function restoreFolder(id: string | number, accountId?: string): Promise<void> {
-  const result = await client.models.Dataset.update({ id: String(id), deletedAt: null, updatedAt: nowIso() }, await accountRequestOptions(accountId));
-  if (result.errors?.length) throw new Error(errorMessage(result.errors));
+  const restoringAccount = accountId ?? (await getCurrentUser()).userId;
+  const input = { id: String(id), deletedAt: null, updatedAt: nowIso() };
+  await updateDatasetWithAuthorization(
+    async forceRefresh => client.models.Dataset.update(input, await accountRequestOptions(restoringAccount, forceRefresh)),
+    String(id),
+  );
 }
 export function useDeleteFolder(options?: MutationOptions<void, { id: string | number }>) {
   return useMutation<void, ErrorType<unknown>, { id: string | number }>({ mutationFn: deleteFolder, ...(options?.mutation as any) });

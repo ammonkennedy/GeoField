@@ -1,3 +1,5 @@
+import { confirmDatasetContent } from "@/lib/dataset-confirmation";
+import { SyncErrorGrace } from "@/lib/sync-error-grace";
 import { syncTracks } from '@/lib/sync-tracks';
 import { loadTracks, trackingStatus, TRACKS_UPDATED } from '@/lib/tracks';
 import { loadNoteFolders, NOTE_FOLDERS_UPDATED } from "@/lib/note-folders";
@@ -127,9 +129,11 @@ async function syncLocalDataset(dataset: LocalDataset, checkAccount: () => void,
   if (dataset.cloudId) {
     if (dataset.deletedAt) await deleteFolder({ id: dataset.cloudId, accountId });
     else {
-      await updateFolder({ id: dataset.cloudId, accountId, data: { name: dataset.name, description: dataset.description } });
+      const saved = await updateFolder({ id: dataset.cloudId, accountId, data: { name: dataset.name, description: dataset.description } });
       checkAccount();
-      await restoreFolder(dataset.cloudId, accountId);
+      confirmDatasetContent(saved, dataset, dataset.cloudId);
+      if (dataset.restore) await restoreFolder(dataset.cloudId, accountId);
+      else if ((saved as any).deletedAt) throw new Error("This dataset was deleted on another device. Your offline edit is still saved; restore the dataset explicitly before syncing it.");
     }
     checkAccount();
     markLocalDatasetSynced(dataset.id, dataset.cloudId, dataset.localRevision);
@@ -159,6 +163,7 @@ async function syncLocalDataset(dataset: LocalDataset, checkAccount: () => void,
         created = await updateFolder({ id, accountId, data: { name: dataset.name, description: dataset.description } });
       }
     }
+    confirmDatasetContent(created, dataset, id);
     const cloudId = String(created.id);
     checkAccount();
     if (dataset.deletedAt) await deleteFolder({ id: cloudId, accountId });
@@ -190,6 +195,7 @@ export function useOfflineSync() {
     undefined,
   );
   const retryAttempt = useRef(0);
+  const errorGrace = useRef(new SyncErrorGrace());
   const syncRef = useRef<() => Promise<void>>(async () => {});
   const mounted = useRef(true);
   const [retryAt, setRetryAt] = useState<number | null>(null);
@@ -200,14 +206,14 @@ export function useOfflineSync() {
     setRetryAt(null);
   }, []);
 
-  const scheduleRetry = useCallback(() => {
+  const scheduleRetry = useCallback((verificationDelay?: number) => {
     if (
       !mounted.current ||
       !navigator.onLine ||
       retryTimer.current !== undefined
     )
       return;
-    const delay = syncRetryDelay(retryAttempt.current++);
+    const delay = verificationDelay ?? syncRetryDelay(retryAttempt.current++);
     setRetryAt(Date.now() + delay);
     retryTimer.current = setTimeout(() => {
       retryTimer.current = undefined;
@@ -223,6 +229,14 @@ export function useOfflineSync() {
       clearTimeout(retryTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    errorGrace.current.reset();
+    setLastError(null);
+    setCloudSignInRequired(false);
+    retryAttempt.current = 0;
+    cancelRetry();
+  }, [accountId, cancelRetry]);
 
   const refreshCount = useCallback(() => {
     const next = getPendingSyncItems(accountId);
@@ -261,21 +275,17 @@ export function useOfflineSync() {
       syncInFlight = true;
       syncingRef.current = true;
       setIsSyncing(true);
-      setLastError(null);
-      setCloudSignInRequired(false);
+
       let failed = false;
       let retryNeeded = false;
       let authRequired = false;
+      let failureMessage: string | null = null;
       const reportFailure = (error: any) => {
         failed = true;
         if (requiresCloudSignIn(error)) {
           authRequired = true;
-          setCloudSignInRequired(true);
         }
-        setLastError(
-          error?.message ||
-            "Could not sync. Your data is still saved on this device.",
-        );
+        failureMessage = error?.message || "Could not sync. Your data is still saved on this device.";
         if (isRetryableSyncError(error)) retryNeeded = true;
       };
       try {
@@ -345,8 +355,18 @@ export function useOfflineSync() {
                 `Downloading cloud samples: ${downloaded} received (page ${page})…`,
               ),
               true, accountId,
-            ),
-            getFolders(true, accountId),
+            ).then(samples => {
+              checkAccount();
+              const cached = cacheCloudSamples(samples);
+              queryClient.setQueryData(getGetSamplesQueryKey(), cached);
+              return samples;
+            }),
+            getFolders(true, accountId).then(folders => {
+              checkAccount();
+              reconcileLocalDatasets(folders);
+              queryClient.setQueryData(getGetFoldersQueryKey(), folders.filter((item: any) => !item.deletedAt));
+              return folders;
+            }),
             syncStrikeDipMeasurements(accountId),
             syncFieldNotes(accountId),
             syncNoteFolders(accountId),
@@ -410,10 +430,14 @@ export function useOfflineSync() {
             ...loadFieldNotes(accountId).filter(item => item.localRevision).map(item => `note "${item.title || item.id}"`),
             ...loadNoteFolders(accountId).filter(item => item.localRevision).map(item => `note folder "${item.name}"`),
           ];
-          reportFailure(new Error(`Still pending: ${remaining.slice(0, 3).join(", ")}. The latest changes are saved on this device but have not been confirmed by the cloud. Try Sync again; check that these records are assigned to an available dataset.`));
+          retryNeeded = true;
+          reportFailure(new Error(`Still pending: ${remaining.slice(0, 3).join(", ")}. The latest changes are saved on this device but have not been confirmed by the cloud. Sync will retry automatically. If this continues, check that these records are assigned to an available dataset.`));
         }
 
         if (!failed) {
+          errorGrace.current.reset();
+          setLastError(null);
+          setCloudSignInRequired(false);
           retryAttempt.current = 0;
           cancelRetry();
         }
@@ -424,7 +448,18 @@ export function useOfflineSync() {
         syncingRef.current = false;
         setIsSyncing(false);
         setSyncProgress(null);
+        if (!mounted.current || getStorageAccountId() !== accountId) return;
         refreshCount();
+        if (failed && navigator.onLine) {
+          const decision = errorGrace.current.failure(Date.now());
+          if (!decision.show) {
+            // Verify with a fresh pass, not a timer that displays a stale error.
+            scheduleRetry(decision.verifyAfter);
+          } else {
+            setLastError(failureMessage);
+            setCloudSignInRequired(authRequired);
+          }
+        }
         if (!failed && (loadNoteFolders(accountId).some(folder => folder.localRevision) || loadTrips(true).some((trip) => trip.localRevision) || getPendingLocalDatasets().length > 0 || loadMeasurements(true).some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
         if (retryNeeded && !authRequired) scheduleRetry();
       }
@@ -439,16 +474,18 @@ export function useOfflineSync() {
       // Sync writes also emit storage events; do not turn a pending failed link
       // into an unbounded immediate retry loop. runSync schedules safe retries.
       if (syncingRef.current) return;
-      if (!loadNoteFolders(accountId).some(folder => folder.localRevision) && !loadFieldNotes(accountId).some((note) => note.localRevision) && !loadTrips(true).some((trip) => trip.localRevision) && !loadMeasurements(true).some((item) => item.localRevision)) return;
+      if (!accountId || getPendingSyncCount(accountId) === 0) return;
       clearTimeout(timer);
       timer = setTimeout(() => { if (navigator.onLine) void sync(); }, 1500);
     };
+    window.addEventListener(QUEUE_UPDATED_EVENT, changed);
+    window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, changed);
     window.addEventListener(NOTE_FOLDERS_UPDATED, changed);
     window.addEventListener(FIELD_NOTES_UPDATED, changed);
     window.addEventListener(TRIPS_UPDATED, changed);
     window.addEventListener(TRACKS_UPDATED, changed);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, changed);
-    return () => { clearTimeout(timer); window.removeEventListener(NOTE_FOLDERS_UPDATED, changed); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(TRACKS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
+    return () => { clearTimeout(timer); window.removeEventListener(QUEUE_UPDATED_EVENT, changed); window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, changed); window.removeEventListener(NOTE_FOLDERS_UPDATED, changed); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(TRACKS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
   }, [accountId, sync]);
   const rebuildCloudCache = useCallback(() => runSync(true), [runSync]);
   useEffect(() => {
@@ -462,6 +499,9 @@ export function useOfflineSync() {
     };
     const handleOffline = () => {
       setIsOnline(false);
+      errorGrace.current.reset();
+      setLastError(null);
+      setCloudSignInRequired(false);
       cancelRetry();
     };
 

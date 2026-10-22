@@ -145,6 +145,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
             sampleColumnsByType,
             sampleCustomRowsByType,
             sampleConfig: config,
+            orientationsByType: Object.fromEntries(groups.map(group => [group.key, group.orientation])),
             measurementColumns: measurementGroup?.columns,
             measurementCustomRows: measurementGroup?.customRows,
           });

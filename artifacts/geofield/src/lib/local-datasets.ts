@@ -7,6 +7,7 @@ export interface LocalDataset {
   id: number;
   localRevision?: string;
   deletedAt?: string | null;
+  restore?: boolean;
   name: string;
   description?: string;
   createdAt: string;
@@ -81,7 +82,8 @@ export function markLocalDatasetSynced(id: number | string, cloudId: string, rev
             ...dataset,
             cloudId,
             localRevision: dataset.localRevision === revision ? undefined : dataset.localRevision,
-            syncStatus: "synced",
+            restore: dataset.localRevision === revision ? undefined : dataset.restore,
+            syncStatus: dataset.localRevision === revision ? "synced" : "local",
             syncedAt: new Date().toISOString(),
           }
         : dataset
@@ -148,6 +150,23 @@ export function updateLocalDataset(id: number, input: { name: string; descriptio
   );
 }
 
+/** Stage cloud-dataset edits locally so airplane mode and brief outages behave alike. */
+export function editCloudDatasetOffline(cloudId: string | number, input: { name: string; description?: string }) {
+  const datasets = getLocalDatasets(true);
+  const existing = datasets.find(dataset => dataset.cloudId === String(cloudId));
+  if (existing?.deletedAt) throw new Error("Restore this dataset before editing it.");
+  const edited: LocalDataset = {
+    ...(existing ?? { id: nextLocalDatasetId(datasets), createdAt: new Date().toISOString(), isLocal: true as const }),
+    cloudId: String(cloudId),
+    name: input.name.trim(),
+    description: input.description?.trim() || "",
+    localRevision: crypto.randomUUID(),
+    syncStatus: "local",
+  };
+  saveLocalDatasets([...datasets.filter(dataset => dataset.id !== edited.id), edited]);
+  return edited;
+}
+
 export function deleteLocalDataset(id: number | string) {
   const dataset = getLocalDatasets(true).find((item) => String(item.id) === String(id));
   if (dataset) archiveLocalItem("dataset", dataset.name, dataset);
@@ -168,7 +187,7 @@ export function deleteLocalDataset(id: number | string) {
 export async function restoreLocalDataset(item: LocalDeletedItem) {
   if (item.kind !== "dataset") return;
   const datasets = getLocalDatasets(true);
-  const restored = { ...item.data, deletedAt: null, localRevision: crypto.randomUUID() };
+  const restored = { ...item.data, deletedAt: null, restore: true, localRevision: crypto.randomUUID() };
   saveLocalDatasets([...datasets.filter((dataset) => String(dataset.id) !== String(item.data.id)), restored]);
   removeLocalDeletedItem(item.trashId);
 }

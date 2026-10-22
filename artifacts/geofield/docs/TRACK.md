@@ -12,8 +12,11 @@ recorded GPS time, a Map View visibility toggle, and JSON export. Routes appear
 as blue lines with green start markers and blue end markers. **View route** fits
 the map to that walk without hiding sample/measurement markers.
 
-Points are saved incrementally in account-scoped durable storage without needing
-internet. A reload/process exit preserves committed points and leaves the route
+Points are saved in account-scoped IndexedDB transactions without needing
+internet. Track geometry no longer competes with samples and preferences for the
+small localStorage quota. Existing local tracks migrate automatically; original
+copies are removed only after the database commit is read back and verified.
+Stop waits for queued GPS writes, and sync waits for durable local confirmation. A reload/process exit preserves committed points and leaves the route
 interrupted rather than silently restarting GPS. Sign-out stops recording.
 Denied permissions, weak fixes, and storage failures are surfaced.
 
@@ -81,3 +84,10 @@ Assignments persist locally and in cloud revisions. Tracks assigned to an offlin
 local dataset wait for that dataset's cloud ID before upload. Dataset pages list
 assigned tracks below samples and structural measurements; selecting a track
 opens its route on the map. Deleted tracks are excluded.
+
+Storage quota regression: with Vite running on 127.0.0.1:5194, run
+`node artifacts/geofield/tests/track-storage.browser.mjs` using Playwright. Optional
+`PLAYWRIGHT_MODULE` and `CHROMIUM_PATH` select an external test installation.
+The test uses a disposable browser context, migrates 12,000 points, fills only
+fixture localStorage, and checks recording, reload, account isolation, failed
+database writes, and deletion tombstones. This is not physical-device validation.

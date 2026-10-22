@@ -36,7 +36,7 @@ export function validateTrackSnapshot(value: unknown): TrackSnapshot {
 }
 interface Store {
   load(): StoredTrack[];
-  save(tracks: StoredTrack[]): void;
+  save(tracks: StoredTrack[]): void | Promise<void>;
   activeId(): string | null;
   list(): Promise<TrackSnapshot[]>;
   put(snapshot: TrackSnapshot): Promise<void>;
@@ -52,7 +52,7 @@ export async function syncTrackRecords(store: Store) {
       await store.put(snapshot);
       const confirmed = validateTrackSnapshot(await store.get(snapshot));
       if (JSON.stringify(confirmed) !== JSON.stringify(JSON.parse(JSON.stringify(snapshot)))) throw new Error(`Cloud did not confirm track "${track.name}". It remains saved on this device.`);
-      store.save(store.load().map(current => current.id !== track.id ? current : {
+      await store.save(store.load().map(current => current.id !== track.id ? current : {
         ...current, cloudRevision: snapshot.revision,
         localRevision: current.localRevision === snapshot.revision ? undefined : current.localRevision,
       }));
@@ -85,7 +85,7 @@ export async function syncTrackRecords(store: Store) {
         visible: local?.visible ?? true, cloudRevision: snapshot.revision });
       usedIds.add(originalId);
     }
-    store.save([...merged.values()]);
+    await store.save([...merged.values()]);
   } catch (e) { errors.push(e); }
   if (errors.length) throw new AggregateError(errors, errors.map(e => e instanceof Error ? e.message : 'A track could not sync.').slice(0,3).join(' '));
 }

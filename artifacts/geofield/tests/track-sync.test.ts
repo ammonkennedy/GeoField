@@ -50,3 +50,29 @@ test('dataset assignment and removal survive confirmed sync to another device',a
  await syncTrackRecords(a.store);await syncTrackRecords(b.store);
  assert.equal(b.data()[0].datasetId,null);
 });
+
+test('sync waits for asynchronous local confirmation before downloading', async () => {
+ const a = setup();
+ const save = a.store.save;
+ let committed = false;
+ const asyncStore = { ...a.store,
+  save: async (tracks: StoredTrack[]) => {
+   await new Promise(resolve => setTimeout(resolve, 5));
+   save(tracks); committed = true;
+  },
+  list: async () => {
+   assert.equal(committed, true);
+   assert.equal(a.data()[0].localRevision, undefined);
+   return a.store.list();
+  },
+ };
+ await syncTrackRecords(asyncStore);
+ assert.equal(a.data().length, 1);
+});
+
+test('failed database commits do not acknowledge pending track revisions', async () => {
+ const a = setup();
+ await assert.rejects(syncTrackRecords({ ...a.store, save: async () => { throw new Error('Storage commit failed'); } }), /Storage commit failed/);
+ assert.equal(a.data()[0].localRevision, 'rev1');
+ assert.equal(a.data()[0].cloudRevision, undefined);
+});

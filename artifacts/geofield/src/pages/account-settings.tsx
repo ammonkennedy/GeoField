@@ -1,3 +1,4 @@
+import { removeAccountTracks } from "@/lib/track-storage";
 import { removeAccountLocalData } from "@/lib/storage-account";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -92,7 +93,7 @@ export default function AccountSettingsPage() {
     setDeleteAccountError("");
     try {
       await deleteCurrentAccount();
-      if (user?.id) removeAccountLocalData(String(user.id));
+      if (user?.id) { await removeAccountTracks(String(user.id)); removeAccountLocalData(String(user.id)); }
       queryClient.clear();
       window.location.assign("/login");
     } catch (error: any) {

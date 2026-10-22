@@ -10,11 +10,11 @@ export async function syncTracks(accountId: string) {
   const datasets = getLocalDatasets();
   for (const track of loadTracks()) {
     const resolved = resolveDatasetId(track.datasetId, datasets);
-    if (resolved !== track.datasetId) updateTrack(track.id, { datasetId: resolved });
+    if (resolved !== track.datasetId) await updateTrack(track.id, { datasetId: resolved });
   }
   await syncTrackRecords({
     load: () => { check(); return loadTracks(true); },
-    save: tracks => { check(); storeTracks(tracks); },
+    save: async tracks => { check(); await storeTracks(tracks); },
     activeId: () => trackingStatus().activeId,
     put: snapshot => {
       if (!snapshot.track.deletedAt && Number(snapshot.track.datasetId) < 0) throw new Error(`Track "${snapshot.track.name}" is waiting for its dataset to sync.`);

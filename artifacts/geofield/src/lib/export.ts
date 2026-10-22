@@ -92,6 +92,7 @@ export function buildDatasetWorkbook({
   sampleColumnsByType,
   sampleCustomRowsByType,
   sampleConfig,
+  orientationsByType,
   measurementColumns,
   measurementCustomRows,
 }: {
@@ -103,6 +104,7 @@ export function buildDatasetWorkbook({
   sampleColumnsByType: Partial<Record<SampleTypeSheetKey, ExportColumn[]>>;
   sampleCustomRowsByType?: Partial<Record<SampleTypeSheetKey, ExportFormatConfig["customRows"]>>;
   sampleConfig: ExportFormatConfig;
+  orientationsByType?: Record<string, ExportFormatConfig["orientation"] | undefined>;
   measurementColumns?: ExportColumn[];
   measurementCustomRows?: ExportFormatConfig["customRows"];
 }) {
@@ -121,7 +123,7 @@ export function buildDatasetWorkbook({
       buildStyledWorksheet(
         sampleColumnsByType[sheet.key] || getSampleColumns(typeSamples),
         sampleRows,
-        { ...sampleConfig, customRows: sampleCustomRowsByType?.[sheet.key] || [] },
+        { ...sampleConfig, orientation: orientationsByType?.[sheet.key] ?? sampleConfig.orientation, customRows: sampleCustomRowsByType?.[sheet.key] || [] },
       ),
       sheet.label,
     );
@@ -129,7 +131,7 @@ export function buildDatasetWorkbook({
 
   if (measurements.length > 0) {
     const strikeColumns = measurementColumns ?? STRIKE_DIP_COLUMNS;
-    const strikeConfig = { ...sampleConfig, customRows: measurementCustomRows ?? [], sheetName: "Measurements" };
+    const strikeConfig = { ...sampleConfig, orientation: orientationsByType?.measurements ?? sampleConfig.orientation, customRows: measurementCustomRows ?? [], sheetName: "Measurements" };
     const strikeRows = measurements.map((measurement, index) =>
       strikeDipToDataRow(measurement, index, datasetNameForId(measurement.datasetId, datasets))
     );

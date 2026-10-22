@@ -1,3 +1,4 @@
+import { addUserHeading } from "@/lib/map-user-heading";
 import { trackIdAtPoint, trackPopupContent } from "@/lib/track-map";
 import { loadTracks, TRACKS_UPDATED } from '@/lib/tracks';
 import { DatasetMultiSelect } from "@/components/DatasetMultiSelect";
@@ -534,6 +535,7 @@ export default function MapViewPage() {
         showAccuracyCircle: true,
       });
       map.addControl(geolocateControl, "top-right");
+      addUserHeading(map, geolocateControl);
       map.addControl({
         onAdd(controlMap: any) {
           const container = document.createElement("div");
@@ -1083,12 +1085,12 @@ export default function MapViewPage() {
         {/* Controls */}
         <div className="flex flex-wrap gap-3 items-center">
           {/* Base layer */}
-          <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-1 shadow-sm">
+          <div className="flex w-full min-w-0 items-center gap-1 bg-card border border-border rounded-lg p-1 shadow-sm sm:w-auto">
             {(["satellite", "street", "topographic"] as const).map((bl) => (
               <button
                 key={bl}
                 onClick={() => setBaseLayer(bl)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${baseLayer === bl ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
+                className={`flex min-w-0 flex-1 items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-xs font-medium transition-all sm:flex-none sm:gap-1.5 sm:px-3 sm:text-sm ${baseLayer === bl ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {bl === "satellite" ? <Satellite className="w-3.5 h-3.5" /> : bl === "topographic" ? <Mountain className="w-3.5 h-3.5" /> : <MapIcon className="w-3.5 h-3.5" />}
                 {bl === "topographic" ? "USGS Topo" : bl.charAt(0).toUpperCase() + bl.slice(1)}

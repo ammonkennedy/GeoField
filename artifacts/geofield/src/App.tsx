@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { initializeTrackStorage } from "@/lib/track-storage";
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -20,6 +22,22 @@ import { isGuestMode } from "@/lib/guest-access";
 
 const queryClient = new QueryClient();
 
+function TrackStorageReady({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    initializeTrackStorage().then(() => { if (!cancelled) setReady(true); })
+      .catch(error => { if (!cancelled) setError(error?.message || "Could not load saved tracks."); });
+    return () => { cancelled = true; };
+  }, [attempt]);
+  if (ready) return <>{children}</>;
+  return <div className="p-6" role="status">{error || "Loading saved tracks…"}
+    {error && <button className="ml-3 text-primary" onClick={() => { setError(""); setAttempt(value => value + 1); }}>Retry</button>}
+  </div>;
+}
+
 function AccessibleRoute({ component: Component }: { component: React.ComponentType }) {
   const { data, isLoading } = useGetCurrentAuthUser();
 
@@ -31,13 +49,13 @@ function AccessibleRoute({ component: Component }: { component: React.ComponentT
     return <Redirect to="/login" />;
   }
 
-  return <Component />;
+  return <TrackStorageReady key={data?.user?.id ?? "guest"}><Component /></TrackStorageReady>;
 }
 
 function AccountRoute({ component: Component }: { component: React.ComponentType }) {
   const { data, isLoading } = useGetCurrentAuthUser();
   if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-background"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
-  return data?.user ? <Component /> : <Redirect to="/login" />;
+  return data?.user ? <TrackStorageReady key={data.user.id}><Component /></TrackStorageReady> : <Redirect to="/login" />;
 }
 
 function Router() {

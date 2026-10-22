@@ -4,9 +4,8 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
-import { useFoldersMutations } from "@/hooks/use-geofield";
 import { Folder, useGetCurrentAuthUser } from "@workspace/api-client-react";
-import { createLocalDataset, updateLocalDataset } from "@/lib/local-datasets";
+import { createLocalDataset, updateLocalDataset, editCloudDatasetOffline } from "@/lib/local-datasets";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { requireAccountForSave } from "@/lib/guest-access";
@@ -24,7 +23,6 @@ export function FolderDialog({
 }) {
   const [name, setName] = useState(folder?.name || "");
   const [description, setDescription] = useState(folder?.description || "");
-  const { updateFolder } = useFoldersMutations();
   const { toast } = useToast();
   const { data: authData } = useGetCurrentAuthUser();
   const [, setLocation] = useLocation();
@@ -34,8 +32,7 @@ export function FolderDialog({
     setDescription(folder?.description || "");
   }, [folder, open]);
 
-  const isPending = updateFolder.isPending;
-  const useLocalDatasets = !navigator.onLine;
+  const isPending = false;
 
   const finish = () => {
     setName("");
@@ -73,20 +70,14 @@ export function FolderDialog({
       return;
     }
 
-    if (folder) {
-      if (useLocalDatasets) {
-        toast({ title: "Dataset rename needs a connection", description: "Your changes are still in this dialog. Reconnect and save again; no duplicate dataset has been created.", variant: "destructive" });
-        return;
-      }
-      updateFolder.mutate({ 
-        id: folder.id, 
-        data: { name, description } 
-      }, {
-        onSuccess: () => onOpenChange(false),
-        onError: () => toast({ title: "Dataset update is not confirmed", description: "Your changes are still here. Reconnect and try saving again.", variant: "destructive" })
-      });
-
+    try {
+      editCloudDatasetOffline(folder.id, { name, description });
+      toast({ title: "Dataset updated", description: "Saved on this device and queued for sync." });
+      finish();
+    } catch (error) {
+      toast({ title: "Dataset could not be saved", description: error instanceof Error ? error.message : "Your changes are still here. Please retry.", variant: "destructive" });
     }
+
   };
 
   return (

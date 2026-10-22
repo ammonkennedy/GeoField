@@ -1,6 +1,6 @@
 import { TrackDatasetSelect } from '@/components/TrackDatasetSelect';
 import { useEffect, useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { Route, Play, Square, MapPin, Trash2 } from 'lucide-react';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { trackStats } from '@/lib/track-math';
 import { saveFile } from '@/lib/save-file';
 
 export default function TrackPage() {
+  const [, navigate] = useLocation();
   const [tracks, setTracks] = useState(() => loadTracks());
   const [status, setStatus] = useState(trackingStatus);
   const [error, setError] = useState('');
@@ -52,7 +53,7 @@ export default function TrackPage() {
         {group.map(track => {
       const stats = trackStats(track.points);
       return <article key={track.id} className="rounded-2xl border bg-card p-5 space-y-4">
-        <Link href={`/map?track=${encodeURIComponent(track.id)}`} onClick={() => run(() => updateTrack(track.id, { visible: true }))} className="block text-lg font-semibold text-primary hover:underline">{track.name}</Link>
+        <Link href={`/map?track=${encodeURIComponent(track.id)}`} onClick={event => { event.preventDefault(); void run(async () => { await updateTrack(track.id, { visible: true }); navigate(`/map?track=${encodeURIComponent(track.id)}`); }); }} className="block text-lg font-semibold text-primary hover:underline">{track.name}</Link>
         <Input key={`${track.id}:${track.name}`} aria-label="Track name" defaultValue={track.name} onBlur={e => run(() => updateTrack(track.id, { name: e.target.value.trim() || track.name }))} />
         <p className="text-xs text-muted-foreground">{new Date(track.startedAt).toLocaleString()} · {track.downloadedTrail ? (track.downloadedTrail.source === 'usgs' ? 'Downloaded trail segment · USGS' : 'Downloaded route · © OpenStreetMap contributors') : status.activeId === track.id ? 'Recording' : track.stoppedAt ? 'Saved' : 'Interrupted — saved points retained'} · {track.localRevision ? (status.activeId === track.id ? 'Syncs when stopped' : 'Waiting to sync') : 'Synced'}</p>
         <TrackDatasetSelect track={track} onChange={datasetId => run(() => updateTrack(track.id, { datasetId }))} />
@@ -61,7 +62,7 @@ export default function TrackPage() {
         </dl>
         <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={track.visible} onChange={e => run(() => updateTrack(track.id, { visible: e.target.checked }))} />Show in Map View</label>
-          <Link href={`/map?track=${encodeURIComponent(track.id)}`} onClick={() => run(() => updateTrack(track.id, { visible: true }))}><Button variant="outline" disabled={!track.points.length}><MapPin className="mr-2 h-4 w-4" />View route</Button></Link>
+          <Link href={`/map?track=${encodeURIComponent(track.id)}`} onClick={event => { event.preventDefault(); void run(async () => { await updateTrack(track.id, { visible: true }); navigate(`/map?track=${encodeURIComponent(track.id)}`); }); }}><Button variant="outline" disabled={!track.points.length}><MapPin className="mr-2 h-4 w-4" />View route</Button></Link>
           <Button variant="destructive" disabled={status.activeId === track.id} onClick={() => { setDeleteError(''); setDeletingTrack({ id: track.id, name: track.name }); }}><Trash2 className="mr-2 h-4 w-4" />Delete</Button>
           <Button variant="outline" disabled={!track.points.length} onClick={async () => { try { await saveFile(new Blob([JSON.stringify(track, null, 2)], { type: 'application/json' }), `geofield-track-${track.id}.json`); } catch (e) { setError(e instanceof Error ? e.message : 'Export failed.'); } }}>Export track</Button>
         </div>
@@ -76,8 +77,8 @@ export default function TrackPage() {
         {deleteError && <p role="alert" className="mb-4 text-destructive">{deleteError}</p>}
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setDeletingTrack(null)}>Cancel</Button>
-          <Button variant="destructive" onClick={() => {
-            try { if (deletingTrack) deleteTrack(deletingTrack.id); setDeletingTrack(null); }
+          <Button variant="destructive" onClick={async () => {
+            try { if (deletingTrack) await deleteTrack(deletingTrack.id); setDeletingTrack(null); }
             catch (e) { setDeleteError(e instanceof Error ? e.message : 'Unable to delete track. Please retry.'); }
           }}>Delete track</Button>
         </div>
@@ -89,13 +90,13 @@ export default function TrackPage() {
           <p className="text-sm text-muted-foreground">Your track is saved. Give it a name to find it later.</p>
       </DialogHeader>
       <DialogContent>
-        <form className="space-y-4" onSubmit={event => {
+        <form className="space-y-4" onSubmit={async event => {
           event.preventDefault();
           const name = trackName.trim();
           if (!name) { setNameError('Enter a track name.'); return; }
           try {
             if (!namingTrackId) return;
-            updateTrack(namingTrackId, { name });
+            await updateTrack(namingTrackId, { name });
             setNamingTrackId(null);
           } catch (e) { setNameError(e instanceof Error ? e.message : 'Unable to save the name. Please retry.'); }
         }}>

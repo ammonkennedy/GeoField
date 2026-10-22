@@ -34,19 +34,20 @@ export async function prepareSampleUpload(item: QueuedSample, accountId: string)
 /** Refresh device-local photo copies without persisting expiring signed URLs. */
 export async function cacheSamplePhotos(sample: any, onProgress?: (sample: any) => void) {
   return cacheSampleAttachments(sample, async attachment => {
-    if ((attachment.kind || attachment.type) !== "photo" || !attachment.storageKey?.startsWith("media/")) return attachment;
+    const kind = attachment.kind || attachment.type;
+    if ((kind !== "photo" && kind !== "video") || !attachment.storageKey?.startsWith("media/")) return attachment;
     if (attachment.localKey && await getStoredMediaDataUrl(attachment.localKey)) return attachment;
     // Signed URLs expire while a device is offline. Obtain a fresh one on retry.
     const url = await resolveSampleMediaUrl(attachment.storageKey);
     const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
-    if (!response.ok) throw new Error("Network error downloading sample photos. Local samples remain available; photos will retry.");
+    if (!response.ok) throw new Error("Network error downloading sample attachments. Local samples remain available; photos will retry.");
     const blob = await response.blob();
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(blob);
     });
-    const stored = await storeMediaDataUrl({ kind: "photo", dataUrl, fileName: attachment.fileName, mimeType: blob.type });
+    const stored = await storeMediaDataUrl({ kind, dataUrl, fileName: attachment.fileName, mimeType: blob.type });
     return { ...attachment, localKey: stored.storageKey };
   }, onProgress);
 }

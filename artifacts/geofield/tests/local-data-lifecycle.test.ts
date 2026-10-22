@@ -83,3 +83,20 @@ test("confirmed deletion of an unuploaded measurement photo does not become pend
  assert.ok(loadMeasurements()[0].localRevision);
  assert.ok(loadMeasurements()[0].photoUploadId);
 });
+
+test("cloud dataset edits save offline, retain the cloud ID and survive a later download", async () => {
+ setup();
+ const { editCloudDatasetOffline } = await import("../src/lib/local-datasets.ts");
+ const edited = editCloudDatasetOffline("existing-cloud-id", { name: "Offline rename", description: "Keep this edit" });
+ assert.equal(getPendingLocalDatasets()[0].cloudId, "existing-cloud-id");
+ reconcileLocalDatasets([{ id: "existing-cloud-id", name: "Old cloud name" }]);
+ assert.equal(getLocalDatasets()[0].name, "Offline rename");
+ const second = editCloudDatasetOffline("existing-cloud-id", { name: "Newer offline rename" });
+ assert.equal(second.id, edited.id);
+ assert.equal(getLocalDatasets().length, 1);
+ markLocalDatasetSynced(second.id, "existing-cloud-id", edited.localRevision);
+ assert.equal(getPendingLocalDatasets()[0].name, "Newer offline rename");
+ assert.equal(getPendingLocalDatasets()[0].syncStatus, "local");
+ markLocalDatasetSynced(second.id, "existing-cloud-id", second.localRevision);
+ assert.equal(getPendingLocalDatasets().length, 0);
+});

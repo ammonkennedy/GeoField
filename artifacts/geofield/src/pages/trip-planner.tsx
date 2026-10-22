@@ -1,3 +1,4 @@
+import { addUserHeading } from "@/lib/map-user-heading";
 import { observeMapSize } from "@/lib/map-resize";
 import { resolveDatasetId } from "@/lib/dataset-identity";
 import { ensureMacrostratLayer, setMacrostratOpacity, renderedMacrostratUnit } from "@/lib/macrostrat-layer";
@@ -550,6 +551,7 @@ export default function TripPlannerPage() {
             showAccuracyCircle: true,
           });
           map.addControl(geolocateControl, "top-right");
+          addUserHeading(map, geolocateControl);
           map.addControl({
             onAdd(controlMap: any) {
               const container = document.createElement("div");
