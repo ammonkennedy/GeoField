@@ -1,3 +1,4 @@
+import { mapNavigablePopup } from "@/lib/map-popup-gestures";
 import { trackIdAtPoint } from '@/lib/track-map';
 import { useEffect, useRef, useState } from 'react';
 import { Popup, type Map as MapLibreMap, type MapMouseEvent } from 'maplibre-gl';
@@ -59,7 +60,7 @@ export function FaultOverlay({ map, exportMode }: { map: MapLibreMap; exportMode
       note.textContent = hits.length ? 'Values in parentheses are (preferred, minimum, maximum); blanks mean unavailable. Regional mapping detail varies.' : 'No mapped fault at this point. Tap a red line or zoom in to separate nearby faults. Missing lines do not mean faults are absent.';
       content.append(note);
       const source = document.createElement('a'); source.href = GEM; source.target = '_blank'; source.rel = 'noopener noreferrer'; source.textContent = 'GEM fault database · sources & coverage'; source.style.textDecoration = 'underline'; content.append(source);
-      popup = new Popup({ maxWidth: '330px' }).setLngLat(e.lngLat).setDOMContent(content).addTo(map);
+      popup = mapNavigablePopup(new Popup({ maxWidth: '330px' }).setLngLat(e.lngLat).setDOMContent(content).addTo(map));
     };
     setMessage('Loading fault lines…');
     map.on('sourcedata', loaded); map.on('error', error); map.on('load', add); map.on('style.load', add); map.on('click', click); add();

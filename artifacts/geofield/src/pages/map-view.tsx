@@ -1,3 +1,6 @@
+import { buildGoogleEarthKml, type EarthPoint } from "@/lib/google-earth";
+import { openGoogleEarth } from "@/lib/open-google-earth";
+import { mapNavigablePopup } from "@/lib/map-popup-gestures";
 import { addUserHeading } from "@/lib/map-user-heading";
 import { TRACK_MAP_SOURCE, trackIdAtPoint, trackPopupContent } from "@/lib/track-map";
 import { loadTracks, TRACKS_UPDATED } from '@/lib/tracks';
@@ -250,6 +253,9 @@ export default function MapViewPage() {
   const [newLayerFileName, setNewLayerFileName] = useState("");
   const [newLayerFileSummary, setNewLayerFileSummary] = useState("");
   const [cachedCloudSamples, setCachedCloudSamples] = useState(getCachedCloudSamples);
+  const [earthBusy, setEarthBusy] = useState(false);
+  const [earthMessage, setEarthMessage] = useState("");
+  const [earthError, setEarthError] = useState("");
   const [tracks, setTracks] = useState(loadTracks);
   useEffect(() => {
     const refresh = () => setTracks(loadTracks());
@@ -617,8 +623,8 @@ export default function MapViewPage() {
           popupRef.current?.remove();
           trailPopupRef.current?.remove();
           selectedTrackRef.current = track.id;
-          const popup = new L.Popup({ maxWidth: "min(300px, calc(100% - 24px))" })
-            .setLngLat(e.lngLat).setDOMContent(trackPopupContent(track)).addTo(map);
+          const popup = mapNavigablePopup(new L.Popup({ maxWidth: "min(300px, calc(100% - 24px))" })
+            .setLngLat(e.lngLat).setDOMContent(trackPopupContent(track)).addTo(map));
           trailPopupRef.current = popup;
           popup.on("close", () => { if (trailPopupRef.current === popup) selectedTrackRef.current = null; });
           return;
@@ -636,7 +642,7 @@ export default function MapViewPage() {
           content.style.cssText = "max-height:300px;overflow-y:auto;color:#0f172a;padding:4px;";
           content.setAttribute("aria-live", "polite");
           content.textContent = map.getZoom() < 12 ? "Zoom in closer, then tap a hiking trail." : "Loading trail information…";
-          const popup = new L.Popup({ maxWidth: "300px", closeOnClick: false }).setLngLat(e.lngLat).setDOMContent(content).addTo(map);
+          const popup = mapNavigablePopup(new L.Popup({ maxWidth: "300px", closeOnClick: false }).setLngLat(e.lngLat).setDOMContent(content).addTo(map));
           trailPopupRef.current = popup;
           popup.on("close", () => controller.abort());
           if (map.getZoom() < 12) return;
@@ -1015,6 +1021,39 @@ export default function MapViewPage() {
     }
   }
 
+  const handleGoogleEarth = async () => {
+    if (earthBusy) return;
+    setEarthBusy(true); setEarthMessage(""); setEarthError("");
+    try {
+      const points: EarthPoint[] = samplesWithCoords.map(sample => {
+        const fields = sample.fields as any;
+        const [latitude, longitude] = parseCoords(fields?.location)!;
+        return {
+          name: sample.sampleId || getSampleLabel(sample),
+          description: [getSampleLabel(sample), fields?.collectionStatus === "planned" ? "Future sample site" : "", sample.notes || ""].filter(Boolean).join("\n"),
+          latitude, longitude,
+          color: fields?.collectionStatus === "planned" ? "#f59e0b" : TYPE_COLORS[sample.sampleType] || "#666666",
+        };
+      });
+      for (const measurement of measurementsWithCoords) {
+        const [latitude, longitude] = measurementCoords(measurement)!;
+        const lineation = measurement.measurementType === "lineation";
+        points.push({
+          name: measurement.label || (lineation ? "Lineation" : "Strike / Dip"),
+          description: [lineation ? `Azimuth: ${measurement.trendDegrees ?? ""}°; plunge: ${measurement.plungeDegrees ?? ""}°` : `Strike: ${measurement.strike}; dip: ${measurement.dip}`, measurement.notes || ""].filter(Boolean).join("\n"),
+          latitude, longitude, color: "#60a5fa",
+        });
+      }
+      const selectedTracks = tracks.filter(track => overlayLayer === "trails" || (track.visible && datasetSelected(selectedFolderId, track.datasetId, localDatasets)));
+      const result = await openGoogleEarth(buildGoogleEarthKml(points, selectedTracks));
+      setEarthMessage(result === "chooser"
+        ? "Choose Google Earth to open this snapshot. If it is not listed, save the KML file and import it from Google Earth."
+        : "KML file saved. Open Google Earth and import the file to view your selected points and tracks.");
+    } catch (error: any) {
+      if (error?.name !== "AbortError" && !/cancel/i.test(error?.message || "")) setEarthError(error?.message || "Could not prepare the Google Earth file.");
+    } finally { setEarthBusy(false); }
+  };
+
   return (
     <Layout lockPageScroll={mapFullScreen}>
       <div className="min-w-0 flex flex-col gap-4 mb-4">
@@ -1033,6 +1072,7 @@ export default function MapViewPage() {
           </div>
           <div className="flex min-w-0 max-w-full flex-col sm:flex-row sm:flex-wrap gap-2">
             <Button onClick={startMapExport} disabled={exportBusy || exportMode}>Export</Button>
+            <Button variant="outline" onClick={handleGoogleEarth} disabled={earthBusy}>{earthBusy ? "Preparing…" : "Open in Google Earth"}</Button>
             <form className="relative" onSubmit={handleMapSearch}>
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <Input
@@ -1086,6 +1126,12 @@ export default function MapViewPage() {
           </div>
         </div>
 
+        {earthError && <p role="alert" className="text-sm text-destructive">{earthError}</p>}
+        {earthMessage && <div role="status" className="rounded-lg border bg-card p-3 text-sm">
+          {earthMessage}{" "}
+          <a href="https://earth.google.com/web/" target="_blank" rel="noopener noreferrer" className="text-primary underline">Open Google Earth</a>
+          <p className="mt-1 text-xs text-muted-foreground">Exports selected records and saved tracks, including those outside the current screen. Background maps, overlay services, and photos are not included. This copy does not update automatically.</p>
+        </div>}
         {/* Controls */}
         <div className="flex flex-wrap gap-3 items-center">
           {/* Base layer */}
@@ -1121,8 +1167,8 @@ export default function MapViewPage() {
               <option value="none">No Overlay</option>
               <option value="geology">Regional Geology</option>
               <option value="soil">Soil Types</option>
-              <option value="prism">PRISM Climate</option>
-              <option value="faults">Active Faults (Global &amp; U.S.)</option>
+              <option value="prism">PRISM Climate Data</option>
+              <option value="faults">Active Faults</option>
               <option value="trails">Hiking Trails and Tracks</option>
             </select>
             <Layers className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />

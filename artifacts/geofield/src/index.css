@@ -223,3 +223,27 @@
   pointer-events: none;
 }
 .geofield-heading-fan[hidden] { display: none; }
+
+/* Information should not block the map's native drag, pinch, or wheel handlers. */
+.geofield-pan-through-popup,
+.geofield-pan-through-popup .maplibregl-popup-content {
+  pointer-events: none;
+}
+.geofield-pan-through-popup :is(button, a, input, select, textarea, [role="button"]) {
+  pointer-events: auto;
+}
+.geofield-popup-scroll {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.geofield-popup-scroll button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 20px;
+}

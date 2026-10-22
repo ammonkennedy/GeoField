@@ -38,6 +38,11 @@ test("service errors are reported instead of displaying empty coverage", async (
 });
 test("clicking a visible line opens its loaded details without a network request", () => {
   const original = globalThis.document;
+  const originals = { MutationObserver: globalThis.MutationObserver, ResizeObserver: globalThis.ResizeObserver, requestAnimationFrame: globalThis.requestAnimationFrame };
+  class Observer { observe() {} disconnect() {} }
+  globalThis.MutationObserver = Observer as any;
+  globalThis.ResizeObserver = Observer as any;
+  globalThis.requestAnimationFrame = (() => 0) as any;
   let popupContent: any;
   const node = () => ({ textContent: "", style: {}, setAttribute() {}, children: [] as any[], append(...children: any[]) { this.children.push(...children); } });
   globalThis.document = { createElement: node } as any;
@@ -46,6 +51,8 @@ test("clicking a visible line opens its loaded details without a network request
     setDOMContent(content: any) { popupContent = content; return this; }
     addTo() { return this; }
     remove() {}
+    getElement() { return { classList: { add() {} }, querySelector() { return null; } }; }
+    on() { return this; }
   }
   const map = { getLayer: () => true, queryRenderedFeatures: () => [feature()], project: ([x,y]: number[]) => ({ x, y }) };
   try {
@@ -54,5 +61,5 @@ test("clicking a visible line opens its loaded details without a network request
     assert.match(popupContent.children[1].textContent, /Mapped segment: 0.25 km/);
     assert.equal(popupContent.children.at(-1).children[0].textContent, "Download");
     assert.equal(showDetailedTrailPopup(map as any, { x: 50, y: 30 }, [0,0], Popup as any), false);
-  } finally { globalThis.document = original; }
+  } finally { globalThis.document = original; Object.assign(globalThis, originals); }
 });

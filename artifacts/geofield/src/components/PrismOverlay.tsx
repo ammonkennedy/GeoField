@@ -1,3 +1,4 @@
+import { mapNavigablePopup } from "@/lib/map-popup-gestures";
 import { trackIdAtPoint } from '@/lib/track-map';
 import { useEffect, useRef, useState } from 'react';
 import { Popup, type Map as MapLibreMap } from 'maplibre-gl';
@@ -77,7 +78,7 @@ export function PrismOverlay({ map, exportMode }: { map: MapLibreMap; exportMode
         const note = document.createElement('p'); note.style.marginTop = '8px'; note.textContent = 'Modeled ~4 km cell. Temperature minimum/maximum are averages of daily lows/highs, not record extremes. These are climate normals, not current weather.'; content.append(note);
       }
       const source = document.createElement('p'); source.style.marginTop = '8px'; source.textContent = `PRISM Group, Oregon State University · https://prism.oregonstate.edu · accessed ${data.accessed}`; content.append(source);
-      popup.current = new Popup({ maxWidth: 'min(330px, calc(100% - 24px))' }).setLngLat(event.lngLat).setDOMContent(content).addTo(map);
+      popup.current = mapNavigablePopup(new Popup({ maxWidth: 'min(330px, calc(100% - 24px))' }).setLngLat(event.lngLat).setDOMContent(content).addTo(map));
     };
     const attributionElement = document.createElement('div');
     attributionElement.className = 'maplibregl-ctrl maplibregl-ctrl-attrib';
