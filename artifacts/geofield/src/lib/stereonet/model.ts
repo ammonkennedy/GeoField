@@ -17,6 +17,7 @@ export interface NetMeasurement {
   createdAt: string;
 }
 export interface NetGroup {
+  sourceDatasetId?: string;
   id: string;
   name: string;
   color: string;
@@ -78,7 +79,7 @@ export function normalizedMeasurement(
     const declination = m.declination ?? group.declination;
     if (!Number.isFinite(declination))
       throw new Error(
-        `${m.name || m.id}: enter east-positive magnetic declination to convert to ${target} north.`,
+        `${m.name || m.id} uses ${reference} north. Switch the plot to ${reference} north, or enter its declination (east positive) in Datasets to convert to ${target} north.`,
       );
     azimuth += target === "true" ? declination! : -declination!;
   }

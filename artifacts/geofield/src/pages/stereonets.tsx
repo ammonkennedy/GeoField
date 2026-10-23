@@ -1,3 +1,19 @@
+import { useGetFolders } from "@workspace/api-client-react";
+import { DatasetMultiSelect } from "@/components/DatasetMultiSelect";
+import {
+  datasetOptions,
+  datasetSelected,
+  type DatasetSelection,
+} from "@/lib/dataset-selection";
+import {
+  getLocalDatasets,
+  getVisibleLocalDatasets,
+  LOCAL_DATASETS_UPDATED_EVENT,
+} from "@/lib/local-datasets";
+import {
+  compatibleReference,
+  importMeasurementDatasets,
+} from "@/lib/stereonet/dataset-import";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -75,6 +91,11 @@ const draftFor = (groupId: string): Draft => ({
   groupId,
 });
 export default function StereonetsPage() {
+  const { data: cloudDatasets } = useGetFolders();
+  const [localDatasets, setLocalDatasets] = useState(getLocalDatasets);
+  const [datasetSelection, setDatasetSelection] = useState<DatasetSelection>(
+    [],
+  );
   const account = useRef(getStorageAccountId());
   const savedBase = useRef<Stereonet | null>(null);
   const [nets, setNets] = useState<Stereonet[]>([]),
@@ -93,6 +114,39 @@ export default function StereonetsPage() {
     [pair, setPair] = useState<string[]>([]),
     [busy, setBusy] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
+  const sourceDatasets = [
+    ...(cloudDatasets ?? []),
+    ...getVisibleLocalDatasets(localDatasets, cloudDatasets),
+  ];
+  const sourceOptions = datasetOptions(
+    sourceDatasets,
+    localDatasets,
+    existing.map((m) => m.datasetId),
+  ).filter((o) => o.count > 0);
+  const selectedCount = existing.filter((m) =>
+    datasetSelected(datasetSelection, m.datasetId, localDatasets),
+  ).length;
+  function plotDatasets() {
+    try {
+      const base = net ?? newStereonet("Measurement datasets");
+      const next = importMeasurementDatasets(
+        base,
+        existing,
+        sourceDatasets,
+        localDatasets,
+        datasetSelection,
+      );
+      if (commit(next)) {
+        setDraft(draftFor(next.groups[0].id));
+        setAnalysisGroup(next.groups[0].id);
+        setFeature("");
+        setTab("Plot");
+      }
+    } catch (e) {
+      setError(`No datasets were imported. ${(e as Error).message}`);
+    }
+  }
+
   function refresh() {
     try {
       const saved = loadStereonets();
@@ -109,6 +163,7 @@ export default function StereonetsPage() {
         }
         return current;
       });
+      setLocalDatasets(getLocalDatasets());
       setTrips(loadTrips());
       setExisting(loadMeasurements());
     } catch (e) {
@@ -117,10 +172,12 @@ export default function StereonetsPage() {
   }
   useEffect(() => {
     refresh();
+    window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refresh);
     window.addEventListener(STEREONETS_UPDATED, refresh);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refresh);
     window.addEventListener("storage", refresh);
     return () => {
+      window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refresh);
       window.removeEventListener(STEREONETS_UPDATED, refresh);
       window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refresh);
       window.removeEventListener("storage", refresh);
@@ -384,6 +441,28 @@ export default function StereonetsPage() {
             New stereonet
           </Button>
         </div>
+        <div className={panel}>
+          <h2 className="font-semibold">Plot measurement datasets</h2>
+          <DatasetMultiSelect
+            options={sourceOptions}
+            identities={localDatasets}
+            value={datasetSelection}
+            onChange={setDatasetSelection}
+          />
+          <p className="text-sm text-muted-foreground">
+            {selectedCount} measurements selected. Each dataset keeps its name
+            and receives its own color. Imports are editable snapshots.
+          </p>
+          <Button disabled={!selectedCount} onClick={plotDatasets}>
+            Plot selected datasets
+          </Button>
+          {!sourceOptions.length && (
+            <p className="text-sm text-muted-foreground">
+              No saved structural measurements are available yet. Synced
+              measurements and measurements saved offline appear here.
+            </p>
+          )}
+        </div>
         {!net ? (
           <p className="text-muted-foreground">
             Create a stereonet or open one saved to your account.
@@ -529,6 +608,17 @@ export default function StereonetsPage() {
                 <div role="alert" className="text-sm text-amber-800">
                   {plotted.errors.length} measurement(s) excluded:{" "}
                   {plotted.errors.slice(0, 3).join(" ")}
+                  {compatibleReference(net) !== net.north && (
+                    <Button
+                      className="mt-2"
+                      variant="outline"
+                      onClick={() =>
+                        commit({ ...net, north: compatibleReference(net) })
+                      }
+                    >
+                      Use {compatibleReference(net)} north
+                    </Button>
+                  )}
                 </div>
               )}
               <StereonetPlot
@@ -1062,12 +1152,21 @@ export default function StereonetsPage() {
                         )
                         .map((m) => importMeasurement(m, draft.groupId));
                       if (
-                        commit({
-                          ...net,
-                          measurements: [...net.measurements, ...additions],
-                        })
+                        commit(
+                          (() => {
+                            const next = {
+                              ...net,
+                              measurements: [...net.measurements, ...additions],
+                            };
+                            return {
+                              ...next,
+                              north: compatibleReference(next),
+                            };
+                          })(),
+                        )
                       ) {
                         setImports([]);
+                        setTab("Plot");
                         setMessage(
                           `Imported ${additions.length} measurements and saved locally.`,
                         );

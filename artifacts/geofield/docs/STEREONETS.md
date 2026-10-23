@@ -30,6 +30,19 @@ References checked during implementation:
 - [mplstereonet RHR conventions](https://mplstereonet.readthedocs.io/en/latest/_modules/mplstereonet/stereonet_math.html)
 - [mplstereonet axial/girdle eigenvector methods](https://mplstereonet.readthedocs.io/en/latest/_modules/mplstereonet/analysis.html)
 
+The workspace's **Plot measurement datasets** selector lists only datasets with
+structural measurements, including offline and uncategorized records. Select one
+or multiple datasets (or Select all), then Plot selected datasets. The app creates
+a net if necessary, preserves dataset names/colors, and avoids duplicate source
+records on repeated imports. Source dataset IDs resolve local/cloud aliases.
+
+Imports choose the north reference that can plot the most measurements using
+known metadata (ties retain the current reference). True-north-only data therefore
+do not require conversion to the default magnetic reference. Existing affected
+nets offer a one-click switch to the compatible reference. Mixed references still
+require an explicit declination when no correction is stored; no zero correction
+is assumed.
+
 Imports are independent snapshots. Original source IDs, timestamps, coordinates,
 notes and orientation metadata are retained in `raw`; inline photo bytes are
 excluded, with source/photo keys retained. Editing a snapshot keeps the raw
