@@ -1,5 +1,5 @@
 const SCOPED_COLLECTIONS = new Set([
-  "geofield_export_defaults", "geofield_offline_queue", "geofield_local_datasets", "geofield_strike_dip",
+  "geofield_stereonets", "geofield_export_defaults", "geofield_offline_queue", "geofield_local_datasets", "geofield_strike_dip",
   "geofield_cloud_samples", "geofield_recently_deleted", "geofield_trips", "geofield_tracks",
 ]);
 

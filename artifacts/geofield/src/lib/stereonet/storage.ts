@@ -1,0 +1,35 @@
+import { readDurableArray, writeDurableArray } from "../durable-storage.ts";
+import { assertStorageAccount } from "../storage-account.ts";
+import type { Stereonet } from "./model.ts";
+export const STEREONETS_UPDATED = "geofield-stereonets-updated";
+const KEY = "geofield_stereonets";
+export function loadStereonets(includeDeleted = false): Stereonet[] {
+  return readDurableArray<Stereonet>(KEY).filter(
+    (n) => includeDeleted || !n.deletedAt,
+  );
+}
+export function storeStereonets(nets: Stereonet[]) {
+  writeDurableArray(KEY, nets);
+  window.dispatchEvent(new Event(STEREONETS_UPDATED));
+}
+/** Compare revisions before saving so another tab/device cannot silently lose an edit. */
+export function saveStereonet(net: Stereonet, accountId: string | null) {
+  assertStorageAccount(accountId);
+  const all = loadStereonets(true),
+    old = all.find((n) => n.id === net.id);
+  if (
+    old &&
+    (old.localRevision !== net.localRevision ||
+      old.cloudRevision !== net.cloudRevision)
+  )
+    throw new Error(
+      "This stereonet changed in another window or sync. Reopen it before editing. Your draft is still displayed.",
+    );
+  const saved = {
+    ...net,
+    updatedAt: new Date().toISOString(),
+    localRevision: crypto.randomUUID(),
+  };
+  storeStereonets([...all.filter((n) => n.id !== net.id), saved]);
+  return saved;
+}

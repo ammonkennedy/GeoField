@@ -1,3 +1,5 @@
+import { loadStereonets, STEREONETS_UPDATED } from '@/lib/stereonet/storage';
+import { syncStereonets } from '@/lib/stereonet/sync-account';
 import { confirmDatasetContent } from "@/lib/dataset-confirmation";
 import { SyncErrorGrace } from "@/lib/sync-error-grace";
 import { syncTracks } from '@/lib/sync-tracks';
@@ -118,6 +120,7 @@ function getPendingSyncItems(accountId = "") {
     ...loadMeasurements(true).filter(record => record.localRevision).map(record => item("Measurement", record.id, record.label?.trim() || (record.measurementType === "lineation" ? "Lineation" : "Strike and Dip"), record.deletedAt, record.datasetId)),
     ...getPendingLocalDatasets().map(record => item("Dataset", record.id, record.name, record.deletedAt)),
     ...loadTracks(true).filter(record => record.localRevision && record.id !== trackingStatus().activeId).map(record => item("Track", record.id, record.name, record.deletedAt)),
+    ...loadStereonets(true).filter(record => record.localRevision).map(record => item("Stereonet", record.id, record.name, record.deletedAt)),
     ...loadTrips(true).filter(record => record.localRevision).map(record => item("Trip", record.id, record.name, record.deletedAt, record.datasetId)),
     ...loadFieldNotes(accountId).filter(record => record.localRevision).map(record => item("Note", record.id, record.title || "Untitled note", record.deletedAt)),
     ...loadNoteFolders(accountId).filter(record => record.localRevision).map(record => item("Note folder", record.id, record.name, record.deletedAt)),
@@ -249,6 +252,7 @@ export function useOfflineSync() {
     window.addEventListener(FIELD_NOTES_UPDATED, refreshCount);
     window.addEventListener(TRIPS_UPDATED, refreshCount);
     window.addEventListener(TRACKS_UPDATED, refreshCount);
+    window.addEventListener(STEREONETS_UPDATED, refreshCount);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshCount);
     window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
@@ -258,6 +262,7 @@ export function useOfflineSync() {
       window.removeEventListener(FIELD_NOTES_UPDATED, refreshCount);
       window.removeEventListener(TRIPS_UPDATED, refreshCount);
       window.removeEventListener(TRACKS_UPDATED, refreshCount);
+      window.removeEventListener(STEREONETS_UPDATED, refreshCount);
       window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, refreshCount);
       window.removeEventListener(QUEUE_UPDATED_EVENT, refreshCount);
       window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
@@ -372,6 +377,7 @@ export function useOfflineSync() {
             syncNoteFolders(accountId),
             syncTrips(accountId),
             syncTracks(accountId),
+            syncStereonets(accountId),
           ]);
           // Wait for every operation before releasing the sync lock. An early
           // Promise.all rejection previously left uploads running behind retries.
@@ -460,7 +466,7 @@ export function useOfflineSync() {
             setCloudSignInRequired(authRequired);
           }
         }
-        if (!failed && (loadNoteFolders(accountId).some(folder => folder.localRevision) || loadTrips(true).some((trip) => trip.localRevision) || getPendingLocalDatasets().length > 0 || loadMeasurements(true).some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
+        if (!failed && (loadStereonets(true).some(net => net.localRevision) || loadNoteFolders(accountId).some(folder => folder.localRevision) || loadTrips(true).some((trip) => trip.localRevision) || getPendingLocalDatasets().length > 0 || loadMeasurements(true).some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
         if (retryNeeded && !authRequired) scheduleRetry();
       }
     },
@@ -484,8 +490,9 @@ export function useOfflineSync() {
     window.addEventListener(FIELD_NOTES_UPDATED, changed);
     window.addEventListener(TRIPS_UPDATED, changed);
     window.addEventListener(TRACKS_UPDATED, changed);
+    window.addEventListener(STEREONETS_UPDATED, changed);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, changed);
-    return () => { clearTimeout(timer); window.removeEventListener(QUEUE_UPDATED_EVENT, changed); window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, changed); window.removeEventListener(NOTE_FOLDERS_UPDATED, changed); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(TRACKS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
+    return () => { clearTimeout(timer); window.removeEventListener(QUEUE_UPDATED_EVENT, changed); window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, changed); window.removeEventListener(NOTE_FOLDERS_UPDATED, changed); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(TRACKS_UPDATED, changed); window.removeEventListener(STEREONETS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
   }, [accountId, sync]);
   const rebuildCloudCache = useCallback(() => runSync(true), [runSync]);
   useEffect(() => {

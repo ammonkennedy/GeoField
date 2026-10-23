@@ -1,6 +1,6 @@
 import { measurementFigureRecords } from "@/lib/measurement-figures";
 import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -60,13 +60,27 @@ const CHART_OPTIONS: { id: ChartType; label: string }[] = [
   { id: "box", label: "Box Plot" },
 ];
 
-function FigureViewport({ data = [], width: explicitWidth, children }: { data?: any[]; width?: number; children: React.ReactNode }) {
+function FigureViewport({ children }: { children: React.ReactNode | ((size: { width: number; height: number }) => React.ReactNode) }) {
   const [zoom, setZoom] = useState(1);
+  const [customWidth, setCustomWidth] = useState<number | null>(null);
+  const [customHeight, setCustomHeight] = useState<number | null>(null);
+  const [available, setAvailable] = useState({ width: 640, height: 360 });
   const viewportRef = useRef<HTMLDivElement>(null);
-  const width = explicitWidth ?? Math.max(640, data.length * 72);
-  const height = 360;
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      setAvailable({ width: Math.max(280, element.clientWidth), height: Math.max(240, element.clientHeight) });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const width = customWidth ?? available.width;
+  const height = customHeight ?? available.height;
   const resetZoom = () => {
     setZoom(1);
+    setCustomWidth(null);
+    setCustomHeight(null);
     viewportRef.current?.scrollTo({ left: 0, top: 0 });
   };
   return (
@@ -77,11 +91,28 @@ function FigureViewport({ data = [], width: explicitWidth, children }: { data?: 
         <Button type="button" variant="outline" size="sm" className="min-h-11 gap-1" disabled={zoom >= 3} onClick={() => setZoom((value) => Math.min(3, value + 0.25))} aria-label="Zoom into figure"><ZoomIn className="h-4 w-4" />Zoom in</Button>
         <Button type="button" variant="ghost" size="sm" className="min-h-11 gap-1" onClick={resetZoom}><RotateCcw className="h-4 w-4" />Reset view</Button>
       </div>
-      <p className="text-xs text-muted-foreground">Zoom in to enlarge labels. Swipe or scroll to explore the figure.</p>
-      <div ref={viewportRef} className="w-full overflow-auto overscroll-contain rounded-lg border border-border" style={{ height: 380, maxHeight: "55dvh" }} tabIndex={0} role="region" aria-label="Scrollable figure">
-        <div style={{ width: width * zoom, height: height * zoom }}>
-          <div style={{ width, height, transform: `scale(${zoom})`, transformOrigin: "top left" }}>{children}</div>
+      <p className="text-xs text-muted-foreground">Drag the axis sliders to change the figure’s proportions. Zoom enlarges labels too.</p>
+      <div className="grid min-w-0 grid-cols-[44px_minmax(0,1fr)] gap-2">
+        <label className="flex min-h-0 flex-col items-center gap-2 text-xs" data-html2canvas-ignore="true">
+          <span>Y length</span>
+          <input type="range" aria-label="Y-axis length" min={240} max={1200} step={10} value={height}
+            onChange={(event) => setCustomHeight(Number(event.target.value))}
+            className="min-h-0 w-11 flex-1 cursor-pointer accent-primary"
+            style={{ writingMode: "vertical-lr", direction: "rtl" }} />
+        </label>
+        <div ref={viewportRef} className="min-w-0 w-full overflow-auto overscroll-contain rounded-lg border border-border" style={{ height: 400, maxHeight: "55dvh" }} tabIndex={0} role="region" aria-label="Scrollable figure">
+          <div style={{ width: width * zoom, height: height * zoom }}>
+            <div style={{ width, height, transform: `scale(${zoom})`, transformOrigin: "top left" }}>
+              {typeof children === "function" ? children({ width, height }) : children}
+            </div>
+          </div>
         </div>
+        <label className="col-start-2 flex min-w-0 items-center gap-3 text-xs" data-html2canvas-ignore="true">
+          <span className="shrink-0">X length</span>
+          <input type="range" aria-label="X-axis length" min={280} max={2400} step={10} value={width}
+            onChange={(event) => setCustomWidth(Number(event.target.value))}
+            className="h-11 min-w-0 flex-1 cursor-pointer accent-primary" />
+        </label>
       </div>
     </div>
   );
@@ -118,7 +149,7 @@ function BarFigure({
   labelPoints: boolean;
 }) {
   return (
-    <FigureViewport data={data}>
+    <FigureViewport>
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 28, right: 24, left: 20, bottom: 76 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -163,7 +194,7 @@ function ScatterTooltip({ active, payload }: any) {
 
 function ScatterFigure({ data, xLabel, yLabel, labelPoints }: { data: any[]; xLabel: string; yLabel: string; labelPoints: boolean }) {
   return (
-    <FigureViewport data={data}>
+    <FigureViewport>
     <ResponsiveContainer width="100%" height="100%">
       <ScatterChart margin={{ top: 28, right: 24, left: 28, bottom: 44 }}>
         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
@@ -216,14 +247,13 @@ function BoxFigure({ data, paramLabel, paramUnit, labelPoints }: { data: any[]; 
   const span = maxValue - minValue || 1;
   const domainMin = minValue - span * 0.08;
   const domainMax = maxValue + span * 0.08;
-  const width = Math.max(640, groups.length * 150);
-  const height = 360;
-  const plot = { left: 76, right: 24, top: 24, bottom: 64 };
-  const y = (value: number) => plot.top + ((domainMax - value) / (domainMax - domainMin)) * (height - plot.top - plot.bottom);
-  const ticks = Array.from({ length: 6 }, (_, index) => domainMin + (domainMax - domainMin) * index / 5);
-
   return (
-    <FigureViewport width={width}>
+    <FigureViewport>
+      {({ width, height }) => {
+        const plot = { left: 76, right: 24, top: 24, bottom: 64 };
+        const y = (value: number) => plot.top + ((domainMax - value) / (domainMax - domainMin)) * (height - plot.top - plot.bottom);
+        const ticks = Array.from({ length: 6 }, (_, index) => domainMin + (domainMax - domainMin) * index / 5);
+        return (
       <div className="recharts-wrapper" style={{ width, height }}>
         <svg className="recharts-surface" width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
           {ticks.map((tick) => (
@@ -261,6 +291,8 @@ function BoxFigure({ data, paramLabel, paramUnit, labelPoints }: { data: any[]; 
           })}
         </svg>
       </div>
+        );
+      }}
     </FigureViewport>
   );
 }
@@ -339,7 +371,7 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
     setIsDownloading(true);
 
     const scale = 2;
-    // Export the full figure at its original dimensions, independent of zoom/pan.
+    // Export the selected axis dimensions, independent of viewing zoom/pan.
     const W = Math.round(svg.viewBox.baseVal.width || svg.width.baseVal.value);
     const H = Math.round(svg.viewBox.baseVal.height || svg.height.baseVal.value);
     const PAD = 16;

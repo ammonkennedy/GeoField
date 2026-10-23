@@ -15,6 +15,7 @@ import FieldNotesPage from "@/pages/field-notes";
 import StrikeDipPage from "@/pages/strike-dip";
 import AccountSettingsPage from "@/pages/account-settings";
 import FiguresPage from "@/pages/figures";
+import StereonetsPage from "@/pages/stereonets";
 import TrackPage from "@/pages/track";
 import SupportPage from "@/pages/support";
 import NotFound from "@/pages/not-found";
@@ -81,6 +82,7 @@ function Router() {
       <Route path="/notes">
         <AccessibleRoute component={FieldNotesPage} />
       </Route>
+      <Route path="/stereonets"><AccountRoute component={StereonetsPage} /></Route>
       <Route path="/track">
         <AccountRoute component={TrackPage} />
       </Route>

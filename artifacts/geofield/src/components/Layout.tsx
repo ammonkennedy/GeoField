@@ -220,6 +220,7 @@ export function Layout({ children, lockPageScroll = false }: { children: ReactNo
                 { href: "/", label: "All Samples", icon: MapPin },
                 { href: "/map", label: "Map View", icon: Map },
                 { href: "/strike-dip", label: "Clinometer", icon: Compass },
+                { href: "/stereonets", label: "Stereonets", icon: Compass },
                 { href: "/notes", label: "Notes", icon: NotebookPen },
                 { href: "/figures", label: "Generate Figures", icon: BarChart2 },
                 { href: "/track", label: "Track", icon: MapPin },
