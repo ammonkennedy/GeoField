@@ -102,13 +102,18 @@ export function importMeasurement(
       : typeof value === "string" && /^\s*\d+(\.\d+)?\s*°?\s*$/.test(value)
         ? Number(value.replace("°", ""))
         : NaN;
-  const dipDirection = m.dipDirectionDegrees;
+  // Recorded RHR strike is the user's calibrated measurement. Older sensor
+  // captures also contain an oppositely directed, uncalibrated dipDirection;
+  // deriving strike from that auxiliary field reverses the plotted plane.
+  const recordedStrike = numeric(m.strikeDegrees ?? m.strike);
   const azimuth =
     kind === "line"
       ? numeric(m.trendDegrees)
-      : Number.isFinite(dipDirection)
-        ? wrap(dipDirection! - 90)
-        : numeric(m.strikeDegrees ?? m.strike);
+      : Number.isFinite(recordedStrike)
+        ? recordedStrike
+        : Number.isFinite(m.dipDirectionDegrees)
+          ? wrap(m.dipDirectionDegrees! - 90)
+          : NaN;
   const inclination =
     kind === "line" ? numeric(m.plungeDegrees) : numeric(m.dipDegrees ?? m.dip);
   validateOrientation(azimuth, inclination);
@@ -142,4 +147,47 @@ export function plottedMeasurements(net: Stereonet, feature = "") {
     }
   }
   return { items, errors };
+}
+
+/** Repair only untouched snapshots made by the old dip-direction-first importer. */
+export function repairImportedPlanes(net: Stereonet): Stereonet {
+  if (net.deletedAt) return net;
+  let changed = false;
+  const measurements = net.measurements.map((m) => {
+    if (
+      m.kind !== "plane" ||
+      !m.sourceId ||
+      m.raw.edits ||
+      m.raw.stereonetImportRepair
+    )
+      return m;
+    const source = m.raw as unknown as StrikeDipMeasurement;
+    if (!Number.isFinite(source.dipDirectionDegrees)) return m;
+    const oldAzimuth = wrap(source.dipDirectionDegrees! - 90);
+    if (Math.abs(m.azimuth - oldAzimuth) > 1e-8) return m;
+    try {
+      const corrected = importMeasurement(source, m.groupId);
+      if (
+        Math.abs(corrected.azimuth - m.azimuth) < 1e-8 ||
+        corrected.inclination !== m.inclination
+      )
+        return m;
+      changed = true;
+      return {
+        ...m,
+        azimuth: corrected.azimuth,
+        raw: {
+          ...m.raw,
+          stereonetImportRepair: {
+            previousAzimuth: m.azimuth,
+            reason:
+              "Use recorded RHR strike rather than auxiliary dip direction",
+          },
+        },
+      };
+    } catch {
+      return m;
+    }
+  });
+  return changed ? { ...net, measurements } : net;
 }

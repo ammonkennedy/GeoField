@@ -93,3 +93,18 @@ touch selection, pinch zoom, offline reopen, north conversion and PNG/PDF/CSV.
 They do not establish physical iOS/Android behavior or live AWS cross-device sync.
 The new code is shared by Capacitor builds, but native assets were not copied and
 no native binary, website deployment or store release was performed.
+
+## Recorded strike versus auxiliary dip direction
+
+Imports prioritize the recorded RHR strike (`strikeDegrees`, then numeric
+`strike`). Some clinometer captures retain an oppositely directed auxiliary
+`dipDirectionDegrees`, with calibration applied only to strike. Deriving strike
+from that field produced a near-180° rotation and lost the calibration. Dip
+direction is now only a fallback when no numeric strike exists. The spherical
+projection and RHR pole formulas are unchanged.
+
+On reopening, untouched old imported planes that exactly match the previous
+importer's calculation are repaired from retained source metadata. The previous
+azimuth is retained in `raw.stereonetImportRepair`, and a new local revision
+queues the corrected net for sync. Deleted nets and manually edited snapshots
+are not rewritten. Original GeoField measurements are unchanged.

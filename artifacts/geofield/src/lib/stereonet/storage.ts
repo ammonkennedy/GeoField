@@ -1,12 +1,23 @@
 import { readDurableArray, writeDurableArray } from "../durable-storage.ts";
 import { assertStorageAccount } from "../storage-account.ts";
-import type { Stereonet } from "./model.ts";
+import { repairImportedPlanes, type Stereonet } from "./model.ts";
 export const STEREONETS_UPDATED = "geofield-stereonets-updated";
 const KEY = "geofield_stereonets";
 export function loadStereonets(includeDeleted = false): Stereonet[] {
-  return readDurableArray<Stereonet>(KEY).filter(
-    (n) => includeDeleted || !n.deletedAt,
-  );
+  const saved = readDurableArray<Stereonet>(KEY);
+  const repaired = saved.map((net) => {
+    const next = repairImportedPlanes(net);
+    return next === net
+      ? net
+      : {
+          ...next,
+          updatedAt: new Date().toISOString(),
+          localRevision: crypto.randomUUID(),
+        };
+  });
+  if (repaired.some((net, i) => net !== saved[i]))
+    writeDurableArray(KEY, repaired);
+  return repaired.filter((n) => includeDeleted || !n.deletedAt);
 }
 export function storeStereonets(nets: Stereonet[]) {
   writeDurableArray(KEY, nets);

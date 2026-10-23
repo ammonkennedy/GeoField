@@ -57,3 +57,19 @@ test("offline save, reopen, account isolation and stale revisions", () => {
   storage.fail = false;
   assert.equal(loadStereonets()[0].name, "Changed");
 });
+
+test('saved old imports repair durably and queue a new revision without changing source data', async () => {
+  const {writeDurableArray}=await import('../src/lib/durable-storage.ts');
+  const {importMeasurement}=await import('../src/lib/stereonet/model.ts');
+  account('Repair');
+  const net=newStereonet('Old import');
+  const source={id:'plane',strikeDegrees:190,dipDegrees:60,dipDirectionDegrees:90,label:'Fault',notes:'',featureType:'fault',northReference:'magnetic'} as any;
+  net.measurements=[{...importMeasurement(source,net.groups[0].id),azimuth:0}];
+  net.cloudRevision='cloud-old';
+  writeDurableArray('geofield_stereonets',[net]);
+  const repaired=loadStereonets()[0];
+  assert.equal(repaired.measurements[0].azimuth,190);
+  assert.equal(repaired.cloudRevision,'cloud-old');assert.ok(repaired.localRevision);
+  assert.equal(loadStereonets()[0].localRevision,repaired.localRevision);
+  assert.equal(repaired.measurements[0].raw.dipDirectionDegrees,90);
+});
