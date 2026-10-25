@@ -100,7 +100,7 @@ export const FIELD_LABELS: Record<string, string> = {
 export const STRIKE_DIP_COLUMNS: ExportColumn[] = [
   { key: "index",       label: "#",                enabled: true,  defaultWidth: 4  },
   { key: "label",       label: "Label",            enabled: true,  defaultWidth: 28 },
-  { key: "dataset",     label: "Dataset",          enabled: true,  defaultWidth: 20 },
+  { key: "dataset",     label: "Project",          enabled: true,  defaultWidth: 20 },
   { key: "rockLayerType", label: "Rock / Layer Type", enabled: true, defaultWidth: 20 },
   { key: "measurementType", label: "Measurement Type", enabled: true, defaultWidth: 20 },
   { key: "azimuth", label: "Azimuth (°)", enabled: true, defaultWidth: 14 },
@@ -442,7 +442,7 @@ export function loadColumnPrefs(key: string, defaults: ExportColumn[]): ExportCo
     const savedKeys = new Set(saved.map((c) => c.key));
     const merged: ExportColumn[] = saved
       .filter((c) => defaultMap.has(c.key))
-      .map((c) => ({ ...defaultMap.get(c.key)!, label: c.label, enabled: c.enabled }));
+      .map((c) => ({ ...defaultMap.get(c.key)!, label: c.key === "dataset" && c.label === "Dataset" ? "Project" : c.label, enabled: c.enabled }));
     defaults.forEach((d) => { if (!savedKeys.has(d.key)) merged.push(d); });
     return merged;
   } catch {}

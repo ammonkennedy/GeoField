@@ -114,7 +114,7 @@ export async function syncTripRecords(store: Store) {
           ),
       );
       acknowledged.add(trip.id);
-      if (datasetPending) errors.push(new Error(`Trip "${trip.name}" is saved to your account, but its dataset link is still waiting to sync. The local link is preserved.`));
+      if (datasetPending) errors.push(new Error(`Trip "${trip.name}" is saved to your account, but its project link is still waiting to sync. The local link is preserved.`));
     } catch (error) {
       errors.push(error);
     }

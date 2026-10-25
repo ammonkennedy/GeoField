@@ -22,7 +22,7 @@ export function datasetOptions(
   options.set('', { id: '', name: 'Uncategorized', count: 0 });
   for (const datasetId of recordDatasetIds) {
     const id = String(resolveDatasetId(datasetId, identities) ?? '');
-    if (!options.has(id)) options.set(id, { id, name: `Dataset ${id}`, count: 0 });
+    if (!options.has(id)) options.set(id, { id, name: `Project ${id}`, count: 0 });
     options.get(id)!.count++;
   }
   return [...options.values()];
@@ -34,7 +34,7 @@ export function toggleDataset(selection: DatasetSelection, id: string, options: 
 }
 
 export function datasetSelectionLabel(selection: DatasetSelection, options: DatasetOption[], identities: DatasetIdentity[] = []): string {
-  if (selection === 'all') return 'All datasets';
+  if (selection === 'all') return 'All projects';
   const names = options.filter(option => datasetSelected(selection, option.id, identities)).map(option => option.name);
-  return names.length ? names.join(', ') : 'No datasets selected';
+  return names.length ? names.join(', ') : 'No projects selected';
 }

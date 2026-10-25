@@ -6,6 +6,6 @@ export function confirmDatasetContent(
 ) {
   if (!saved || (id !== undefined && String(saved.id) !== id) ||
       saved.name !== expected.name || (saved.description ?? "") !== (expected.description ?? "")) {
-    throw new Error("Cloud did not confirm all dataset changes. The complete edit remains saved on this device.");
+    throw new Error("Cloud did not confirm all project changes. The complete edit remains saved on this device.");
   }
 }

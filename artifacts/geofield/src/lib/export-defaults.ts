@@ -23,7 +23,7 @@ export function applyDefaultColumns(current: ExportColumn[], saved: ExportColumn
     const original = available.get(column.key);
     if (!original) return [];
     available.delete(column.key);
-    return [{ ...original, label: column.label, enabled: column.enabled }];
+    return [{ ...original, label: column.key === "dataset" && column.label === "Dataset" ? "Project" : column.label, enabled: column.enabled }];
   });
   return [...ordered, ...available.values()];
 }

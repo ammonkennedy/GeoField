@@ -1,3 +1,4 @@
+import { DatasetSection } from "./DatasetSection";
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { loadTracks, updateTrack, TRACKS_UPDATED } from '@/lib/tracks';
@@ -16,11 +17,10 @@ export function DatasetTracks({ datasetId, localDatasets }: { datasetId: string 
     return () => { window.removeEventListener(TRACKS_UPDATED, refresh); window.removeEventListener('storage', refresh); };
   }, []);
   const selected = tracks.filter(track => String(resolveDatasetId(track.datasetId, localDatasets) ?? '') === String(resolveDatasetId(datasetId, localDatasets))).reverse();
-  return <section className="mt-8 rounded-2xl border border-border bg-card shadow-sm" aria-labelledby="dataset-tracks-title">
-    <h2 id="dataset-tracks-title" className="border-b px-5 py-4 text-lg font-semibold">Tracks</h2>
+  return <DatasetSection title="Tracks">
     {error && <p role="alert" className="px-5 pt-4 text-destructive">{error}</p>}
     <div className="space-y-3 p-5">
-      {!selected.length && <p className="text-sm text-muted-foreground">No tracks assigned to this dataset yet.</p>}
+      {!selected.length && <p className="text-sm text-muted-foreground">No tracks assigned to this project yet.</p>}
       {selected.map(track => {
         const stats = trackStats(track.points);
         return <Link key={track.id} href={`/map?track=${encodeURIComponent(track.id)}`} onClick={async event => {
@@ -34,5 +34,5 @@ export function DatasetTracks({ datasetId, localDatasets }: { datasetId: string 
         </Link>;
       })}
     </div>
-  </section>;
+  </DatasetSection>;
 }

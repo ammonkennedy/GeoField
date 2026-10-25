@@ -113,12 +113,12 @@ function getPendingSyncItems(accountId = "") {
   const item = (kind: string, id: string | number, name: string, deleted: unknown, datasetId?: string | number | null) => ({
     key: `${kind}:${id}`, kind, name,
     status: deleted ? "Deletion waiting to sync" : "New or edited data waiting to sync",
-    detail: Number(datasetId) < 0 ? "Waiting for its dataset to finish syncing." : "",
+    detail: Number(datasetId) < 0 ? "Waiting for its project to finish syncing." : "",
   });
   return [
     ...getSyncableQueue().map(record => item("Sample", record.queuedId, record.payload.sampleId || "Unnamed sample", record.deletedAt, record.payload.folderId)),
     ...loadMeasurements(true).filter(record => record.localRevision).map(record => item("Measurement", record.id, record.label?.trim() || (record.measurementType === "lineation" ? "Lineation" : "Strike and Dip"), record.deletedAt, record.datasetId)),
-    ...getPendingLocalDatasets().map(record => item("Dataset", record.id, record.name, record.deletedAt)),
+    ...getPendingLocalDatasets().map(record => item("Project", record.id, record.name, record.deletedAt)),
     ...loadTracks(true).filter(record => record.localRevision && record.id !== trackingStatus().activeId).map(record => item("Track", record.id, record.name, record.deletedAt)),
     ...loadStereonets(true).filter(record => record.localRevision).map(record => item("Stereonet", record.id, record.name, record.deletedAt)),
     ...loadTrips(true).filter(record => record.localRevision).map(record => item("Trip", record.id, record.name, record.deletedAt, record.datasetId)),
@@ -136,7 +136,7 @@ async function syncLocalDataset(dataset: LocalDataset, checkAccount: () => void,
       checkAccount();
       confirmDatasetContent(saved, dataset, dataset.cloudId);
       if (dataset.restore) await restoreFolder(dataset.cloudId, accountId);
-      else if ((saved as any).deletedAt) throw new Error("This dataset was deleted on another device. Your offline edit is still saved; restore the dataset explicitly before syncing it.");
+      else if ((saved as any).deletedAt) throw new Error("This project was deleted on another device. Your offline edit is still saved; restore the project explicitly before syncing it.");
     }
     checkAccount();
     markLocalDatasetSynced(dataset.id, dataset.cloudId, dataset.localRevision);
@@ -327,7 +327,7 @@ export function useOfflineSync() {
             isLocalDatasetId(item.payload.folderId)
           ) {
             if (isLocalDatasetId(item.payload.folderId)) {
-              reportFailure(new Error("A sample is still assigned to a local dataset. Try syncing again."));
+              reportFailure(new Error("A sample is still assigned to a local project. Try syncing again."));
             }
             continue;
           }
@@ -430,14 +430,14 @@ export function useOfflineSync() {
           const remaining = [
             ...getSyncableQueue().map(item => `sample "${item.payload.sampleId || item.queuedId}"`),
             ...loadMeasurements(true).filter(item => item.localRevision).map(item => `measurement "${item.label || item.id}"`),
-            ...getPendingLocalDatasets().map(item => `dataset "${item.name}"`),
+            ...getPendingLocalDatasets().map(item => `project "${item.name}"`),
             ...loadTracks(true).filter(record => record.localRevision && record.id !== trackingStatus().activeId).map(record => `track "${record.name}"`),
     ...loadTrips(true).filter(item => item.localRevision).map(item => `trip "${item.name}"`),
             ...loadFieldNotes(accountId).filter(item => item.localRevision).map(item => `note "${item.title || item.id}"`),
             ...loadNoteFolders(accountId).filter(item => item.localRevision).map(item => `note folder "${item.name}"`),
           ];
           retryNeeded = true;
-          reportFailure(new Error(`Still pending: ${remaining.slice(0, 3).join(", ")}. The latest changes are saved on this device but have not been confirmed by the cloud. Sync will retry automatically. If this continues, check that these records are assigned to an available dataset.`));
+          reportFailure(new Error(`Still pending: ${remaining.slice(0, 3).join(", ")}. The latest changes are saved on this device but have not been confirmed by the cloud. Sync will retry automatically. If this continues, check that these records are assigned to an available project.`));
         }
 
         if (!failed) {

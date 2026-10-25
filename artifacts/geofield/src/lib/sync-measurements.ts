@@ -70,7 +70,7 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
   for (const item of before) {
     try {
       if (!item.deletedAt && Number(item.datasetId) < 0) {
-        if (item.localRevision) errors.push(new Error(`Measurement "${item.label || item.id}" is waiting for its dataset to sync. If the dataset is no longer available, open the measurement and choose an available dataset or Uncategorized.`));
+        if (item.localRevision) errors.push(new Error(`Measurement "${item.label || item.id}" is waiting for its project to sync. If the project is no longer available, open the measurement and choose an available project or Uncategorized.`));
         continue;
       }
       let existing = remoteById.get(item.id);
@@ -151,7 +151,7 @@ export async function syncMeasurementRecords<T extends MeasurementRecord>(
         (saved.deletedAt ?? null) !== (payload.deletedAt ?? null)
       )) {
         throw new Error(
-          "Cloud did not confirm the measurement's dataset assignment. Your edit is still saved on this device. Please try syncing again.",
+          "Cloud did not confirm the measurement's project assignment. Your edit is still saved on this device. Please try syncing again.",
         );
       }
       if (!confirmsMeasurement(saved, payload as T))

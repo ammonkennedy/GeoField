@@ -49,10 +49,10 @@ export function FolderDialog({
     if (folder && ((folder as any).isLocal || (typeof folder.id === "number" && folder.id < 0))) {
       try {
         updateLocalDataset(Number(folder.id), { name, description });
-        toast({ title: "Dataset updated" });
+        toast({ title: "Project updated" });
         finish();
       } catch {
-        toast({ title: "Dataset could not be saved", description: "Your changes are still here. Check device storage and try again.", variant: "destructive" });
+        toast({ title: "Project could not be saved", description: "Your changes are still here. Check device storage and try again.", variant: "destructive" });
       }
       return;
     }
@@ -62,20 +62,20 @@ export function FolderDialog({
         const created = createLocalDataset({ name, description });
         onCreated?.(created);
       } catch {
-        toast({ title: "Dataset could not be saved", description: "Check available device storage and try again.", variant: "destructive" });
+        toast({ title: "Project could not be saved", description: "Check available device storage and try again.", variant: "destructive" });
         return;
       }
-      toast({ title: "Dataset created", description: "Saved locally on this device." });
+      toast({ title: "Project created", description: "Saved locally on this device." });
       finish();
       return;
     }
 
     try {
       editCloudDatasetOffline(folder.id, { name, description });
-      toast({ title: "Dataset updated", description: "Saved on this device and queued for sync." });
+      toast({ title: "Project updated", description: "Saved on this device and queued for sync." });
       finish();
     } catch (error) {
-      toast({ title: "Dataset could not be saved", description: error instanceof Error ? error.message : "Your changes are still here. Please retry.", variant: "destructive" });
+      toast({ title: "Project could not be saved", description: error instanceof Error ? error.message : "Your changes are still here. Please retry.", variant: "destructive" });
     }
 
   };
@@ -83,12 +83,12 @@ export function FolderDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogHeader>
-        <DialogTitle>{folder ? "Edit Dataset" : "Create New Dataset"}</DialogTitle>
+        <DialogTitle>{folder ? "Edit Project" : "Create New Project"}</DialogTitle>
       </DialogHeader>
       <DialogContent>
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Dataset Name</Label>
+            <Label htmlFor="name">Project Name</Label>
             <Input 
               id="name" 
               value={name} 
@@ -111,7 +111,7 @@ export function FolderDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={isPending || !name.trim()}>
-              {isPending ? "Saving..." : folder ? "Save Changes" : "Create Dataset"}
+              {isPending ? "Saving..." : folder ? "Save Changes" : "Create Project"}
             </Button>
           </div>
         </form>

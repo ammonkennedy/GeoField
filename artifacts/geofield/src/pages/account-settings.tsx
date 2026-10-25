@@ -237,7 +237,7 @@ export default function AccountSettingsPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold">Recently Deleted</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Deleted datasets, samples, and measurements can be restored here.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Deleted projects, samples, and measurements can be restored here.</p>
                 </div>
               </div>
               {trashLoading ? <p className="text-sm text-muted-foreground">Loading deleted items…</p> : deletedItems.length === 0 ? (
@@ -246,10 +246,10 @@ export default function AccountSettingsPage() {
                 <div className="divide-y rounded-xl border">
                   {deletedItems.map((item) => {
                     const local = "trashId" in item;
-                    const label = local ? item.name : item.name || item.sampleId || `${item.kind} ${item.id}`;
+                    const label = local ? item.name : item.name || item.sampleId || `${item.kind === "dataset" ? "project" : item.kind} ${item.id}`;
                     const days = Math.max(1, Math.ceil((20 * 86400000 - (Date.now() - +new Date(item.deletedAt))) / 86400000));
                     return <div key={local ? item.trashId : `${item.kind}-${item.id}`} className="flex items-center justify-between gap-4 p-4">
-                      <div><p className="font-medium">{label}</p><p className="text-xs text-muted-foreground capitalize">{item.kind} · {days} day{days === 1 ? "" : "s"} remaining</p></div>
+                      <div><p className="font-medium">{label}</p><p className="text-xs text-muted-foreground capitalize">{item.kind === "dataset" ? "project" : item.kind} · {days} day{days === 1 ? "" : "s"} remaining</p></div>
                       <Button variant="outline" size="sm" onClick={() => restoreItem(item)}><RotateCcw className="mr-2 h-4 w-4" />Restore</Button>
                     </div>;
                   })}
@@ -317,7 +317,7 @@ export default function AccountSettingsPage() {
       <Dialog open={deleteAccountOpen} onOpenChange={(open) => !deleteAccountPending && setDeleteAccountOpen(open)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Are you sure you want to delete your account?</DialogTitle></DialogHeader>
-          <p className="py-2 text-sm text-muted-foreground">This permanently removes your datasets, samples, measurements, photos, videos, trips, and sign-in account. This cannot be undone.</p>
+          <p className="py-2 text-sm text-muted-foreground">This permanently removes your projects, samples, measurements, photos, videos, trips, and sign-in account. This cannot be undone.</p>
           {deleteAccountError && <p className="flex items-center gap-2 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{deleteAccountError}</p>}
           <div className="flex justify-end gap-3 border-t pt-4">
             <Button variant="outline" disabled={deleteAccountPending} onClick={() => setDeleteAccountOpen(false)}>Cancel</Button>

@@ -55,7 +55,7 @@ test("one failed trip does not block another, and unacknowledged fields remain p
 });
 test("a local dataset ID is never sent to another device", async () => {
   const s = setup([trip({ datasetId: "-123" })]);
-  await assert.rejects(syncTripRecords(s.store), /dataset link is still waiting/);
+  await assert.rejects(syncTripRecords(s.store), /project link is still waiting/);
   assert.equal(s.remote.size, 1); assert.equal(s.remote.get("trip")?.datasetId, null);
   assert.equal(s.store.load()[0].datasetId, "-123"); assert.equal(s.store.load()[0].localRevision, "pending");
   const other = setup([], [...s.remote.values()]); await syncTripRecords(other.store);
@@ -67,6 +67,6 @@ test("a local dataset ID is never sent to another device", async () => {
 
 test("a pending trip dataset link never clears its existing cloud assignment", async () => {
   const s = setup([trip({ datasetId: "-123" })], [trip({ localRevision: undefined })]);
-  await assert.rejects(syncTripRecords(s.store), /dataset link/);
+  await assert.rejects(syncTripRecords(s.store), /project link/);
   assert.equal(s.remote.get("trip")?.datasetId, "dataset-cloud"); assert.equal(s.remote.size, 1);
 });

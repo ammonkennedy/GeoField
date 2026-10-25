@@ -1,3 +1,5 @@
+import { DatasetSection } from "@/components/DatasetSection";
+import { DatasetStereonets } from "@/components/DatasetStereonets";
 import { loadTrips, TRIPS_UPDATED } from "@/lib/trips";
 import { DatasetTracks } from '@/components/DatasetTracks';
 import { BulkRecords } from "@/components/BulkRecords";
@@ -160,7 +162,7 @@ export default function Dashboard() {
 
   const handleDeleteFolder = () => {
     if (!requireAccountForSave(authData?.user, setLocation)) return;
-    if (!activeFolder || !confirm("Are you sure you want to delete this dataset? Samples will become uncategorized.")) return;
+    if (!activeFolder || !confirm("Are you sure you want to delete this project? Samples will become uncategorized.")) return;
 
     if ((activeFolder as any).isLocal || (typeof activeFolder.id === "number" && activeFolder.id < 0)) {
       deleteLocalDataset(activeFolder.id as number);
@@ -223,7 +225,7 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-center gap-3">
               {activeFolder && (
                 <Button variant="outline" className="border-destructive/20 text-destructive hover:bg-destructive/10" onClick={handleDeleteFolder}>
-                  Delete Dataset
+                  Delete Project
                 </Button>
               )}
               <Button variant="secondary" className="rounded-full bg-white shadow-sm" onClick={() => setExportOpen(true)}>
@@ -247,7 +249,7 @@ export default function Dashboard() {
               : { label: "Trips", value: trips.length, icon: Route },
             activeFolder
               ? { label: "Pending Sync", value: pendingSamples, icon: Cloud }
-              : { label: "Datasets", value: datasetCount, icon: FolderOpen },
+              : { label: "Projects", value: datasetCount, icon: FolderOpen },
           ].map((stat) => {
             const Icon = stat.icon;
             return (
@@ -277,6 +279,8 @@ export default function Dashboard() {
 
       <div className="mb-4"><BulkRecords samples={filteredSamples} measurements={activeFolder ? datasetMeasurements : []} datasets={allFolders} /></div>
 
+      <DatasetSection key={`samples-${activeFolderId ?? "all"}`} title="Samples" enabled={Boolean(activeFolder)}>
+      <div className={activeFolder ? "p-3 sm:p-5" : undefined}>
       {isLoading && shouldLoadServerSamples ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map(i => <div key={i} className="h-48 bg-muted/50 rounded-xl animate-pulse" />)}
@@ -350,24 +354,14 @@ export default function Dashboard() {
         </div>
       )}
 
+      </div>
+      </DatasetSection>
+
       {activeFolder && (
-        <div className="mt-8 rounded-2xl border border-border bg-card shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-semibold">
-                <Compass className="h-5 w-5 text-primary" />
-                Structural Measurements
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {datasetMeasurements.length} structural measurement{datasetMeasurements.length !== 1 ? "s" : ""} in this dataset
-              </p>
-            </div>
-
-          </div>
-
+        <DatasetSection key={`measurements-${activeFolderId}`} title="Structural Measurements">
           {datasetMeasurements.length === 0 ? (
             <div className="px-5 py-8 text-sm text-muted-foreground">
-              No structural measurements are assigned to this dataset yet.
+              No structural measurements are assigned to this project yet.
             </div>
           ) : (
             <div className="space-y-3 p-3 sm:p-5">
@@ -399,10 +393,11 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </DatasetSection>
       )}
 
-      {activeFolder && activeFolderId != null && <DatasetTracks datasetId={activeFolderId} localDatasets={localDatasets} />}
+      {activeFolder && activeFolderId != null && <DatasetStereonets key={`stereonets-${activeFolderId}`} datasetId={activeFolderId} localDatasets={localDatasets} />}
+      {activeFolder && activeFolderId != null && <DatasetTracks key={`tracks-${activeFolderId}`} datasetId={activeFolderId} localDatasets={localDatasets} />}
 
       <ExportDialog
         open={exportOpen}

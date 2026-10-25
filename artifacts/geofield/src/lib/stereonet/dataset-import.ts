@@ -95,7 +95,7 @@ export function importMeasurementDatasets(
   if (
     !net.measurements.length &&
     net.groups.length === 1 &&
-    net.groups[0].name === "Dataset 1" &&
+    ["Dataset 1", "Project 1"].includes(net.groups[0].name) &&
     next.groups.length > 1
   )
     next.groups = next.groups.filter((g) => g.id !== net.groups[0].id);

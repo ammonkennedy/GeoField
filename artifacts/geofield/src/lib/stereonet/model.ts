@@ -41,7 +41,7 @@ export interface Stereonet {
   localRevision?: string;
   cloudRevision?: string;
 }
-export function newGroup(name = "Dataset 1"): NetGroup {
+export function newGroup(name = "Project 1"): NetGroup {
   return {
     id: crypto.randomUUID(),
     name,
@@ -72,14 +72,14 @@ export function normalizedMeasurement(
   const reference = m.north === "unknown" ? group.assumedNorth : m.north;
   if (!reference)
     throw new Error(
-      `${m.name || m.id}: choose the dataset’s assumed north reference for this legacy measurement.`,
+      `${m.name || m.id}: choose the project’s assumed north reference for this legacy measurement.`,
     );
   let azimuth = m.azimuth;
   if (reference !== target) {
     const declination = m.declination ?? group.declination;
     if (!Number.isFinite(declination))
       throw new Error(
-        `${m.name || m.id} uses ${reference} north. Switch the plot to ${reference} north, or enter its declination (east positive) in Datasets to convert to ${target} north.`,
+        `${m.name || m.id} uses ${reference} north. Switch the plot to ${reference} north, or enter its declination (east positive) in Projects to convert to ${target} north.`,
       );
     azimuth += target === "true" ? declination! : -declination!;
   }

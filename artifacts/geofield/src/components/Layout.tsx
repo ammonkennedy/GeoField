@@ -282,7 +282,7 @@ export function Layout({ children, lockPageScroll = false }: { children: ReactNo
           {/* Datasets */}
           <div className="px-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Datasets</h3>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Projects</h3>
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setDatasetDialogOpen(true)}>
                 <Plus className="w-4 h-4" />
               </Button>
@@ -307,7 +307,7 @@ export function Layout({ children, lockPageScroll = false }: { children: ReactNo
                 </Link>
               ))}
               {allFolders.length === 0 && (
-                <p className="text-xs text-muted-foreground italic px-3 py-2">No datasets yet</p>
+                <p className="text-xs text-muted-foreground italic px-3 py-2">No projects yet</p>
               )}
             </nav>
           </div>

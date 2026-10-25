@@ -17,12 +17,12 @@ export function DatasetMultiSelect({ id, options, value, onChange, identities = 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button id={id} variant="outline" aria-label={`Datasets: ${label}`} className="min-h-10 min-w-0 w-full sm:w-auto max-w-full justify-between gap-2">
+        <Button id={id} variant="outline" aria-label={`Projects: ${label}`} className="min-h-10 min-w-0 w-full sm:w-auto max-w-full justify-between gap-2">
           <span className="min-w-0 max-w-80 truncate">{value === 'all' || count <= 1 ? label : `${count} selected`}</span>
           <ChevronDown className="h-4 w-4 shrink-0" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent onEscapeKeyDown={event => event.stopPropagation()} align="start" className="z-[210] max-h-64 w-72 max-w-[calc(100vw-2rem)] bg-card text-card-foreground" aria-label="Datasets">
+      <DropdownMenuContent onEscapeKeyDown={event => event.stopPropagation()} align="start" className="z-[210] max-h-64 w-72 max-w-[calc(100vw-2rem)] bg-card text-card-foreground" aria-label="Projects">
         <DropdownMenuCheckboxItem checked={all ? true : count > 0 ? 'indeterminate' : false} onCheckedChange={() => onChange(all ? [] : 'all')} onSelect={event => event.preventDefault()} className="min-h-11 font-medium [&>span]:rounded-sm [&>span]:border [&>span]:border-input">
           Select all
         </DropdownMenuCheckboxItem>

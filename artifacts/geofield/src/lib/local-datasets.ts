@@ -44,7 +44,7 @@ function saveLocalDatasets(datasets: LocalDataset[]) {
 export function getLocalDatasetSyncId(id: number): string {
   const datasets = getLocalDatasets(true);
   const dataset = datasets.find((item) => item.id === id);
-  if (!dataset) throw new Error("Local dataset no longer exists.");
+  if (!dataset) throw new Error("Local project no longer exists.");
   if (dataset.syncId) return dataset.syncId;
   const syncId = crypto.randomUUID();
   saveLocalDatasets(datasets.map((item) => item.id === id ? { ...item, syncId } : item));
@@ -154,7 +154,7 @@ export function updateLocalDataset(id: number, input: { name: string; descriptio
 export function editCloudDatasetOffline(cloudId: string | number, input: { name: string; description?: string }) {
   const datasets = getLocalDatasets(true);
   const existing = datasets.find(dataset => dataset.cloudId === String(cloudId));
-  if (existing?.deletedAt) throw new Error("Restore this dataset before editing it.");
+  if (existing?.deletedAt) throw new Error("Restore this project before editing it.");
   const edited: LocalDataset = {
     ...(existing ?? { id: nextLocalDatasetId(datasets), createdAt: new Date().toISOString(), isLocal: true as const }),
     cloudId: String(cloudId),

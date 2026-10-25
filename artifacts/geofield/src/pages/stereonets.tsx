@@ -1,3 +1,4 @@
+import { useSearch } from "wouter";
 import { useGetFolders } from "@workspace/api-client-react";
 import { DatasetMultiSelect } from "@/components/DatasetMultiSelect";
 import {
@@ -46,6 +47,8 @@ export default function StereonetsPage() {
   const [datasetSelection, setDatasetSelection] = useState<DatasetSelection>(
     [],
   );
+  const requestedNet = new URLSearchParams(useSearch()).get("net");
+  const openedLink = useRef<string | null>(null);
   const account = useRef(getStorageAccountId());
   const savedBase = useRef<Stereonet | null>(null);
   const [nets, setNets] = useState<Stereonet[]>([]),
@@ -71,7 +74,7 @@ export default function StereonetsPage() {
   ).length;
   function plotDatasets() {
     try {
-      const base = net ?? newStereonet("Measurement datasets");
+      const base = net ?? newStereonet("Measurement projects");
       const next = importMeasurementDatasets(
         base,
         existing,
@@ -83,7 +86,7 @@ export default function StereonetsPage() {
         setFeature("");
       }
     } catch (e) {
-      setError(`No datasets were imported. ${(e as Error).message}`);
+      setError(`No projects were imported. ${(e as Error).message}`);
     }
   }
 
@@ -123,6 +126,18 @@ export default function StereonetsPage() {
       window.removeEventListener("storage", refresh);
     };
   }, []);
+  useEffect(() => {
+    if (!requestedNet) {
+      openedLink.current = null;
+      return;
+    }
+    if (openedLink.current === requestedNet) return;
+    const linked = nets.find((net) => net.id === requestedNet);
+    if (linked) {
+      open(linked);
+      openedLink.current = requestedNet;
+    }
+  }, [requestedNet, nets]);
   function commit(next: Stereonet) {
     try {
       const saved = saveStereonet(next, account.current);
@@ -204,7 +219,7 @@ export default function StereonetsPage() {
           </Button>
         </div>
         <div className={panel}>
-          <h2 className="font-semibold">Plot measurement datasets</h2>
+          <h2 className="font-semibold">Plot measurement projects</h2>
           <DatasetMultiSelect
             options={sourceOptions}
             identities={localDatasets}
@@ -212,11 +227,11 @@ export default function StereonetsPage() {
             onChange={setDatasetSelection}
           />
           <p className="text-sm text-muted-foreground">
-            {selectedCount} measurements selected. Each dataset keeps its name
+            {selectedCount} measurements selected. Each project keeps its name
             and receives its own color. Imports are saved snapshots.
           </p>
           <Button disabled={!selectedCount} onClick={plotDatasets}>
-            Plot selected datasets
+            Plot selected projects
           </Button>
           {!sourceOptions.length && (
             <p className="text-sm text-muted-foreground">
@@ -242,7 +257,7 @@ export default function StereonetsPage() {
                 />
               </label>
               <label className="block text-sm">
-                Project / trip
+                Trip
                 <select
                   className={input}
                   value={net.projectId ?? ""}

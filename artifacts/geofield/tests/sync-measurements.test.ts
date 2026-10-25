@@ -166,7 +166,7 @@ test("unconfirmed conflict backup never overwrites the original cloud version", 
 
 test("unresolved local dataset reports the blocked measurement without discarding its revision", async () => {
   const scenario = setup({ ...base, datasetId: '-123' });
-  await assert.rejects(syncMeasurementRecords(scenario.store), /waiting for its dataset/);
+  await assert.rejects(syncMeasurementRecords(scenario.store), /waiting for its project/);
   assert.equal(scenario.writes.length, 0);
   assert.equal(scenario.local()[0].datasetId, '-123');
   assert.equal(scenario.local()[0].localRevision, 'edit-1');

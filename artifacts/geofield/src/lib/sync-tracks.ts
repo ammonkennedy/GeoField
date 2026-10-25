@@ -17,7 +17,7 @@ export async function syncTracks(accountId: string) {
     save: async tracks => { check(); await storeTracks(tracks); },
     activeId: () => trackingStatus().activeId,
     put: snapshot => {
-      if (!snapshot.track.deletedAt && Number(snapshot.track.datasetId) < 0) throw new Error(`Track "${snapshot.track.name}" is waiting for its dataset to sync.`);
+      if (!snapshot.track.deletedAt && Number(snapshot.track.datasetId) < 0) throw new Error(`Track "${snapshot.track.name}" is waiting for its project to sync.`);
       return putTrackCloudObject(snapshot, snapshot, accountId);
     },
     get: async snapshot => validateTrackSnapshot(await getTrackCloudObject(snapshot, accountId)),

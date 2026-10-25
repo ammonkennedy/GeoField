@@ -69,7 +69,7 @@ export default function FiguresPage() {
             <BarChart2 className="h-8 w-8 text-primary" />
             Generate Figures
           </h1>
-          <p className="mt-1 text-muted-foreground">Create organized, publication-ready charts from selected datasets or an entire account.</p>
+          <p className="mt-1 text-muted-foreground">Create organized, publication-ready charts from selected projects or an entire account.</p>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">

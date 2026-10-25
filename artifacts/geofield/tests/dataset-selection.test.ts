@@ -6,7 +6,7 @@ const options = datasetOptions([{ id: 'cloud-a', name: 'A' }, { id: 2, name: 'B'
 test('dataset choices count aliases together and retain uncategorized and unloaded datasets', () => {
   assert.deepEqual(options, [
     { id: 'cloud-a', name: 'A', count: 2 }, { id: '2', name: 'B', count: 1 },
-    { id: '', name: 'Uncategorized', count: 1 }, { id: 'missing', name: 'Dataset missing', count: 1 },
+    { id: '', name: 'Uncategorized', count: 1 }, { id: 'missing', name: 'Project missing', count: 1 },
   ]);
 });
 test('multiple datasets filter records once and survive local-to-cloud identity changes', () => {
@@ -21,6 +21,6 @@ test('unchecking one from all retains other datasets; toggling again restores it
   assert.deepEqual(selected, ['2', '', 'missing']);
   assert.deepEqual(toggleDataset(selected, 'cloud-a', options, identities), ['2', '', 'missing', 'cloud-a']);
   assert.deepEqual(toggleDataset(['local-a'], 'cloud-a', options, identities), []);
-  assert.equal(datasetSelectionLabel([], options, identities), 'No datasets selected');
+  assert.equal(datasetSelectionLabel([], options, identities), 'No projects selected');
   assert.equal(datasetSelectionLabel(['local-a', '2'], options, identities), 'A, B');
 });

@@ -9,7 +9,7 @@ const csv = (value: unknown) => {
 export function stereonetCsv(net: Stereonet) {
   const header = [
     "id",
-    "dataset",
+    "project",
     "kind",
     "name",
     "feature",

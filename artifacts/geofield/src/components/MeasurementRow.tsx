@@ -273,7 +273,7 @@ export function MeasurementRow({
               </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-semibold text-foreground/80">Dataset</Label>
+              <Label className="text-xs font-semibold text-foreground/80">Project</Label>
               <select
                 className="flex h-8 w-full rounded-md border border-input bg-card px-2 py-1 text-sm"
                 value={measurement.datasetId ?? ""}

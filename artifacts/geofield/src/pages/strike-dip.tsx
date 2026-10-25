@@ -181,10 +181,10 @@ export default function StrikeDipPage() {
     return ordered.filter((m) => String(resolveDatasetId(m.datasetId, localDatasets) ?? "") === String(resolveDatasetId(selectedDatasetId, localDatasets)));
   }, [measurements, selectedDatasetId, localDatasets]);
   const selectedDatasetName = selectedDatasetId === "all"
-    ? "All Datasets"
+    ? "All Projects"
     : selectedDatasetId === "uncategorized"
       ? "Uncategorized"
-      : allFolders.find((folder: any) => String(folder.id) === selectedDatasetId)?.name || "Dataset";
+      : allFolders.find((folder: any) => String(folder.id) === selectedDatasetId)?.name || "Project";
 
   // Persist user changes immediately against current storage. Writing a whole
   // React snapshot in an effect could overwrite a concurrent sync or lose an
@@ -308,7 +308,7 @@ export default function StrikeDipPage() {
       m,
       i,
       m.datasetId
-        ? allFolders.find((folder: any) => String(folder.id) === String(m.datasetId))?.name || "Unknown Dataset"
+        ? allFolders.find((folder: any) => String(folder.id) === String(m.datasetId))?.name || "Unknown Project"
         : "Uncategorized",
     ));
     const ws = buildStyledWorksheet(columns, dataRows, config);
@@ -363,14 +363,14 @@ export default function StrikeDipPage() {
         <div className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2">
           <FolderOpen className="w-4 h-4 text-muted-foreground shrink-0" />
           <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
-            Dataset
+            Project
           </Label>
           <select
             className="flex h-9 min-w-0 flex-1 rounded-md border border-input bg-card px-3 py-1 text-sm"
             value={selectedDatasetId}
             onChange={(e) => setSelectedDatasetId(e.target.value)}
           >
-            <option value="all">All Datasets</option>
+            <option value="all">All Projects</option>
             {allFolders.map((folder: any) => (
               <option key={folder.id} value={folder.id}>
                 {folder.name}{folder.isLocal ? " (local)" : ""}
@@ -405,11 +405,11 @@ export default function StrikeDipPage() {
               <Compass className="w-10 h-10 opacity-30" />
             </div>
             <div className="text-center">
-              <p className="font-medium">{measurements.length === 0 ? "No measurements yet" : "No measurements in this dataset"}</p>
+              <p className="font-medium">{measurements.length === 0 ? "No measurements yet" : "No measurements in this project"}</p>
               <p className="text-sm mt-1">
                 {measurements.length === 0
                   ? "Use the compass button to capture a reading from your phone, or enter strike and dip values manually."
-                  : "Choose another dataset or assign measurements to this dataset from each row."}
+                  : "Choose another project or assign measurements to this project from each row."}
               </p>
             </div>
           </div>
@@ -443,12 +443,12 @@ export default function StrikeDipPage() {
             <Input aria-label="Custom capture feature type" className="bg-slate-900 text-white" placeholder="Or type your own feature type" value={presets[featureKey]} onChange={e => updatePreset(featureKey, e.target.value)} />
             <label className="block space-y-1 text-sm"><span>Layer type</span><select aria-label="Capture layer type" className={selectClass} value={presets.rockLayerType} onChange={e => updatePreset("rockLayerType", e.target.value)}><option value="">Select layer type</option>{ROCK_LAYER_OPTIONS.map(value => <option key={value}>{value}</option>)}{presets.rockLayerType && !ROCK_LAYER_OPTIONS.includes(presets.rockLayerType) && <option>{presets.rockLayerType}</option>}</select></label>
             <Input aria-label="Custom capture layer type" className="bg-slate-900 text-white" placeholder="Or type your own layer type" value={presets.rockLayerType} onChange={e => updatePreset("rockLayerType", e.target.value)} />
-            <label className="block space-y-1 text-sm"><span>Dataset</span><select aria-label="Capture dataset" className={selectClass} value={String(resolveDatasetId(presets.datasetId, localDatasets) ?? "")} onChange={e => updatePreset("datasetId", e.target.value)}><option value="">Uncategorized</option>{presets.datasetId && !allFolders.some((folder: any) => String(folder.id) === String(resolveDatasetId(presets.datasetId, localDatasets))) && <option value={String(resolveDatasetId(presets.datasetId, localDatasets))}>Saved dataset (unavailable)</option>}{allFolders.map((folder: any) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>
+            <label className="block space-y-1 text-sm"><span>Project</span><select aria-label="Capture project" className={selectClass} value={String(resolveDatasetId(presets.datasetId, localDatasets) ?? "")} onChange={e => updatePreset("datasetId", e.target.value)}><option value="">Uncategorized</option>{presets.datasetId && !allFolders.some((folder: any) => String(folder.id) === String(resolveDatasetId(presets.datasetId, localDatasets))) && <option value={String(resolveDatasetId(presets.datasetId, localDatasets))}>Saved project (unavailable)</option>}{allFolders.map((folder: any) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>
           </div>;
         }}
         onCapture={(capture: StrikeDipCapture) => {
           if (presets.datasetId && !allFolders.some((folder: any) => String(folder.id) === String(resolveDatasetId(presets.datasetId, localDatasets)))) {
-            toast({ title: "Choose an available dataset", description: "The preset dataset is unavailable. Select a dataset or Uncategorized before capturing.", variant: "destructive" });
+            toast({ title: "Choose an available project", description: "The preset project is unavailable. Select a project or Uncategorized before capturing.", variant: "destructive" });
             return false;
           }
           if (capture.measurementType === "lineation") {

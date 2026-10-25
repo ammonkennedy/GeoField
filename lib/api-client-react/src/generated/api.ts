@@ -423,7 +423,7 @@ export function useGetFolders<TData = Folder[]>(options?: QueryOptions<any>): Us
 }
 
 export async function createFolder({ data, id, accountId }: { data: CreateFolderRequest; id?: string; accountId?: string }): Promise<Folder> {
-  if (!(await hasCurrentUser())) throw new Error("Sign in before creating datasets.");
+  if (!(await hasCurrentUser())) throw new Error("Sign in before creating projects.");
   const result = await client.models.Dataset.create({ id, name: data.name, description: data.description ?? "", createdAt: nowIso(), updatedAt: nowIso() }, await accountRequestOptions(accountId));
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asFolder(result.data);
@@ -433,7 +433,7 @@ export function useCreateFolder(options?: MutationOptions<Folder, { data: Create
 }
 
 export async function updateFolder({ id, data, accountId }: { id: string | number; data: CreateFolderRequest; accountId?: string }): Promise<Folder> {
-  if (!(await hasCurrentUser())) throw new Error("Sign in before updating datasets.");
+  if (!(await hasCurrentUser())) throw new Error("Sign in before updating projects.");
   const updatingAccount = accountId ?? (await getCurrentUser()).userId;
   const input = cleanObject({ id: String(id), name: data.name, description: data.description ?? "", updatedAt: nowIso() });
   const result = await updateDatasetWithAuthorization(
@@ -447,7 +447,7 @@ export function useUpdateFolder(options?: MutationOptions<Folder, { id: string |
 }
 
 export async function deleteFolder({ id, accountId }: { id: string | number; accountId?: string }): Promise<void> {
-  if (!(await hasCurrentUser())) throw new Error("Sign in before deleting datasets.");
+  if (!(await hasCurrentUser())) throw new Error("Sign in before deleting projects.");
   const deletingAccount = accountId ?? (await getCurrentUser()).userId;
   const authorization = await accountRequestOptions(deletingAccount);
   const samples = await getSamples({ folderId: id }, undefined, false, deletingAccount);
@@ -458,7 +458,7 @@ export async function deleteFolder({ id, accountId }: { id: string | number; acc
   ]);
   for (const detached of detachments) {
     if (detached.errors?.length) throw new Error(errorMessage(detached.errors));
-    if (!detached.data) throw new Error("Cloud did not confirm that the dataset contents were preserved. Please retry.");
+    if (!detached.data) throw new Error("Cloud did not confirm that the project contents were preserved. Please retry.");
   }
   const input = { id: String(id), deletedAt: nowIso(), updatedAt: nowIso() };
   await updateDatasetWithAuthorization(

@@ -114,7 +114,7 @@ function TopographicSystem() {
             ))}
           </div>
           <div className="mt-8 border-t border-[#c5bfae] pt-4">
-            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[#6a6f60]">Datasets</div>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[#6a6f60]">Projects</div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span>Moab Recon</span><span>18</span></div>
               <div className="flex justify-between"><span>Layer Logs</span><span>7</span></div>
@@ -190,7 +190,7 @@ function GisWorkbench() {
         </aside>
         <main>
           <div className="grid grid-cols-2 border-b border-[#cfd5d8] bg-white md:grid-cols-4">
-            {["42 Samples", "8 Datasets", "3 Trips", "2 Pending"].map((stat) => (
+            {["42 Samples", "8 Projects", "3 Trips", "2 Pending"].map((stat) => (
               <div key={stat} className="border-r border-[#e2e6e8] px-4 py-3 last:border-r-0">
                 <div className="text-xs uppercase tracking-wide text-[#66727a]">Current View</div>
                 <div className="font-semibold">{stat}</div>
@@ -267,7 +267,7 @@ function FieldNotebook() {
           </div>
         </main>
         <aside className="border-t border-[#d7c8a7] bg-[#eee2c7] p-5 lg:border-l lg:border-t-0">
-          <div className="mb-4 flex items-center gap-2 font-semibold"><Database className="h-5 w-5 text-[#9a5a38]" />Dataset Summary</div>
+          <div className="mb-4 flex items-center gap-2 font-semibold"><Database className="h-5 w-5 text-[#9a5a38]" />Project Summary</div>
           <div className="space-y-3">
             {["Rock samples", "Soil samples", "Water samples"].map((label, i) => (
               <div key={label}>

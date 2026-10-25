@@ -435,7 +435,7 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
       ctx.drawImage(img, PAD, HEADER, W, H);
       URL.revokeObjectURL(url);
 
-      const fname = `${(datasetName || "dataset").replace(/[^a-zA-Z0-9]/g, "_")}_${paramMeta.label.replace(/[^a-zA-Z0-9]/g, "_")}_${chartType}.png`;
+      const fname = `${(datasetName || "project").replace(/[^a-zA-Z0-9]/g, "_")}_${paramMeta.label.replace(/[^a-zA-Z0-9]/g, "_")}_${chartType}.png`;
       try {
         const blob = await new Promise<Blob>((resolve, reject) =>
           canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Could not create the PNG image.")), "image/png")
@@ -640,7 +640,7 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                   </div>
                 ) : selectedParam ? (
                   <div className="py-10 text-center text-muted-foreground text-sm">
-                    No records have values for <strong>{paramMeta?.label}</strong> in this dataset.
+                    No records have values for <strong>{paramMeta?.label}</strong> in this project.
                   </div>
                 ) : (
                   <div className="py-10 text-center text-muted-foreground text-sm">

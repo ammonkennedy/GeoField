@@ -53,7 +53,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
   const count = sampleCount + measurementCount;
   const folderName = datasetSelectionLabel(selected, options, localDatasets);
   const filename = selected === "all" ? "geofield-all" : selected.length === 1
-    ? `geofield-${folderName.replace(/\s+/g, "-").toLowerCase()}` : "geofield-selected-datasets";
+    ? `geofield-${folderName.replace(/\s+/g, "-").toLowerCase()}` : "geofield-selected-projects";
 
   // Match the workbook's visible sheet order so the user can predict the file.
   const sheetGroups = useMemo(
@@ -92,7 +92,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
 
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Choose datasets to export samples and measurements together.
+              Choose projects to export samples and measurements together.
             </p>
 
             <DatasetMultiSelect options={options} identities={localDatasets} value={selected} onChange={setSelected} />

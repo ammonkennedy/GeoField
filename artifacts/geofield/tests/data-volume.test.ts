@@ -26,7 +26,7 @@ test('exports 1,000 samples and 1,001 measurements across 20 datasets without mi
   assert.equal(count, 1000);
   const rows = XLSX.utils.sheet_to_json(saved.Sheets.Measurements) as any[];
   assert.equal(rows.length, 1001);
-  rows.forEach((row, i) => { assert.equal(row.Label, `Measurement ${i}`); assert.equal(row['Feature Type'], `Custom feature ${i}`); assert.equal(row['Rock / Layer Type'], `Custom rock ${i}`); assert.equal(row.Dataset, `Dataset ${i % 20}`); });
+  rows.forEach((row, i) => { assert.equal(row.Label, `Measurement ${i}`); assert.equal(row['Feature Type'], `Custom feature ${i}`); assert.equal(row['Rock / Layer Type'], `Custom rock ${i}`); assert.equal(row.Project, `Dataset ${i % 20}`); });
   console.log(JSON.stringify({ exportRecords: count + rows.length, exportMs: Math.round(performance.now() - start), xlsxBytes: buffer.length }));
 });
 test('1,001-measurement sync retains a failed middle record, retries it, and downloads on a second device', async () => {

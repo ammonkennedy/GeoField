@@ -50,7 +50,7 @@ export function datasetNameForId(
   datasets: DatasetLookupItem[],
 ) {
   if (datasetId === null || datasetId === undefined || datasetId === "") return "Uncategorized";
-  return datasets.find((dataset) => String(dataset.id) === String(datasetId))?.name || "Unknown Dataset";
+  return datasets.find((dataset) => String(dataset.id) === String(datasetId))?.name || "Unknown Project";
 }
 
 /**

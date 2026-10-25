@@ -39,3 +39,10 @@ test("saved columns retain choices and order while supporting different dataset 
   assert.equal(result[0].enabled, false);
   assert.equal(current[1].enabled, true);
 });
+
+test("legacy project column label updates without changing its key or custom labels", () => {
+  const current = [{key: 'dataset', label: 'Project', enabled: true, defaultWidth: 20}];
+  assert.equal(applyDefaultColumns(current, [{...current[0], label: 'Dataset'}])[0].label, 'Project');
+  assert.equal(applyDefaultColumns(current, [{...current[0], label: 'Field campaign'}])[0].label, 'Field campaign');
+  assert.equal(applyDefaultColumns(current, [{...current[0], label: 'Dataset'}])[0].key, 'dataset');
+});
