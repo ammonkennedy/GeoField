@@ -36,7 +36,7 @@ export function StereonetPlot({
   net: Stereonet;
   items: NetMeasurement[];
   analysis?: NetAnalysis;
-  onSelect: (id: string) => void;
+  onSelect?: (id: string) => void;
   svgRef: React.RefObject<SVGSVGElement | null>;
 }) {
   const [zoom, setZoom] = useState(1),
@@ -154,7 +154,7 @@ export function StereonetPlot({
         onPointerUp={(e) => {
           pointers.current.delete(e.pointerId);
           if (gesture.current?.id && !gesture.current.moved)
-            onSelect(gesture.current.id);
+            onSelect?.(gesture.current.id);
           if (!pointers.current.size) gesture.current = undefined;
         }}
         onPointerCancel={(e) => pointers.current.delete(e.pointerId)}
@@ -208,7 +208,7 @@ export function StereonetPlot({
                 <g
                   key={m.id}
                   data-measurement={m.id}
-                  style={{ cursor: "pointer" }}
+                  style={{ cursor: onSelect ? "pointer" : "default" }}
                 >
                   <title>
                     {m.name || m.feature}: {m.azimuth.toFixed(1)} /{" "}

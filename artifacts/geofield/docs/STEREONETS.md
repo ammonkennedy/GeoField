@@ -4,6 +4,12 @@ The shared app exposes **Views → Stereonets** for signed-in accounts, includin
 remembered accounts offline. Each saved net can be assigned to an existing trip
 (the app's project grouping) and contains independently styled datasets.
 
+The page now opens directly into the Plot workspace. The Plot, Measurements,
+Datasets, Import, and Analysis tabs and their editing/analysis panels have been
+removed. Dataset selection, saved nets, plot controls, and exports remain.
+Existing saved measurements and dataset styles are retained. The mathematical
+analysis modules below remain available internally but have no page controls.
+
 ## Architecture and conventions
 
 - `src/lib/stereonet/math.ts`: pure geometry and spherical statistics.

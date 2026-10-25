@@ -96,3 +96,37 @@ test("oblique girdle recovers an independently constructed non-cardinal axis", (
   close(fit.strike, 123);
   close(fit.dip, 56);
 });
+
+test('SW–NE striking NW-dipping cleavage has a southeast pole and northwest great circle', () => {
+  // Independent reference: RHR 225/30 dips toward 315. Its pole is 135/60.
+  const p = project(pole(225, 30));
+  const expectedRadius = Math.sqrt(1 - Math.sin(Math.PI / 3));
+  close(p[0], expectedRadius / Math.SQRT2);
+  close(p[1], expectedRadius / Math.SQRT2);
+  const plane = greatCircle(225, 30);
+  const midpoint = project(plane[90]);
+  close(midpoint[0], -0.5);
+  close(midpoint[1], -0.5);
+  // A southeast-bowing plane is a different dipping plane, not the same
+  // plane with another display style. Its lower pole must be northwest.
+  const oppositePole = project(pole(45, 30));
+  close(oppositePole[0], -p[0]);
+  close(oppositePole[1], -p[1]);
+  for (const point of plane) close(dot(point, pole(225, 30)), 0);
+});
+
+test('provided cleavage readings 58–64 have northwest dip traces and southeast poles under RHR', () => {
+  for (const [strike, dip, dipDirection, poleTrend, polePlunge] of [
+    [211,37.2,301,121,52.8], [223,32.9,313,133,57.1],
+    [236,34.3,326,146,55.7], [210,26.7,300,120,63.3],
+    [219,30.4,309,129,59.6], [221,33.1,311,131,56.9],
+    [218,14.2,308,128,75.8],
+  ]) {
+    const p=orientation(pole(strike,dip));close(p.trend,poleTrend);close(p.plunge,polePlunge);
+    const points=greatCircle(strike,dip);const downDip=orientation(points[90]);
+    close(downDip.trend,dipDirection);close(downDip.plunge,dip);
+    const [px,py]=project(pole(strike,dip)),[gx,gy]=project(points[90]);
+    assert.ok(px>0&&py>0);assert.ok(gx<0&&gy<0);
+    for(const point of points)close(dot(point,pole(strike,dip)),0);
+  }
+});
