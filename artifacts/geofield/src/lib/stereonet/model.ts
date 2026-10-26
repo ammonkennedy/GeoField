@@ -27,6 +27,7 @@ export interface NetGroup {
   assumedNorth?: North;
 }
 export interface Stereonet {
+  savedDatasetId?: string;
   id: string;
   name: string;
   projectId?: string;

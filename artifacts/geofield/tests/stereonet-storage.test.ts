@@ -73,3 +73,36 @@ test('saved old imports repair durably and queue a new revision without changing
   assert.equal(loadStereonets()[0].localRevision,repaired.localRevision);
   assert.equal(repaired.measurements[0].raw.dipDirectionDegrees,90);
 });
+
+test("invalid saves leave existing stereonets intact", () => {
+  account("InvalidSave");
+  const saved = saveStereonet(newStereonet("Keep this net"), "InvalidSave");
+  assert.throws(
+    () => saveStereonet({ ...saved, groups: [] }, "InvalidSave"),
+    /could not be verified/,
+  );
+  assert.deepEqual(loadStereonets(), [saved]);
+});
+
+test("malformed local records report an error without rewriting stored data", async () => {
+  const { writeDurableArray } = await import("../src/lib/durable-storage.ts");
+  account("InvalidLocal");
+  writeDurableArray("geofield_stereonets", [
+    { ...newStereonet("Recoverable original"), measurements: [null] },
+  ]);
+  const before = new Map(storage.data);
+  assert.throws(() => loadStereonets(), /could not be verified/);
+  assert.deepEqual(storage.data, before);
+});
+
+test("draft edits do not change the saved project snapshot until saved again", () => {
+  account("ExplicitSave");
+  const draft = { ...newStereonet("Preview"), savedDatasetId: "project-one" };
+  assert.equal(loadStereonets().length, 0);
+  const saved = saveStereonet(draft, "ExplicitSave");
+  const edited = { ...saved, name: "Edited preview", savedDatasetId: "project-two", grid: false };
+  assert.deepEqual(loadStereonets(), [saved]);
+  const updated = saveStereonet(edited, "ExplicitSave");
+  assert.deepEqual(loadStereonets(), [updated]);
+  assert.equal(updated.savedDatasetId, "project-two");
+});

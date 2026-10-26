@@ -1,3 +1,4 @@
+import { ProjectTypeFilter } from "@/components/ProjectTypeFilter";
 import { DatasetSection } from "@/components/DatasetSection";
 import { DatasetStereonets } from "@/components/DatasetStereonets";
 import { loadTrips, TRIPS_UPDATED } from "@/lib/trips";
@@ -64,6 +65,12 @@ export default function Dashboard() {
   const { data: folders } = useGetFolders();
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [sampleTypeFilter, setSampleTypeFilter] = useState("");
+  const [featureTypeFilter, setFeatureTypeFilter] = useState("");
+  useEffect(() => {
+    setSampleTypeFilter("");
+    setFeatureTypeFilter("");
+  }, [folderId, authData?.user?.id]);
   const [deleteId, setDeleteId] = useState<string | number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [queuedSamples, setQueuedSamples] = useState(() => getQueue(true));
@@ -148,14 +155,22 @@ export default function Dashboard() {
   const allSamples = mergeCloudAndLocal((serverSamples as any[]).filter((sample) => !queuedSamples.some((item) => String(item.targetId ?? item.queuedId) === String(sample.id))), localSamples as any[]);
 
   const filteredSamples = allSamples.filter((s: any) =>
+    (!activeFolder || !sampleTypeFilter || String(s.sampleType || "unknown") === sampleTypeFilter) && (
     String(s.sampleId || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(getSampleTypeLabel(s)).toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(s.notes || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    String(s.fields?.location || "").toLowerCase().includes(searchTerm.toLowerCase())
+    String(s.fields?.location || "").toLowerCase().includes(searchTerm.toLowerCase()))
   ) || [];
   const datasetMeasurements = activeFolderId
     ? measurements.filter((measurement) => String(resolveDatasetId(measurement.datasetId, localDatasets) ?? "") === String(activeFolderId))
     : measurements;
+  const filteredMeasurements = datasetMeasurements.filter((measurement) =>
+    !featureTypeFilter || (measurement.featureType || "Unspecified") === featureTypeFilter,
+  );
+  const sampleTypeOptions = [...new Set(allSamples.map((sample: any) => String(sample.sampleType || "unknown")))]
+    .sort().map((value) => ({ value, label: typeStyles[value as keyof typeof typeStyles]?.label ?? value }));
+  const featureTypeOptions = [...new Set(datasetMeasurements.map((measurement) => measurement.featureType || "Unspecified"))]
+    .sort().map((value) => ({ value, label: value }));
   const newSamplePath = activeFolderId
     ? `/sample/new?folderId=${encodeURIComponent(String(activeFolderId))}`
     : "/sample/new";
@@ -277,10 +292,15 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="mb-4"><BulkRecords samples={filteredSamples} measurements={activeFolder ? datasetMeasurements : []} datasets={allFolders} /></div>
+      <div className="mb-4"><BulkRecords samples={filteredSamples} measurements={activeFolder ? filteredMeasurements : []} datasets={allFolders} /></div>
 
       <DatasetSection key={`samples-${activeFolderId ?? "all"}`} title="Samples" enabled={Boolean(activeFolder)}>
       <div className={activeFolder ? "p-3 sm:p-5" : undefined}>
+      {activeFolder && (
+        <div className="mb-4">
+          <ProjectTypeFilter label="sample type" value={sampleTypeFilter} options={sampleTypeOptions} onChange={setSampleTypeFilter} />
+        </div>
+      )}
       {isLoading && shouldLoadServerSamples ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map(i => <div key={i} className="h-48 bg-muted/50 rounded-xl animate-pulse" />)}
@@ -292,9 +312,9 @@ export default function Dashboard() {
           </div>
           <h3 className="text-xl font-semibold">No samples found</h3>
           <p className="text-muted-foreground mt-2 max-w-sm">
-            {searchTerm ? "Try adjusting your search terms." : "You haven't recorded any samples in this view yet."}
+            {searchTerm || sampleTypeFilter ? "Try adjusting your search or sample type filter." : "You haven't recorded any samples in this view yet."}
           </p>
-          {!searchTerm && (
+          {!searchTerm && !sampleTypeFilter && (
             <Button className="mt-6" onClick={() => setLocation(newSamplePath)}>Record First Sample</Button>
           )}
         </Card>
@@ -359,13 +379,16 @@ export default function Dashboard() {
 
       {activeFolder && (
         <DatasetSection key={`measurements-${activeFolderId}`} title="Structural Measurements">
-          {datasetMeasurements.length === 0 ? (
+          <div className="px-3 pt-3 sm:px-5 sm:pt-5">
+            <ProjectTypeFilter label="feature type" value={featureTypeFilter} options={featureTypeOptions} onChange={setFeatureTypeFilter} />
+          </div>
+          {filteredMeasurements.length === 0 ? (
             <div className="px-5 py-8 text-sm text-muted-foreground">
-              No structural measurements are assigned to this project yet.
+              {featureTypeFilter ? "No measurements match this feature type." : "No structural measurements are assigned to this project yet."}
             </div>
           ) : (
             <div className="space-y-3 p-3 sm:p-5">
-              {orderMeasurements(datasetMeasurements).reverse().map((measurement, index) => (
+              {orderMeasurements(filteredMeasurements).reverse().map((measurement, index) => (
                 <MeasurementRow key={measurement.id} measurement={measurement} index={index} allFolders={allFolders}
                   onChange={patch => {
                     if (!requireAccountForSave(authData?.user, setLocation, window.location.pathname)) return false;

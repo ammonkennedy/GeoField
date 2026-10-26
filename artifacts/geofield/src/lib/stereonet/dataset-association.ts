@@ -13,6 +13,7 @@ export function stereonetInDataset(
     (typeof value === "string" || typeof value === "number") &&
     value !== "" &&
     String(resolveDatasetId(value, identities)) === target;
+  if (net.savedDatasetId !== undefined) return matches(net.savedDatasetId);
   return (
     net.groups.some((group) => matches(group.sourceDatasetId)) ||
     net.measurements.some((m) => matches(m.raw.datasetId))

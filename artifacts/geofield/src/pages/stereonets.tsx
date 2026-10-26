@@ -37,7 +37,6 @@ import {
   STRIKE_DIP_UPDATED_EVENT,
   type StrikeDipMeasurement,
 } from "@/lib/strike-dip-measurements";
-import { loadTrips, type Trip } from "@/lib/trips";
 const input =
   "w-full min-w-0 rounded-lg border bg-background px-3 py-2 text-sm";
 const panel = "rounded-xl border bg-card p-4 space-y-3";
@@ -55,8 +54,7 @@ export default function StereonetsPage() {
     [net, setNet] = useState<Stereonet | null>(null),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
-  const [trips, setTrips] = useState<Trip[]>([]),
-    [existing, setExisting] = useState<StrikeDipMeasurement[]>([]);
+  const [existing, setExisting] = useState<StrikeDipMeasurement[]>([]);
   const [feature, setFeature] = useState("");
   const [busy, setBusy] = useState(false);
   const [dataNetId, setDataNetId] = useState<string | null>(null);
@@ -83,6 +81,11 @@ export default function StereonetsPage() {
         localDatasets,
         datasetSelection,
       );
+      const selectedProjects = sourceOptions.filter((option) =>
+        datasetSelected(datasetSelection, option.id, localDatasets),
+      );
+      if (!next.savedDatasetId && selectedProjects.length === 1)
+        next.savedDatasetId = selectedProjects[0].id;
       if (commit(next)) {
         setFeature("");
       }
@@ -99,16 +102,14 @@ export default function StereonetsPage() {
         const latest = saved.find((n) => n.id === current?.id);
         if (
           current &&
-          latest &&
           JSON.stringify(current) === JSON.stringify(savedBase.current)
         ) {
-          savedBase.current = latest;
-          return latest;
+          savedBase.current = latest ?? null;
+          return latest ?? null;
         }
         return current;
       });
       setLocalDatasets(getLocalDatasets());
-      setTrips(loadTrips());
       setExisting(loadMeasurements());
     } catch (e) {
       setError((e as Error).message);
@@ -135,11 +136,16 @@ export default function StereonetsPage() {
     if (openedLink.current === requestedNet) return;
     const linked = nets.find((net) => net.id === requestedNet);
     if (linked) {
-      open(linked);
-      openedLink.current = requestedNet;
+      if (open(linked)) openedLink.current = requestedNet;
     }
   }, [requestedNet, nets]);
   function commit(next: Stereonet) {
+    setNet(next);
+    setError("");
+    setMessage("Temporary — click Save to project to keep changes.");
+    return true;
+  }
+  function persist(next: Stereonet) {
     try {
       const saved = saveStereonet(next, account.current);
       savedBase.current = saved;
@@ -155,7 +161,13 @@ export default function StereonetsPage() {
       return false;
     }
   }
+  function preserveDraft() {
+    if (!net || JSON.stringify(net) === JSON.stringify(savedBase.current))
+      return true;
+    return window.confirm("Discard the temporary stereonet changes and continue?");
+  }
   function open(next: Stereonet) {
+    if (!preserveDraft()) return false;
     savedBase.current = next;
     setNet(next);
 
@@ -163,7 +175,19 @@ export default function StereonetsPage() {
 
     setError("");
     setMessage("");
+    setDataNetId(null);
+    return true;
   }
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (net && JSON.stringify(net) !== JSON.stringify(savedBase.current)) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [net]);
   const plotted = useMemo(
     () => (net ? plottedMeasurements(net, feature) : { items: [], errors: [] }),
     [net, feature],
@@ -211,9 +235,9 @@ export default function StereonetsPage() {
           </select>
           <Button
             onClick={() => {
-              const n = newStereonet("Untitled stereonet");
-              if (commit(n)) {
-              }
+              if (!preserveDraft()) return;
+              savedBase.current = null;
+              commit(newStereonet("Untitled stereonet"));
             }}
           >
             New stereonet
@@ -237,50 +261,22 @@ export default function StereonetsPage() {
                 <input
                   className={input}
                   value={net.name}
-                  onChange={(e) => setNet({ ...net, name: e.target.value })}
-                  onBlur={() => commit(net)}
+                  onChange={(e) => commit({ ...net, name: e.target.value })}
                 />
               </label>
               <label className="block text-sm">
-                Trip
+                Project
                 <select
                   className={input}
-                  value={net.projectId ?? ""}
-                  onChange={(e) =>
-                    commit({ ...net, projectId: e.target.value || undefined })
-                  }
+                  value={net.savedDatasetId ?? ""}
+                  onChange={(e) => commit({ ...net, savedDatasetId: e.target.value || undefined })}
                 >
-                  <option value="">Unassigned</option>
-                  {trips.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
+                  <option value="">Select a project</option>
+                  {datasetOptions(sourceDatasets, localDatasets, [net.savedDatasetId]).filter((project) => project.id).map((project) => (
+                    <option key={project.id} value={project.id}>{project.name}</option>
                   ))}
                 </select>
               </label>
-              <div className="flex flex-wrap items-center gap-3">
-                <Button size="sm" variant="outline" onClick={() => commit(net)}>
-                  Save
-                </Button>
-                <span role="status" className="text-xs text-muted-foreground">
-                  {message}
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        `Delete stereonet “${net.name}”? Original GeoField measurements will remain.`,
-                      ) &&
-                      commit({ ...net, deletedAt: new Date().toISOString() })
-                    )
-                      setNet(null);
-                  }}
-                >
-                  Delete stereonet
-                </Button>
-              </div>
             </>
           )}
           {!sourceOptions.length && (
@@ -372,9 +368,9 @@ export default function StereonetsPage() {
                   )}
                 </div>
               )}
-              <StereonetPlot net={net} items={plotted.items} svgRef={svgRef} />
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
+                  size="sm"
                   variant="outline"
                   aria-expanded={dataNetId === net.id}
                   aria-controls="stereonet-measurement-data"
@@ -382,10 +378,35 @@ export default function StereonetsPage() {
                 >
                   {dataNetId === net.id ? "Hide data" : "Display data"}
                 </Button>
+                <Button size="sm" variant="outline" disabled={!net.savedDatasetId} onClick={() => persist(net)}>
+                  Save to project
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Delete stereonet “${net.name}”? Original GeoField measurements will remain.`,
+                      ) &&
+                      (!savedBase.current || persist({ ...net, deletedAt: new Date().toISOString() }))
+                    )
+                      setNet(null);
+                  }}
+                >
+                  Delete stereonet
+                </Button>
+              </div>
+              <p role="status" className="text-xs text-muted-foreground">
+                {message}
+              </p>
+              <StereonetPlot net={net} items={plotted.items} svgRef={svgRef} />
+              <div className="grid grid-cols-3 gap-2">
                 {(["png", "pdf", "csv"] as const).map((f) => (
                   <Button
                     key={f}
                     variant="outline"
+                    className="min-w-0 px-1 text-xs sm:px-4 sm:text-sm"
                     disabled={busy}
                     onClick={() => download(f)}
                   >

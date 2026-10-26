@@ -23,6 +23,8 @@ export function validateSnapshot(value: unknown): NetSnapshot {
     !n ||
     !safe(n.id) ||
     typeof n.name !== "string" ||
+    (n.savedDatasetId !== undefined &&
+      (typeof n.savedDatasetId !== "string" || !n.savedDatasetId.trim())) ||
     !validDate(n.createdAt) ||
     !validDate(n.updatedAt) ||
     (n.deletedAt !== undefined && !validDate(n.deletedAt)) ||

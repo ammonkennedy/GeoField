@@ -19,3 +19,13 @@ test('legacy per-measurement imports retain their dataset association', () => {
   assert.equal(stereonetInDataset(net,'9'),false);
   assert.equal(stereonetInDataset(newStereonet('Unassigned'),'8'),false);
 });
+
+test('explicit destination overrides source projects and resolves offline aliases', () => {
+  const net = newStereonet('Saved snapshot');
+  net.savedDatasetId = '-12';
+  net.groups[0].sourceDatasetId = 'source';
+  const identities = [{ id: -12, cloudId: 'destination' }];
+  assert.equal(stereonetInDataset(net, 'destination', identities), true);
+  assert.equal(stereonetInDataset(net, 'source', identities), false);
+  assert.equal(stereonetInDataset({ ...net, deletedAt: '2026-10-25' }, 'destination', identities), false);
+});
