@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef } from "react";
 import {
   greatCircle,
   smallCircle,
@@ -11,7 +11,6 @@ import {
   type NetMeasurement,
   measurementVector,
 } from "@/lib/stereonet/model";
-import { Button } from "./ui/button";
 export interface NetAnalysis {
   label: string;
   trend: number;
@@ -39,15 +38,6 @@ export function StereonetPlot({
   onSelect?: (id: string) => void;
   svgRef: React.RefObject<SVGSVGElement | null>;
 }) {
-  const [zoom, setZoom] = useState(1),
-    [pan, setPan] = useState({ x: 0, y: 0 });
-  useEffect(() => {
-    const limit = 250 * (zoom - 1);
-    setPan((p) => ({
-      x: Math.max(-limit, Math.min(limit, p.x)),
-      y: Math.max(-limit, Math.min(limit, p.y)),
-    }));
-  }, [zoom]);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<
     { x: number; y: number; id?: string; moved: boolean } | undefined
@@ -72,66 +62,15 @@ export function StereonetPlot({
       ) > 6
     )
       gesture.current.moved = true;
-    const old = pointers.current.get(event.pointerId);
-    if (!old) return;
-    const next = { x: event.clientX, y: event.clientY };
-    const other = [...pointers.current.entries()].find(
-      ([id]) => id !== event.pointerId,
-    )?.[1];
-    if (other) {
-      const before = Math.hypot(old.x - other.x, old.y - other.y),
-        after = Math.hypot(next.x - other.x, next.y - other.y);
-      if (before > 1)
-        setZoom((z) => Math.min(4, Math.max(1, (z * after) / before)));
-    } else if (zoom > 1) {
-      const scale = 600 / event.currentTarget.getBoundingClientRect().width;
-      setPan((p) => ({
-        x: Math.max(
-          -250 * (zoom - 1),
-          Math.min(250 * (zoom - 1), p.x + (next.x - old.x) * scale),
-        ),
-        y: Math.max(
-          -250 * (zoom - 1),
-          Math.min(250 * (zoom - 1), p.y + (next.y - old.y) * scale),
-        ),
-      }));
-    }
-    pointers.current.set(event.pointerId, next);
   }
   return (
     <div className="space-y-2">
-      <div className="flex gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setZoom((z) => Math.max(1, z - 0.25))}
-        >
-          −
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setZoom((z) => Math.min(4, z + 0.25))}
-        >
-          +
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setZoom(1);
-            setPan({ x: 0, y: 0 });
-          }}
-        >
-          Reset view
-        </Button>
-      </div>
       <svg
         ref={svgRef}
         viewBox={`0 0 600 ${660 + legendHeight}`}
         xmlns="http://www.w3.org/2000/svg"
         className="w-full max-w-2xl mx-auto bg-white rounded-xl"
-        style={{ touchAction: "none" }}
+        style={{ touchAction: "pan-y pinch-zoom" }}
         role="img"
         aria-label={`${net.name}, lower hemisphere equal-area stereonet`}
         onPointerDown={(e) => {
@@ -185,10 +124,7 @@ export function StereonetPlot({
           </text>
         </g>
         <g clipPath={`url(#${clip})`}>
-          <g
-            data-net-geometry="true"
-            transform={`translate(${pan.x} ${pan.y}) translate(300 300) scale(${zoom}) translate(-300 -300)`}
-          >
+          <g data-net-geometry="true">
             {net.grid &&
               grid.map((v, i) => (
                 <path

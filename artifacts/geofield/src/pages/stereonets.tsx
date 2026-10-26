@@ -59,6 +59,7 @@ export default function StereonetsPage() {
     [existing, setExisting] = useState<StrikeDipMeasurement[]>([]);
   const [feature, setFeature] = useState("");
   const [busy, setBusy] = useState(false);
+  const [dataNetId, setDataNetId] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const sourceDatasets = [
     ...(cloudDatasets ?? []),
@@ -226,27 +227,11 @@ export default function StereonetsPage() {
             value={datasetSelection}
             onChange={setDatasetSelection}
           />
-          <p className="text-sm text-muted-foreground">
-            {selectedCount} measurements selected. Each project keeps its name
-            and receives its own color. Imports are saved snapshots.
-          </p>
           <Button disabled={!selectedCount} onClick={plotDatasets}>
             Plot selected projects
           </Button>
-          {!sourceOptions.length && (
-            <p className="text-sm text-muted-foreground">
-              No saved structural measurements are available yet. Synced
-              measurements and measurements saved offline appear here.
-            </p>
-          )}
-        </div>
-        {!net ? (
-          <p className="text-muted-foreground">
-            Create a stereonet or open one saved to your account.
-          </p>
-        ) : (
-          <>
-            <div className={panel}>
+          {net && (
+            <>
               <label className="block text-sm">
                 Name
                 <input
@@ -296,7 +281,21 @@ export default function StereonetsPage() {
                   Delete stereonet
                 </Button>
               </div>
-            </div>
+            </>
+          )}
+          {!sourceOptions.length && (
+            <p className="text-sm text-muted-foreground">
+              No saved structural measurements are available yet. Synced
+              measurements and measurements saved offline appear here.
+            </p>
+          )}
+        </div>
+        {!net ? (
+          <p className="text-muted-foreground">
+            Create a stereonet or open one saved to your account.
+          </p>
+        ) : (
+          <>
             <div className={panel}>
               <div className="flex flex-wrap gap-3">
                 <label className="text-sm">
@@ -375,6 +374,14 @@ export default function StereonetsPage() {
               )}
               <StereonetPlot net={net} items={plotted.items} svgRef={svgRef} />
               <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  aria-expanded={dataNetId === net.id}
+                  aria-controls="stereonet-measurement-data"
+                  onClick={() => setDataNetId(dataNetId === net.id ? null : net.id)}
+                >
+                  {dataNetId === net.id ? "Hide data" : "Display data"}
+                </Button>
                 {(["png", "pdf", "csv"] as const).map((f) => (
                   <Button
                     key={f}
@@ -387,10 +394,43 @@ export default function StereonetsPage() {
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                Pinch to zoom; drag when zoomed. Figure exports use the full net
+                Figure exports use the full net
                 and visible data; CSV includes all measurements and original
                 metadata.
               </p>
+              {dataNetId === net.id && (
+                <section id="stereonet-measurement-data" className="space-y-3">
+                  <h2 className="font-semibold">Measurement data ({net.measurements.length})</h2>
+                  {net.measurements.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No measurements in this stereonet.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="border-b">
+                            {["Name", "Strike / Azimuth", "Dip / Plunge"].map((heading) => (
+                              <th key={heading} scope="col" className="p-2 whitespace-nowrap font-medium">{heading}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {net.measurements.map((measurement) => (
+                            <tr key={measurement.id} className="border-b align-top">
+                              <td className="p-2">{measurement.name || "Unnamed measurement"}</td>
+                              <td className="p-2">
+                                {measurement.kind === "plane" ? "Strike" : "Azimuth"} {measurement.azimuth}°
+                              </td>
+                              <td className="p-2">
+                                {measurement.kind === "plane" ? "Dip" : "Plunge"} {measurement.inclination}°
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </section>
+              )}
             </div>
           </>
         )}
