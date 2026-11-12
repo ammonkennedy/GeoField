@@ -14,3 +14,11 @@ export const backend = defineBackend({
   data,
   storage,
 });
+
+// Allow a verified recovery request to reuse the current/previous password.
+backend.auth.resources.cfnResources.cfnUserPool.addPropertyOverride(
+  "Policies.PasswordPolicy.PasswordHistorySize", 0,
+);
+backend.auth.resources.cfnResources.cfnUserPool.addPropertyOverride(
+  "AccountRecoverySetting.RecoveryMechanisms", [{ Name: "verified_email", Priority: 1 }],
+);

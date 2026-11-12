@@ -22,7 +22,7 @@ export function FaultOverlay({ map, exportMode }: { map: MapLibreMap; exportMode
   useEffect(() => {
     let popup: Popup | undefined;
     const add = () => {
-      if (!map.isStyleLoaded() || map.getSource(SOURCE)) return;
+      if (!map.getStyle()?.layers || map.getSource(SOURCE)) return;
       map.addSource(SOURCE, {
         type: 'geojson', data: `${import.meta.env.BASE_URL}data/faults/gem-active-faults.geojson`,
         attribution: `<a href="${GEM}">GEM Foundation · Styron &amp; Pagani (2020)</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>`,

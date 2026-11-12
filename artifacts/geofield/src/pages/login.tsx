@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useGetCurrentAuthUser, signInUser, signUpUser, confirmSignUpUser, resendConfirmationEmail, isAuthConfigured } from "@workspace/api-client-react";
+import { useGetCurrentAuthUser, signInUser, signUpUser, confirmSignUpUser, resendConfirmationEmail, requestPasswordReset, completePasswordReset, isAuthConfigured } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,9 +16,11 @@ export default function Login() {
   const { data, isLoading, refetch } = useGetCurrentAuthUser();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<"signin" | "signup" | "confirm">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "confirm" | "forgot" | "reset">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordAgain, setPasswordAgain] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
   const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -35,7 +37,9 @@ export default function Login() {
     setIsResending(true);
     setMessage("");
     try {
-      const result = await resendConfirmationEmail({ email });
+      const result = mode === "reset"
+        ? await requestPasswordReset({ email: resetEmail }).then(result => ({ destination: result.nextStep.codeDeliveryDetails?.destination }))
+        : await resendConfirmationEmail({ email });
       setCode("");
       setResendWait(30);
       setMessage(`Verification email sent to ${result.destination || email.trim()}. Check your inbox and spam folder, then enter the latest code.`);
@@ -56,16 +60,41 @@ export default function Login() {
 
   if (isLoading || (data?.user && !reconnecting)) return null;
 
+  async function sendResetEmail() {
+    const result = await requestPasswordReset({ email });
+    if (result.nextStep.resetPasswordStep === "CONFIRM_RESET_PASSWORD_WITH_CODE") {
+      setResetEmail(email.trim()); setCode(""); setPassword(""); setPasswordAgain("");
+      setMode("reset"); setResendWait(30);
+      setMessage(`Check your email${result.nextStep.codeDeliveryDetails?.destination ? ` at ${result.nextStep.codeDeliveryDetails.destination}` : ""} for a reset code. Enter it below with your password.`);
+    } else {
+      setMode("signin"); setPassword(""); setMessage("Password recovery completed. Please sign in.");
+    }
+  }
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSubmitting || isResending) return;
     setIsSubmitting(true);
     setMessage("");
 
     try {
-      if (mode === "signup") {
-        await signUpUser({ email, password });
-        setMode("confirm");
-        setMessage("Account created. Check your email for a confirmation code.");
+      if (mode === "forgot") {
+        await sendResetEmail();
+      } else if (mode === "reset") {
+        if (password !== passwordAgain) { setMessage("The passwords do not match."); return; }
+        await completePasswordReset({ email: resetEmail, code, password });
+        setMode("signin"); setPassword(""); setPasswordAgain(""); setCode("");
+        setMessage("Password updated. Sign in with your chosen password.");
+      } else if (mode === "signup") {
+        const result = await signUpUser({ email, password });
+        if (result.isSignUpComplete) {
+          setMode("signin");
+          setMessage("Account created. You can sign in now.");
+        } else {
+          // Older deployed backends may still require confirmation during rollout.
+          setMode("confirm");
+          setMessage("Check your email for a confirmation code to finish creating your account.");
+        }
       } else if (mode === "confirm") {
         await confirmSignUpUser({ email, code });
         setMode("signin");
@@ -76,6 +105,10 @@ export default function Login() {
           setMode("confirm");
           setMessage("Confirm your email to finish signing in. You can request a new code below.");
           return;
+        }
+        if (result.nextStep.signInStep === "RESET_PASSWORD") {
+          setMode("forgot"); setPassword("");
+          setMessage("Reset your password to continue. Request an email code below."); return;
         }
         if (!result.isSignedIn) {
           setMessage("Sign-in needs another verification step. Complete account verification before syncing.");
@@ -88,7 +121,14 @@ export default function Login() {
       }
     } catch (error: any) {
       if (error?.name === "UserNotConfirmedException") setMode("confirm");
-      setMessage(error?.message || "Something went wrong. Please try again.");
+      if (error?.name === "PasswordResetRequiredException") {
+        setMode("forgot"); setPassword("");
+        setMessage("Reset your password to continue. Request an email code below."); return;
+      }
+      setMessage(error?.name === "CodeMismatchException" ? "That code is incorrect. Enter the latest code from your email."
+        : error?.name === "ExpiredCodeException" ? "That code has expired. Request a new email below."
+        : error?.name === "LimitExceededException" || error?.name === "TooManyRequestsException" ? "Too many attempts. Please wait before trying again."
+        : error?.message || "Something went wrong. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -127,39 +167,44 @@ export default function Login() {
           {cloudAuthConfigured && <form onSubmit={handleSubmit} className="w-full space-y-4 pt-2 text-left">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input disabled={isSubmitting || isResending} id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input disabled={isSubmitting || isResending || mode === "reset"} autoComplete="username" id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
 
-            {mode !== "confirm" && (
+            {(mode === "signin" || mode === "signup" || mode === "reset") && (
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
+                <Label htmlFor="password">{mode === "reset" ? "New password" : "Password"}</Label>
+                <Input disabled={isSubmitting || isResending} autoComplete={mode === "signin" ? "current-password" : "new-password"} id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} />
               </div>
             )}
 
-            {mode === "confirm" && (
+            {mode === "reset" && <div className="space-y-2">
+              <Label htmlFor="password-again">Confirm new password</Label>
+              <Input id="password-again" type="password" autoComplete="new-password" disabled={isSubmitting || isResending} value={passwordAgain} onChange={event => setPasswordAgain(event.target.value)} minLength={8} required />
+              <p className="text-xs text-muted-foreground">Use at least 8 characters with uppercase and lowercase letters, a number, and a symbol.</p>
+            </div>}
+            {(mode === "confirm" || mode === "reset") && (
               <div className="space-y-2">
                 <Label htmlFor="code">Confirmation code</Label>
-                <Input id="code" value={code} onChange={(e) => setCode(e.target.value)} required />
+                <Input autoComplete="one-time-code" disabled={isSubmitting || isResending} id="code" value={code} onChange={(e) => setCode(e.target.value)} required />
               </div>
             )}
 
             {message && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{message}</p>}
 
             <Button type="submit" className="w-full h-12 text-lg font-medium shadow-lg" disabled={isSubmitting || isResending}>
-              {isSubmitting ? "Working..." : mode === "signup" ? "Create Account" : mode === "confirm" ? "Confirm Email" : "Sign In"}
+              {isSubmitting ? "Working..." : mode === "forgot" ? "Send reset email" : mode === "reset" ? "Reset password" : mode === "signup" ? "Create Account" : mode === "confirm" ? "Confirm Email" : "Sign In"}
             </Button>
-            {mode === "confirm" && <Button type="button" variant="outline" className="w-full" onClick={resendEmail} disabled={isSubmitting || isResending || resendWait > 0 || !email.trim()}>
-              {isResending ? "Sending…" : resendWait > 0 ? `Resend available in ${resendWait}s` : "Resend verification email"}
+            {(mode === "confirm" || mode === "reset") && <Button type="button" variant="outline" className="w-full" onClick={resendEmail} disabled={isSubmitting || isResending || resendWait > 0 || !email.trim()}>
+              {isResending ? "Sending…" : resendWait > 0 ? `Resend available in ${resendWait}s` : mode === "reset" ? "Resend reset email" : "Resend verification email"}
             </Button>}
           </form>}
 
           <div className="w-full space-y-3">
-            {cloudAuthConfigured && mode === "signin" && <Button variant="ghost" className="w-full" disabled={isSubmitting || isResending} onClick={() => { setMode("confirm"); setMessage("Enter the email address you registered with, then request a new verification email."); }}>Already registered? Verify your email</Button>}
+            {cloudAuthConfigured && mode === "signin" && <Button type="button" variant="ghost" className="w-full" disabled={isSubmitting || isResending} onClick={() => { setMode("forgot"); setPassword(""); setCode(""); setMessage("Enter your account email to receive a password reset code."); }}>Forgot password?</Button>}
             {cloudAuthConfigured && (mode === "signin" ? (
               <Button variant="outline" className="w-full" disabled={isSubmitting || isResending} onClick={() => setMode("signup")}>Create a new account</Button>
             ) : (
-              <Button variant="outline" className="w-full" disabled={isSubmitting || isResending} onClick={() => setMode("signin")}>Back to sign in</Button>
+              <Button variant="outline" className="w-full" disabled={isSubmitting || isResending} onClick={() => { setMode("signin"); setPassword(""); setPasswordAgain(""); setCode(""); setMessage(""); }}>Back to sign in</Button>
             ))}
 
             {mode === "signin" && (

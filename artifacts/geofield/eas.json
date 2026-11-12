@@ -1,0 +1,22 @@
+{
+  "cli": {
+    "version": ">= 24.13.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "production": {
+      "distribution": "store",
+      "autoIncrement": true,
+      "node": "22.22.2",
+      "pnpm": "9.15.9",
+      "credentialsSource": "local",
+      "android": {
+        "image": "ubuntu-24.04-jdk-17-ndk-r27b",
+        "buildType": "app-bundle",
+        "gradleCommand": ":app:bundleRelease",
+        "config": "production-android.yml",
+        "applicationArchivePath": "android/app/build/outputs/bundle/release/app-release.aab"
+      }
+    }
+  }
+}

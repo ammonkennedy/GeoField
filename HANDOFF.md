@@ -60,3 +60,24 @@ not durable repo tooling. Use repo tests as the maintained baseline.
 
 Next work should follow the user's new request. No need to repeat completed
 checks or scan the entire repository merely to start a new conversation.
+
+## Nov 1 — Regional Geology offline caching (local, not deployed)
+- Regional Geology previously used direct remote Macrostrat vector tiles, with no durable offline cache. Added shared MapLibre protocol in Map View/trip planner; viewed tiles persist in separate IndexedDB `geofield_geology_tiles_v1`. Cache-first; 32 MiB cap, preserves existing tiles and reports full/unavailable storage. No account data or offline edit queues changed.
+- UI explains that areas/zoom levels must be viewed online first; basemaps and extra source details are not included. This is viewed-tile caching, not an area-download feature.
+- Focused geology/cache tests (12), app typecheck and Vite build passed. No physical-phone airplane-mode test, native asset copy/build, or deployment performed.
+
+## Nov 1 — Offline geology area downloads (local, not deployed)
+- Added Download geology area, progress/cancel, and saved-area picker to Map View and trip planner. Saves visible extent at zooms 0–14, caps each job at 600 tiles / three concurrent requests; interrupted tiles survive retry. Completion metadata only saved after all tile writes succeed. Cache budget now 128 MiB, separate from field/account storage, no automatic eviction. Geology source maxzoom 14 allows magnification of saved detail at higher zoom.
+- PRISM/fault rendering no longer waits for remote tile completion; trip planner initializes on style.load. Offline geology taps show stored polygon attributes immediately. Neutral map background, offline status, and online-event source retries added.
+- 32 focused tests passed (geology caching/downloads/queries, PRISM, track map); typecheck and production web build checked. No physical-device offline validation, native asset copy/build, push, or deployment. Satellite/street/topo/terrain, public trail/soil services and additional geology references still require network.
+
+## Nov 1 — Forgot password (local, not deployed)
+- Login adds Forgot password → email code → code/new password/confirmation → sign-in, plus resend cooldown and expired/incorrect-code handling. Handles Cognito RESET_PASSWORD step and PasswordResetRequiredException. Keeps offline account/data untouched.
+- API wraps Amplify resetPassword/confirmResetPassword through password-recovery.ts. Never compares with old password or trims password characters; successful code verification is required.
+- Backend explicitly sets PasswordHistorySize=0 and verified_email recovery. This configuration must be deployed for live reuse behavior; no live account reset/email or backend deployment performed.
+- Two isolated recovery tests pass, including same-password reuse and failed-code rejection; library/app typechecks and production build pass. No phone UI test.
+
+## Nov 1 — Signup without initial email code (local, not deployed)
+- Added Amplify preSignUp trigger for self-service email/password signup: autoConfirmUser=true, autoVerifyEmail=true, phone unchanged/false. Email recovery eligibility must be enabled for the requested Forgot password flow; the flag is not independent proof of email ownership. Password recovery still requires the emailed code. Admin/external-provider events are unchanged.
+- Login respects isSignUpComplete and returns new users to sign-in without confirmation. Keeps fallback for older unconfirmed accounts/backends during rollout; removes prominent Verify your email action.
+- Five signup/recovery tests, app typecheck, production build passed. Backend configuration typecheck also run. Backend/frontend deployment and live signup/recovery testing remain outstanding; no real accounts modified.

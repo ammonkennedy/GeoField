@@ -42,6 +42,7 @@ test("layer creation is idempotent and visibility can be toggled", () => {
   ensureMacrostratLayer(map, 0.65);
   ensureMacrostratLayer(map, 0.5);
   assert.equal(sources.size, 1);
+  assert.deepEqual((sources.get("geology") as { tiles: string[] }).tiles, ["geofield-geology://tiles.macrostrat.org/carto/{z}/{x}/{y}.mvt"]);
   assert.equal(layers.size, 2);
   setMacrostratVisibility(map, false);
   assert.equal(layers.get("geology-overlay").layout.visibility, "none");

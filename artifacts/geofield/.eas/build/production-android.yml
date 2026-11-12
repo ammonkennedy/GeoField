@@ -1,0 +1,24 @@
+build:
+  name: GeoField shared app production AAB
+  steps:
+    - eas/checkout
+    - eas/install_node_modules
+    - run:
+        name: Configure Java 21
+        command: |
+          sudo apt-get update -qq
+          sudo apt-get install -y openjdk-21-jdk-headless
+          set-env JAVA_HOME /usr/lib/jvm/java-21-openjdk-amd64
+    - run:
+        name: Check shared app and sync Capacitor plugins
+        command: |
+          pnpm exec tsc -b ../../lib/api-client-react
+          pnpm run typecheck
+          pnpm run build
+          GEOFIELD_NATIVE_PLATFORM=android pnpm exec cap sync android
+    - eas/inject_android_credentials
+    - eas/configure_android_version
+    - eas/run_gradle:
+        inputs:
+          command: :app:bundleRelease
+    - eas/find_and_upload_build_artifacts

@@ -1,3 +1,6 @@
+import { MapConnectivity } from "@/components/MapConnectivity";
+import { registerGeologyProtocol } from "@/lib/geology-tile-cache";
+import { GeologyOfflineStatus } from "@/components/GeologyOfflineStatus";
 import { buildGoogleEarthKml, type EarthPoint } from "@/lib/google-earth";
 import { openGoogleEarth } from "@/lib/open-google-earth";
 import { mapNavigablePopup } from "@/lib/map-popup-gestures";
@@ -155,6 +158,7 @@ const INITIAL_STYLE: any = {
     },
   },
   layers: [
+    { id: "offline-background", type: "background", paint: { "background-color": "#eef2f6" } },
     { id: "satellite-layer", type: "raster", source: "satellite", layout: { visibility: "visible" } },
     { id: "street-layer", type: "raster", source: "street", layout: { visibility: "none" } },
     { id: "topographic-layer", type: "raster", source: "topographic", layout: { visibility: "none" } },
@@ -507,6 +511,7 @@ export default function MapViewPage() {
     if (!mapContainerRef.current || mapRef.current) return;
 
     import("maplibre-gl").then((L) => {
+      registerGeologyProtocol(L);
       if (!mapContainerRef.current || mapRef.current) return;
 
       const stopAutomaticFit = () => { fitMarkersRequested.current = false; };
@@ -952,6 +957,7 @@ export default function MapViewPage() {
     let cancelled = false;
     let onLoad: (() => void) | undefined;
     import("maplibre-gl").then((L) => {
+      registerGeologyProtocol(L);
       if (cancelled || mapRef.current !== map) return;
       if (mapLoadedRef.current) placeMarkers(L, map);
       else {
@@ -1246,6 +1252,8 @@ export default function MapViewPage() {
         {overlayLayer === "faults" && prismMap && <FaultOverlay map={prismMap} exportMode={exportMode} />}
         {overlayLayer === "prism" && prismMap && <PrismOverlay map={prismMap} exportMode={exportMode} />}
 
+        <MapConnectivity map={prismMap} />
+        {overlayLayer === "geology" && <GeologyOfflineStatus map={prismMap} />}
         {overlayLayer !== "none" && overlayLayer !== "prism" && overlayLayer !== "faults" && (
           <div className="text-xs text-muted-foreground bg-card border border-border rounded-lg px-3 py-2 flex items-center gap-2">
             <Layers className="w-3.5 h-3.5 text-primary shrink-0" />

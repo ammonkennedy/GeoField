@@ -46,7 +46,7 @@ export function PrismOverlay({ map, exportMode }: { map: MapLibreMap; exportMode
     try { image = prismImage(data, variable); }
     catch (error) { setMessage(String(error)); return; }
     const add = () => {
-      if (!map.isStyleLoaded()) return;
+      if (!map.getStyle()?.layers) return;
       if (map.getLayer('prism-climate')) map.removeLayer('prism-climate');
       if (map.getSource('prism-climate')) map.removeSource('prism-climate');
       map.addSource('prism-climate', { type: 'image', ...image });

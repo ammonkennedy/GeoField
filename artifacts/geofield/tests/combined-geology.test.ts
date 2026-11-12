@@ -72,3 +72,22 @@ test('rendered unit stays selected without a coordinate lookup even when USGS di
     assert.equal((await queryCombinedGeology(40, -111, undefined, null)).macrostrat, null);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('offline taps return the selected cached polygon without network requests', async () => {
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { onLine: false } });
+  globalThis.fetch = async () => { requests++; throw new Error('Offline'); };
+  try {
+    const selected = { displayName: 'Stored sandstone', unit: { name: 'Stored sandstone', lith: 'sandstone' } };
+    const result = await queryCombinedGeology(40, -111, undefined, selected);
+    assert.equal(result.macrostrat, selected);
+    assert.equal(requests, 0);
+    assert.match(result.warnings[0], /Offline/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (navigatorDescriptor) Object.defineProperty(globalThis, 'navigator', navigatorDescriptor);
+    else Reflect.deleteProperty(globalThis, 'navigator');
+  }
+});

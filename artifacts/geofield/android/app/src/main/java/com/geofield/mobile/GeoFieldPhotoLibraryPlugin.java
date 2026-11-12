@@ -1,4 +1,4 @@
-package com.ammonkennedy.geofield;
+package com.geofield.mobile;
 
 import android.Manifest;
 import android.content.ContentValues;

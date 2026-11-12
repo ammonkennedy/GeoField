@@ -1,3 +1,4 @@
+import { GEOLOGY_MAX_ZOOM } from "./geology-download.ts";
 import {
   MACROSTRAT_ATTRIBUTION,
   MACROSTRAT_DEFAULT_OPACITY,
@@ -10,7 +11,8 @@ export function ensureMacrostratLayer(map: any, opacity = MACROSTRAT_DEFAULT_OPA
   if (!map.getSource(MACROSTRAT_SOURCE_ID)) {
     map.addSource(MACROSTRAT_SOURCE_ID, {
       type: "vector",
-      tiles: [MACROSTRAT_VECTOR_TILES],
+      maxzoom: GEOLOGY_MAX_ZOOM,
+      tiles: [MACROSTRAT_VECTOR_TILES.replace("https://", "geofield-geology://")],
       attribution: MACROSTRAT_ATTRIBUTION,
     });
   }

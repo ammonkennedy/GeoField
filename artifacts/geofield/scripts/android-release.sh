@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+export GEOFIELD_NATIVE_PLATFORM=android
 app_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$app_dir"
 export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 21)}"

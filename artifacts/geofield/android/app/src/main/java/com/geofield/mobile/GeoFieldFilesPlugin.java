@@ -1,4 +1,4 @@
-package com.ammonkennedy.geofield;
+package com.geofield.mobile;
 
 import android.app.Activity;
 import android.content.Intent;

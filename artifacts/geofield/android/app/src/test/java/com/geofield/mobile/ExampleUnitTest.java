@@ -1,4 +1,4 @@
-package com.getcapacitor.myapp;
+package com.geofield.mobile;
 
 import static org.junit.Assert.*;
 

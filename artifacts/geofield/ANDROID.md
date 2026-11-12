@@ -31,9 +31,11 @@ Install on a connected emulator/device with:
 "$HOME/Library/Android/sdk/platform-tools/adb" install -r artifacts/geofield/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Application ID: `com.ammonkennedy.geofield`. The old Expo preview uses
-`com.geofield.mobile`; these are separate installations with separate local data.
-Installing this app does not migrate the Expo app's unsynced local data.
+Android application ID: `com.geofield.mobile`, matching the existing Play listing.
+The current app is built from the shared Capacitor source, not the older Expo
+source. The iOS bundle identifier remains `com.ammonkennedy.geofield`.
+Matching the Android package does not migrate the Expo app's unsynced local data;
+upgrades from the older app require device testing.
 
 ## Platform support
 
@@ -100,7 +102,7 @@ This checks TypeScript, syncs native plugins, builds current web assets, produce
 the release bundle, and verifies its JAR signature.
 
 Upload `android/app/build/outputs/bundle/release/app-release.aab` to the GeoField
-app's internal testing track. Package: `com.ammonkennedy.geofield`; initial Android
+app's internal testing track. Package: `com.geofield.mobile`; initial Android
 version: 1.2, version code 1. Increase versionCode before subsequent Play uploads.
 Enable Google-managed Play App Signing for a new app. This local key is the upload
 key; no Play Console upload or publication is performed by the build command.
@@ -116,3 +118,45 @@ require restoring these files before release builds. Never regenerate the upload
 key for an existing Play app without following Google's upload-key reset process.
 If a bundle was already uploaded under this package using another key, use that
 registered upload key instead.
+
+## EAS production build (current shared app)
+
+Run from the repository root:
+
+```sh
+pnpm android:eas:production
+```
+
+EAS configuration now lives in `artifacts/geofield`, alongside the production
+Capacitor Android project. The old workspace-root configuration targeted
+`com.ammonkennedy.workspace`. Do not build the separate Expo SDK 54 source;
+the current Capacitor app now deliberately uses the existing Play package.
+
+The production Android package is `com.geofield.mobile`. EAS uses a custom workflow
+to preserve the native plugins, installs pnpm 9.15.9, uses Node 22 and Java 21,
+checks TypeScript, rebuilds current web assets, and runs `:app:bundleRelease`.
+No Expo prebuild or migration is performed. Expo SDK dependencies belong to the
+separate Expo project; the production Capacitor app does not require an Expo SDK.
+This follows EAS custom-build support:
+https://docs.expo.dev/custom-builds/get-started/
+
+The October 28 failed cloud build used pnpm 8.7.5 and Java 11 and failed with
+`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`. The existing lockfile validates with the
+pinned pnpm 9.15.9; dependency overrides and the tracking plugin patch are preserved.
+
+`credentialsSource: local` uses the existing upload key through the ignored,
+owner-readable `artifacts/geofield/credentials.json`. It must reference the same
+private upload keystore as the local release build. EAS cloud builds transfer
+that key to Expo's build service. Do not commit credentials or generate a new
+key for an already-published app. The user currently requires local-only signing:
+do not upload keys or credentials. Use `android:release` locally.
+
+EAS increments the Android version code remotely. Local release builds still
+use the version code in Gradle; confirm it is unused in Play Console before
+uploading a locally built bundle. Building an AAB does not verify Play listing,
+Data safety/permission declarations, account eligibility, or physical-device
+behavior.
+
+Native PRISM preparation expands the climate grids and updates their manifest
+after Capacitor copies assets. This avoids AAPT's automatic gzip renaming leaving
+broken climate-data URLs. Website assets remain compressed.

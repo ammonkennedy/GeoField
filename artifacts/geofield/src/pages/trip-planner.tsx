@@ -1,3 +1,6 @@
+import { MapConnectivity } from "@/components/MapConnectivity";
+import { registerGeologyProtocol } from "@/lib/geology-tile-cache";
+import { GeologyOfflineStatus } from "@/components/GeologyOfflineStatus";
 import { addUserHeading } from "@/lib/map-user-heading";
 import { observeMapSize } from "@/lib/map-resize";
 import { resolveDatasetId } from "@/lib/dataset-identity";
@@ -188,6 +191,7 @@ const TRIP_MAP_STYLE: any = {
     },
   },
   layers: [
+    { id: "offline-background", type: "background", paint: { "background-color": "#eef2f6" } },
     { id: "satellite-layer", type: "raster", source: "satellite", layout: { visibility: "visible" } },
     { id: "street-layer",    type: "raster", source: "street",    layout: { visibility: "none"    } },
     { id: "topographic-layer", type: "raster", source: "topographic", layout: { visibility: "none" } },
@@ -224,6 +228,7 @@ export default function TripPlannerPage() {
   const mapInstanceRef   = useRef<any>(null);
   const mapMarkersRef    = useRef<any[]>([]);
   const mapLoadedRef     = useRef(false);
+  const [offlineGeologyMap, setOfflineGeologyMap] = useState<import("maplibre-gl").Map | null>(null);
   const baseLayerRef = useRef<BaseLayer>("satellite");
   const overlayLayerRef  = useRef<OverlayLayer>("none");
   const terrainRef       = useRef(false);
@@ -511,6 +516,7 @@ export default function TripPlannerPage() {
       if (mapInstanceRef.current) {
         try { mapInstanceRef.current.remove(); } catch {}
         mapInstanceRef.current = null;
+        setOfflineGeologyMap(null);
       }
       mapLoadedRef.current = false;
       setPendingCoords(null);
@@ -528,6 +534,7 @@ export default function TripPlannerPage() {
         if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
 
         import("maplibre-gl").then((L) => {
+          registerGeologyProtocol(L);
           if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
 
           const map = new L.Map({
@@ -543,6 +550,7 @@ export default function TripPlannerPage() {
           });
           observeMapSize(map);
           mapInstanceRef.current = map;
+          setOfflineGeologyMap(map);
 
           map.addControl(new L.NavigationControl({ visualizePitch: true }), "top-right");
           const geolocateControl = new L.GeolocateControl({
@@ -584,7 +592,7 @@ export default function TripPlannerPage() {
           map.addControl(new L.ScaleControl(), "bottom-left");
           map.getCanvas().style.cursor = "default";
 
-          map.on("load", () => {
+          map.once("style.load", () => {
             if (cancelled) return;
             mapLoadedRef.current = true;
 
@@ -736,6 +744,7 @@ export default function TripPlannerPage() {
     mapMarkersRef.current.forEach((marker) => { try { marker.remove(); } catch {} });
     mapMarkersRef.current = [];
     import("maplibre-gl").then((L) => {
+      registerGeologyProtocol(L);
       if (!mapInstanceRef.current || !mapLoadedRef.current) return;
       (activeTrip?.sites ?? []).forEach((site) => addSiteMarker(L, mapInstanceRef.current, site));
     });
@@ -1149,6 +1158,8 @@ export default function TripPlannerPage() {
                 <Plus className="h-3.5 w-3.5" />Insert Layer
               </button>
 
+              <MapConnectivity map={offlineGeologyMap} />
+              {overlayLayer === "geology" && <GeologyOfflineStatus map={offlineGeologyMap} />}
               {/* Custom layer chips */}
               {customLayers.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">

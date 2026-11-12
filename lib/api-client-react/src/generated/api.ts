@@ -1,3 +1,4 @@
+import { createPasswordRecovery } from "../password-recovery";
 import { updateDatasetWithAuthorization } from "../dataset-authorization";
 import { requestWithCaptionFallback } from "../measurement-caption-request";
 import { captureAccountAuthorization } from "../account-authorization";
@@ -10,6 +11,8 @@ import type { QueryKey, UseMutationOptions, UseQueryOptions, UseQueryResult } fr
 import { Amplify } from "aws-amplify";
 import {
   confirmSignUp,
+  resetPassword,
+  confirmResetPassword,
   resendSignUpCode,
   confirmUserAttribute,
   deleteUser,
@@ -293,6 +296,9 @@ export async function signUpUser(input: { email: string; password: string }) {
 export async function confirmSignUpUser(input: { email: string; code: string }) {
   return confirmSignUp({ username: input.email.trim(), confirmationCode: input.code.trim() });
 }
+const passwordRecovery = createPasswordRecovery({ configured: isAuthConfigured, request: resetPassword, confirm: confirmResetPassword });
+export const requestPasswordReset = passwordRecovery.request;
+export const completePasswordReset = passwordRecovery.complete;
 export async function resendConfirmationEmail(input: { email: string }) {
   if (!isAuthConfigured()) throw new Error("Cloud sign-in is not configured in this build.");
   const username = input.email.trim();

@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "GeoField",
+    "slug": "workspace",
+    "owner": "ammonkennedy",
+    "version": "1.2",
+    "android": {
+      "package": "com.geofield.mobile"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4dd14e44-41a2-4d37-80dd-a8dc5e21a2d2"
+      }
+    },
+    "platforms": [
+      "android"
+    ]
+  }
+}

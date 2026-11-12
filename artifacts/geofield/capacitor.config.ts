@@ -1,7 +1,12 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
+// Android's existing Play listing uses a different ID from the iOS app.
+// Native build scripts explicitly select their target; direct CLI commands do too.
+const isAndroid = process.env.GEOFIELD_NATIVE_PLATFORM === 'android'
+  || process.argv.includes('android');
+
 const config: CapacitorConfig = {
-  appId: 'com.ammonkennedy.geofield',
+  appId: isAndroid ? 'com.geofield.mobile' : 'com.ammonkennedy.geofield',
   appName: 'GeoField',
   webDir: 'dist/public',
   backgroundColor: '#f8fafc',

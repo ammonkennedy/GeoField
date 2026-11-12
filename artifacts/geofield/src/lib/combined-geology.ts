@@ -35,6 +35,10 @@ export async function queryUsgsGeology(latitude: number, longitude: number, sign
 }
 
 export async function queryCombinedGeology(latitude: number, longitude: number, signal?: AbortSignal, renderedSelection?: MacrostratSelection | null): Promise<CombinedGeology> {
+  if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return { macrostrat: renderedSelection ?? null, usgs: [], warnings: ['Offline: showing attributes stored in the geology map. Additional source details require a connection.'] };
+  }
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) controller.abort();

@@ -50,3 +50,6 @@ Thumbs.db
 
 # Amplify deployment build artifacts
 .amplify/
+
+# EAS local signing credentials (never commit).
+credentials.json
