@@ -5,7 +5,7 @@ interface QueueStore {
   load: () => QueuedSample[];
   prepare: (item: QueuedSample) => Promise<QueuedSample["payload"]>;
   create: (id: string, payload: QueuedSample["payload"]) => Promise<unknown>;
-  update: (id: string, payload: QueuedSample["payload"]) => Promise<unknown>;
+  update: (id: string, payload: QueuedSample["payload"], baseUpdatedAt?: string) => Promise<unknown>;
   get: (id: string) => Promise<unknown>;
   cache: (saved: any) => void;
   delete?: (id: string) => Promise<unknown>;
@@ -63,7 +63,7 @@ export async function syncQueuedSample(item: QueuedSample, store: QueueStore) {
         id = item.queuedId;
         expected = { ...payload, sampleId: `${payload.sampleId} (recovered edit)` };
         ({ saved, id, expected } = await createConfirmed(id, expected, store));
-      } else saved = await store.update(id, payload);
+      } else saved = await store.update(id, payload, item.baseUpdatedAt);
     } else ({ saved, id, expected } = await createConfirmed(id, payload, store));
     if (!saved || String(saved.id) !== id || !sameSampleContent(saved, expected)) {
       throw new Error("Cloud did not confirm all sample fields and attachments. The complete local sample remains pending.");

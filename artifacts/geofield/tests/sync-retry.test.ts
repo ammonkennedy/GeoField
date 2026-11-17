@@ -51,3 +51,15 @@ test("batch failures preserve retryable network errors but stop retrying when re
  const mixed=new AggregateError([expired,{name:"NetworkError"}],"Some changes remain pending");
  assert.equal(requiresCloudSignIn(mixed),true);assert.equal(isRetryableSyncError(mixed),false);
 });
+
+test('airplane-mode transport failures are offline but data, auth and server errors remain actionable', async () => {
+  const { isConnectionUnavailable } = await import('../src/lib/sync-retry.ts');
+  assert.equal(isConnectionUnavailable(new Error('Network Error')), true);
+  assert.equal(isConnectionUnavailable(new TypeError('Failed to fetch')), true);
+  assert.equal(isConnectionUnavailable({ name: 'NetworkError' }), true);
+  assert.equal(isConnectionUnavailable(new AggregateError([new Error('Network Error'), new TypeError('Failed to fetch')])), true);
+  assert.equal(isConnectionUnavailable(new AggregateError([new Error('Network Error'), new Error('Invalid project')])), false);
+  assert.equal(isConnectionUnavailable({ name: 'CloudSignInRequired', message: 'Network Error' }), false);
+  assert.equal(isConnectionUnavailable({ message: 'Network Error', status: 503 }), false);
+  assert.equal(isConnectionUnavailable(new Error('Network error downloading sample attachments. Local samples remain available; photos will retry.')), false);
+});

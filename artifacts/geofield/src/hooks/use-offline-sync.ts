@@ -1,3 +1,4 @@
+import { isConnectionUnavailable } from "@/lib/sync-retry";
 import { loadStereonets, STEREONETS_UPDATED } from '@/lib/stereonet/storage';
 import { syncStereonets } from '@/lib/stereonet/sync-account';
 import { confirmDatasetContent } from "@/lib/dataset-confirmation";
@@ -185,6 +186,7 @@ export function useOfflineSync() {
   const accountId = authData?.user ? String(authData.user.id) : "";
   const queryClient = useQueryClient();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [connectionUnavailable, setConnectionUnavailable] = useState(false);
   const [pendingItems, setPendingItems] = useState(() => getPendingSyncItems(accountId));
   const queueCount = pendingItems.length;
   const [isSyncing, setIsSyncing] = useState(false);
@@ -235,6 +237,7 @@ export function useOfflineSync() {
 
   useEffect(() => {
     errorGrace.current.reset();
+    setConnectionUnavailable(false);
     setLastError(null);
     setCloudSignInRequired(false);
     retryAttempt.current = 0;
@@ -282,11 +285,13 @@ export function useOfflineSync() {
       setIsSyncing(true);
 
       let failed = false;
+      let onlyConnectionFailures = true;
       let retryNeeded = false;
       let authRequired = false;
       let failureMessage: string | null = null;
       const reportFailure = (error: any) => {
         failed = true;
+        if (!isConnectionUnavailable(error)) onlyConnectionFailures = false;
         if (requiresCloudSignIn(error)) {
           authRequired = true;
         }
@@ -338,7 +343,7 @@ export function useOfflineSync() {
               load: () => { checkAccount(); return getQueue(true); },
               prepare: (sample) => prepareSampleUpload(sample, accountId),
               create: async (id, payload) => { await requireFieldNoteAccount(accountId); return createSample({ id, data: payload as any, accountId }); },
-              update: async (id, payload) => { await requireFieldNoteAccount(accountId); return updateSample({ id, data: payload as any, accountId }); },
+              update: async (id, payload, baseUpdatedAt) => { await requireFieldNoteAccount(accountId); return updateSample({ id, data: payload as any, accountId, baseUpdatedAt }); },
               get: (id) => getSample(id, accountId),
               delete: async (id) => { await requireFieldNoteAccount(accountId); await deleteSample({ id, accountId }); return getSample(id, accountId); },
               restore: async (id) => { await requireFieldNoteAccount(accountId); await restoreSample(id, accountId); return getSample(id, accountId); },
@@ -441,6 +446,7 @@ export function useOfflineSync() {
         }
 
         if (!failed) {
+          setConnectionUnavailable(false);
           errorGrace.current.reset();
           setLastError(null);
           setCloudSignInRequired(false);
@@ -456,7 +462,15 @@ export function useOfflineSync() {
         setSyncProgress(null);
         if (!mounted.current || getStorageAccountId() !== accountId) return;
         refreshCount();
-        if (failed && navigator.onLine) {
+        if (failed && onlyConnectionFailures) {
+          // Android WebView can report online even with airplane mode enabled.
+          // Keep durable queues and bounded retries; present this as offline.
+          setConnectionUnavailable(true);
+          errorGrace.current.reset();
+          setLastError(null);
+          setCloudSignInRequired(false);
+        } else if (failed && navigator.onLine) {
+          setConnectionUnavailable(false);
           const decision = errorGrace.current.failure(Date.now());
           if (!decision.show) {
             // Verify with a fresh pass, not a timer that displays a stale error.
@@ -502,6 +516,7 @@ export function useOfflineSync() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
+      setConnectionUnavailable(false);
       sync();
     };
     const handleOffline = () => {
@@ -554,7 +569,7 @@ export function useOfflineSync() {
   }, [sync]);
 
   return {
-    isOnline,
+    isOnline: isOnline && !connectionUnavailable,
     queueCount,
     pendingItems,
     isSyncing,

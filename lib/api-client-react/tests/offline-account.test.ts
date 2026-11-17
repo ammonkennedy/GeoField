@@ -57,3 +57,32 @@ test('corrupt storage cannot grant local account access', async () => {
   await disk.setItem('account', '{broken');
   assert.deepEqual(await createOfflineAccount(disk, 'account').resolve(unavailable, true), { user: null });
 });
+
+
+test('stalled online detection cannot block remembered access or replace it later', async () => {
+  const disk = storage();
+  const account = createOfflineAccount(disk, 'account', 5);
+  await account.remember(alice);
+  let finish!: (user: typeof alice) => void;
+  const result = await account.resolve(() => new Promise(resolve => { finish = resolve; }), false);
+  assert.deepEqual(result, { user: alice });
+  finish(bob);
+  await Promise.resolve();
+  assert.deepEqual(await createOfflineAccount(disk, 'account').resolve(unavailable, true), { user: alice });
+});
+
+test('remembered access survives 30 days of cold starts and expired cloud sessions', async () => {
+  const disk = storage();
+  await createOfflineAccount(disk, 'account').remember(alice);
+  const originalNow = Date.now;
+  const start = originalNow();
+  try {
+    for (let day = 1; day <= 30; day++) {
+      Date.now = () => start + day * 86400000;
+      for (let launch = 0; launch < 4; launch++) {
+        const restarted = createOfflineAccount(disk, 'account');
+        assert.deepEqual(await restarted.resolve(unavailable, launch % 2 === 0), { user: alice });
+      }
+    }
+  } finally { Date.now = originalNow; }
+});

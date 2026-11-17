@@ -6,7 +6,7 @@ type Storage = {
 };
 
 // This remembers local app access, never passwords or cloud authorization tokens.
-export function createOfflineAccount(storage: Storage, key: string) {
+export function createOfflineAccount(storage: Storage, key: string, cachedLookupTimeoutMs = 1500) {
   let revision = 0;
   let writes = Promise.resolve();
   const write = (value: unknown) => {
@@ -41,7 +41,20 @@ export function createOfflineAccount(storage: Storage, key: string) {
       if (started !== revision) return { user: null };
       if (cached.signedOut || (offline && cached.user)) return { user: cached.user };
       try {
-        const user = await load();
+        // A WebView can claim to be online while a token refresh hangs. Local
+        // access must not depend on that request when an account is remembered.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let user: AuthUser;
+        try {
+          user = cached.user ? await Promise.race([
+            load(),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error('Account lookup timed out')), cachedLookupTimeoutMs);
+            }),
+          ]) : await load();
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
+        }
         if (started !== revision) return { user: null };
         await write({ user });
         if (started !== revision) return { user: null };

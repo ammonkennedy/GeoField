@@ -1,3 +1,5 @@
+import { getCachedCloudSamples } from "./cloud-samples.ts";
+import { sameSampleContent } from "./sample-content.ts";
 export interface QueuedSample {
   queuedId: string;
   targetId?: string;
@@ -41,10 +43,17 @@ export function enqueue(payload: QueuedSample["payload"], targetId?: string, bas
   return item;
 }
 
-export function updateQueuedSample(queuedId: string, payload: QueuedSample["payload"]) {
+export function updateQueuedSample(queuedId: string, payload: QueuedSample["payload"], expected?: QueuedSample) {
   const current = getQueue(true);
-  if (!current.some((item) => item.queuedId === queuedId)) {
-    enqueue(payload, queuedId);
+  const latest = current.find(item => item.queuedId === queuedId);
+  if (latest?.deletedAt) throw new Error("This sample was deleted while the sheet was open. Your draft has not overwritten the deletion.");
+  if (latest && expected && !sameSampleContent(latest.payload, expected.payload)) {
+    throw new Error("This sample changed while the sheet was open. Keep your draft and reopen the latest sample before applying changes.");
+  }
+  if (!latest) {
+    const saved = getCachedCloudSamples().find(sample => String(sample.id) === String(expected?.targetId ?? queuedId));
+    if (saved) enqueue(payload, String(saved.id), expected && sameSampleContent(saved, expected.payload) ? saved.updatedAt : undefined);
+    else enqueue({ ...payload, sampleId: `${payload.sampleId} (recovered edit)` });
     return;
   }
   setQueue(

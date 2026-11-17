@@ -1,3 +1,4 @@
+import { parseSampleFields, sampleUpdateCondition } from "../sample-fields";
 import { createPasswordRecovery } from "../password-recovery";
 import { updateDatasetWithAuthorization } from "../dataset-authorization";
 import { requestWithCaptionFallback } from "../measurement-caption-request";
@@ -202,7 +203,7 @@ function asSample(sample: any): Sample {
     userId: sample.owner ?? "",
     folderId: sample.datasetId ?? null,
     notes: sample.notes ?? null,
-    fields: parseFields(sample.fields),
+    fields: parseSampleFields(sample.fields),
     createdAt: sample.createdAt ?? nowIso(),
     updatedAt: sample.updatedAt ?? sample.createdAt ?? nowIso(),
   } as Sample;
@@ -584,18 +585,34 @@ export function useCreateSample(options?: MutationOptions<Sample, { data: Create
   return useMutation<Sample, ErrorType<unknown>, { data: CreateSampleRequest }>({ mutationFn: createSample, ...(options?.mutation as any) });
 }
 
-export async function updateSample({ id, data, accountId }: { id: string | number; data: UpdateSampleRequest; accountId?: string }): Promise<Sample> {
+export async function updateSample({ id, data, accountId, baseUpdatedAt }: { id: string | number; data: UpdateSampleRequest; accountId?: string; baseUpdatedAt?: string }): Promise<Sample> {
   if (!(await hasCurrentUser())) throw new Error("Sign in before updating samples.");
   const folderId = normalizeFolderId(data.folderId);
   const sampleId = currentSampleIdFallback(id);
-  const result = await client.models.Sample.update({ ...cleanObject({
-    id: String(sampleId),
-    sampleId: data.sampleId,
+  const input = { ...cleanObject({
+    id: String(sampleId), sampleId: data.sampleId,
     ...(data.folderId === undefined ? {} : { datasetId: folderId }),
     notes: data.notes,
     fields: data.fields === undefined ? undefined : serializeFields(data.fields),
     updatedAt: nowIso(),
-  }), ...(data.folderId !== undefined && folderId === null ? { datasetId: null } : {}) }, await accountRequestOptions(accountId));
+  }), ...(data.folderId !== undefined && folderId === null ? { datasetId: null } : {}) };
+  const authorization = await accountRequestOptions(accountId);
+  if (baseUpdatedAt) {
+    // Check the revision at the server's write, not just at the preceding read.
+    const response: any = await client.graphql({
+      query: `mutation UpdateSampleSafely($input: UpdateSampleInput!, $condition: ModelSampleConditionInput) {
+        updateSample(input: $input, condition: $condition) {
+          id sampleType sampleId datasetId notes fields owner createdAt updatedAt deletedAt
+        }
+      }`,
+      variables: { input, condition: sampleUpdateCondition(baseUpdatedAt) },
+      ...authorization,
+    });
+    if (response.errors?.length) throw new Error(errorMessage(response.errors));
+    if (!response.data?.updateSample) throw new Error("Cloud did not confirm the sample update. The local edit remains pending.");
+    return asSample(response.data.updateSample);
+  }
+  const result = await client.models.Sample.update(input, authorization);
   if (result.errors?.length) throw new Error(errorMessage(result.errors));
   return asSample(result.data);
 }

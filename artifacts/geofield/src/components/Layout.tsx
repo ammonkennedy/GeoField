@@ -402,7 +402,7 @@ export function Layout({ children, lockPageScroll = false }: { children: ReactNo
         aria-hidden={sidebarOpen ? true : undefined}
       >
         {/* Keep background sync quiet and errors outside the page layout. */}
-        {lastError && !isSyncing && !syncErrorDismissed && (
+        {isOnline && lastError && !isSyncing && !syncErrorDismissed && (
           <div role="alert" className="absolute inset-x-3 top-3 z-50 mx-auto flex max-w-3xl items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-lg">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <button type="button" onClick={openSyncDetails} className="min-w-0 flex-1 break-words text-left underline underline-offset-2" aria-label="View sync error details">{lastError}{retryAt && " Retrying automatically — pending data remains on this device."}</button>

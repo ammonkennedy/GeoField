@@ -142,7 +142,7 @@ export default function SampleEntry() {
   const [location, setLocation] = useLocation();
   const { id } = useParams();
   const isEdit = Boolean(id && id !== "new");
-  const queuedAtOpen = useMemo(() => getQueue().find((item) => item.queuedId === id), [id]);
+  const queuedAtOpen = useMemo(() => getQueue().find((item) => (item.queuedId === id || item.targetId === id)), [id]);
   const isOfflineEdit = Boolean(queuedAtOpen);
   const sampleLookupId = isEdit && !isOfflineEdit && id ? id : "";
   const initialFolderId = !isEdit
@@ -150,6 +150,8 @@ export default function SampleEntry() {
     : "";
   const { toast } = useToast();
   const { data: authData } = useGetCurrentAuthUser();
+  const draftAccount = useRef<string | null>(getStorageAccountId());
+  if (!draftAccount.current && authData?.user?.id) draftAccount.current = String(authData.user.id);
 
   const { data: remoteSample, isLoading: loadingSample } = useGetSample(sampleLookupId, {
     query: { enabled: isEdit && !isOfflineEdit && Boolean(id) }
@@ -187,7 +189,7 @@ export default function SampleEntry() {
     };
   }, []);
 
-  const { register, handleSubmit, watch, setValue, getValues, reset, formState: { errors } } = useForm<FormValues>({
+  const { register, handleSubmit, watch, setValue, getValues, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       sampleType: 'rock',
@@ -235,7 +237,7 @@ export default function SampleEntry() {
       toast({
         title: denied ? "Location permission required" : "GPS unavailable",
         description: denied
-          ? "Allow location access for GeoField in iPhone Settings, then tap Try GPS Again."
+          ? "Allow location access for GeoField in your device Settings, then tap Try GPS Again."
           : error?.message === "GPS_TIMEOUT" ? "No GPS fix arrived within 15 seconds. Check Location Services and try again." : "Check Location Services and try again.",
         variant: "destructive",
       });
@@ -272,7 +274,7 @@ export default function SampleEntry() {
       })));
     }
     setIsLoadingMedia(true);
-    hydrateMediaSlots(fields).then((slots) => { setMediaSlots(slots); setIsLoadingMedia(false); }).catch(() => toast({ title: "Could not load sample photos", description: "Keep this sheet open and try again before saving.", variant: "destructive" }));
+    hydrateMediaSlots(fields).then((slots) => { if (initializedSample.current === id && getStorageAccountId() === draftAccount.current) { setMediaSlots(slots); setIsLoadingMedia(false); } }).catch(() => { if (initializedSample.current === id && getStorageAccountId() === draftAccount.current) toast({ title: "Could not load sample photos", description: "Keep this sheet open and try again before saving.", variant: "destructive" }); });
   }, [isOfflineEdit, id, reset]);
 
   useEffect(() => {
@@ -281,7 +283,7 @@ export default function SampleEntry() {
       sampleBaseline.current = existingSample;
       const fields = existingSample.fields as Record<string, any> || {};
       setIsLoadingMedia(true);
-      hydrateMediaSlots(fields).then((slots) => { setMediaSlots(slots); setIsLoadingMedia(false); }).catch(() => toast({ title: "Could not load sample photos", description: "Keep this sheet open and try again before saving.", variant: "destructive" }));
+      hydrateMediaSlots(fields).then((slots) => { if (initializedSample.current === id && getStorageAccountId() === draftAccount.current) { setMediaSlots(slots); setIsLoadingMedia(false); } }).catch(() => { if (initializedSample.current === id && getStorageAccountId() === draftAccount.current) toast({ title: "Could not load sample photos", description: "Keep this sheet open and try again before saving.", variant: "destructive" }); });
       if (Array.isArray(fields.customParams)) {
         setCustomParams(fields.customParams.map((p: any, i: number) => ({
           id: `cp_${i}_${Date.now()}`,
@@ -301,7 +303,7 @@ export default function SampleEntry() {
 
   const currentType = watch("sampleType");
   const locationValue = watch("fields.location") as string | undefined;
-  const isPending = createSample.isPending || updateSample.isPending || isSavingMedia || isLoadingMedia;
+  const isPending = isSubmitting || createSample.isPending || updateSample.isPending || isSavingMedia || isLoadingMedia;
 
   const prevTypeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -502,7 +504,7 @@ export default function SampleEntry() {
 
   const onSubmit = async (data: FormValues) => {
     if (!requireAccountForSave(authData?.user, setLocation, location)) return;
-    const savingAccountId = authData?.user?.id;
+    const savingAccountId = draftAccount.current;
     if (isLoadingMedia || (isEdit && initializedSample.current !== id)) {
       toast({ title: "Sample is still loading", description: "Wait for the saved sample and attachments before saving changes.", variant: "destructive" });
       return;
@@ -574,7 +576,7 @@ export default function SampleEntry() {
         return;
       }
       assertStorageAccount(savingAccountId);
-      if (isOfflineEdit && id) updateQueuedSample(id, payload);
+      if (isOfflineEdit && queuedAtOpen) updateQueuedSample(queuedAtOpen.queuedId, payload, queuedAtOpen);
       else enqueue(payload, isEdit && id ? id : undefined, sampleBaseline.current?.updatedAt);
       // Update the trip only after the complete sample is durable.
       if (plannedSiteId && processedFields.collectedAt) try {

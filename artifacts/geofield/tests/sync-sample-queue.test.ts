@@ -68,3 +68,37 @@ test("a lost create response followed by another device edit creates a stable re
 test("missing deletion acknowledgment keeps the operation pending", async () => {
  const s=setup();await assert.rejects(syncQueuedSample({...initial,deletedAt:"now"},{...s.store,delete:async()=>({id:"q_fixed",...initial.payload,deletedAt:null})}),/did not confirm/);assert.equal(s.queue().length,1);
 });
+
+test('a competing cloud edit at write time leaves local water data pending', async () => {
+ const s = setup(); const item = { ...initial, targetId: 'cloud-water', baseUpdatedAt: 'before' };
+ s.store.get = async id => ({ id, ...initial.payload, notes: 'prior values', updatedAt: 'before' });
+ s.store.update = async (_id, _payload, revision?: string) => {
+   assert.equal(revision, 'before'); throw new Error('ConditionalCheckFailedException');
+ };
+ await assert.rejects(syncQueuedSample(item, s.store), /ConditionalCheckFailed/);
+ assert.equal(s.queue().length, 1); assert.equal(s.cache.length, 0);
+});
+
+test('120 offline water samples survive restart and lost cloud responses without duplicate IDs', async () => {
+ const originals = Array.from({ length: 120 }, (_, i) => ({ queuedId: `ecuador-${i}`, queuedAt: '2026-11-11', payload: {
+   sampleType: 'water', sampleId: `EC-${String(i).padStart(3, '0')}`, folderId: 'water-project', notes: 'Río — preserved locally',
+   fields: { ph: i % 14, temperature: 0, do: '<0.01', conductivity: 12.3456789, latitude: -0.123456789, longitude: -78.456789012, collectionDate: '2026-11-11T10:00', customParams: [{ label: 'Bottle', value: '0001' }], media: [{ kind: 'photo', storageKey: `media/photo-${i}`, localKey: `local-${i}` }] },
+ } }));
+ let queue = JSON.parse(JSON.stringify(originals)); // reopened local storage
+ const cloud = new Map<string, any>(); const cache = new Map<string, any>();
+ const store = {
+   load: () => queue, prepare: async (item: any) => item.payload,
+   create: async (id: string, payload: any) => {
+     if (cloud.has(id)) throw new Error('Already exists');
+     cloud.set(id, { id, ...structuredClone(payload) });
+     if (Number(id.split('-').at(-1)) % 3 === 0) throw new Error('Network Error');
+     return cloud.get(id);
+   },
+   get: async (id: string) => cloud.get(id), update: async () => { throw new Error('Unexpected update'); },
+   cache: (record: any) => { cache.set(record.id, structuredClone(record)); },
+   remove: (id: string) => { queue = queue.filter((item: any) => item.queuedId !== id); },
+ };
+ for (const item of [...queue]) await syncQueuedSample(item, store);
+ assert.equal(queue.length, 0); assert.equal(cloud.size, 120); assert.equal(cache.size, 120);
+ for (const original of originals) assert.deepEqual(cache.get(original.queuedId).fields, original.payload.fields);
+});

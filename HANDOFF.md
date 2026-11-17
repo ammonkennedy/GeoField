@@ -81,3 +81,16 @@ checks or scan the entire repository merely to start a new conversation.
 - Added Amplify preSignUp trigger for self-service email/password signup: autoConfirmUser=true, autoVerifyEmail=true, phone unchanged/false. Email recovery eligibility must be enabled for the requested Forgot password flow; the flag is not independent proof of email ownership. Password recovery still requires the emailed code. Admin/external-provider events are unchanged.
 - Login respects isSignUpComplete and returns new users to sign-in without confirmation. Keeps fallback for older unconfirmed accounts/backends during rollout; removes prominent Verify your email action.
 - Five signup/recovery tests, app typecheck, production build passed. Backend configuration typecheck also run. Backend/frontend deployment and live signup/recovery testing remain outstanding; no real accounts modified.
+
+## Nov 11 — Quiet airplane-mode sync
+- Android WebView can report online during transport failures. Sync now treats pure connection failures as offline UI state, clears the red error banner, and retains bounded retries and all pending records. Mixed data/auth/server failures still surface normally. Successful sync or online event restores connection status.
+- Five sync-retry tests, app typecheck, and Android debug build passed. Updated connected Samsung via adb install -r; no uninstall/storage reset. No full airplane-mode/reconnection data-sync test performed.
+
+## Nov 11 — Ecuador sample safety audit
+- Fixed reopening queued edits by cloud ID, saving sheets after queue sync, stale local edit/deletion protection, draft account binding, async media sheet/account guards and submit locking. Cloud sync updates now use a server-side updatedAt condition; malformed cloud sample fields fail instead of silently becoming empty.
+- All 414 regression tests, library/app typechecks, web build and Android debug build passed. New isolated tests include 120 offline water samples with lost upload responses. No installation/deployment/live AWS or physical airplane-mode test performed for these new fixes.
+- See `artifacts/geofield/docs/SAMPLE-FIELD-READINESS.md` for scope, evidence and the remaining phone/reconnect release gate. Unsaved forms are not persistent drafts; exports exclude photo/video binaries.
+
+## Nov 17 — Multi-day offline reopening
+- Remembered-account startup now falls back to local access after 1.5 seconds if a network/account request stalls while Android reports online. Late results cannot replace the remembered account; explicit logout behavior remains intact.
+- Added 30-day/120-launch simulated account tests and 30-day/120-storage-reopen sample/cache tests, retaining water values and attachment references. All 417 regression tests passed; library/app typechecks passed. These are isolated simulations, not physical-phone or attachment-playback verification. No native installation/deployment performed.
