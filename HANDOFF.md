@@ -94,3 +94,13 @@ checks or scan the entire repository merely to start a new conversation.
 ## Nov 17 — Multi-day offline reopening
 - Remembered-account startup now falls back to local access after 1.5 seconds if a network/account request stalls while Android reports online. Late results cannot replace the remembered account; explicit logout behavior remains intact.
 - Added 30-day/120-launch simulated account tests and 30-day/120-storage-reopen sample/cache tests, retaining water values and attachment references. All 417 regression tests passed; library/app typechecks passed. These are isolated simulations, not physical-phone or attachment-playback verification. No native installation/deployment performed.
+
+## Nov 21 — Sample parameter ordering
+- Added earlier/later buttons for basic fields, built-in parameters and custom parameters within their sections. Applies to water, rock, soil/sediment, other and legacy air sheets. Stable React keys retain field identity while moving.
+- Set as default is always available and stores basic/built-in order plus ordered custom labels separately per sample type in the existing local template storage. Legacy label-array templates still load. Storage errors report failure without changing sample data; defaults are device-local.
+- Two ordering regression tests, app typecheck and web build passed. No native build/install or deployment. Existing iOS project settings changes left untouched.
+
+## Nov 21 — Combined sample parameters
+- Custom fields now append directly to the built-in parameter grid, with the same earlier/later controls and a shared order. Removed the separate Custom Parameters section. Other Sample Type participates in its parameter grid too.
+- Default templates retain custom field IDs with their labels so mixed built-in/custom order survives reopening; old label-only defaults remain supported. Moving/removing fields does not change their values.
+- Three ordering tests and app typecheck passed. No native installation or deployment.

@@ -1,3 +1,4 @@
+import { OrderedFields } from "@/components/fields/OrderedFields";
 import { capturePhotoLocation, withPhotoLocation } from "@/lib/photo-location";
 import { capturePhoto } from "@/lib/capture-photo";
 import { preservePhotoDirection } from "@/lib/photo-direction";
@@ -19,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, GripVertical, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck, FileQuestion } from "lucide-react";
+import { Droplet, Mountain, Sprout, ArrowLeft, Save, Camera, X, MapPin, Loader2, Plus, Mic, MicOff, Video, Image as ImageIcon, BookmarkCheck, FileQuestion } from "lucide-react";
 import { useSamplesMutations } from "@/hooks/use-geofield";
 import { useGetCurrentAuthUser, useGetFolders, useGetSample } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
@@ -29,7 +30,6 @@ import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } fr
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { AirFields, BaseFields, WaterFields, RockFields, SoilFields } from "@/components/fields/SchemaForms";
 import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
 import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
 import { Capacitor } from "@capacitor/core";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
@@ -73,19 +73,29 @@ interface CustomParam {
 
 const TEMPLATE_KEY = "geofield_custom_param_templates";
 
-function loadTemplates(): Partial<Record<SampleTypeId, string[]>> {
-  try { return JSON.parse(localStorage.getItem(TEMPLATE_KEY) || "{}"); }
-  catch { return {}; }
+type SheetTemplate = { labels: string[]; customIds?: string[]; basicOrder?: string[]; parameterOrder?: string[] };
+function loadTemplates(): Partial<Record<SampleTypeId, SheetTemplate>> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(TEMPLATE_KEY) || "{}");
+    return Object.fromEntries(Object.entries(stored).map(([key, value]: [string, any]) => [key,
+      Array.isArray(value) ? { labels: value.filter(v => typeof v === "string") } : {
+        labels: Array.isArray(value?.labels) ? value.labels.filter((v: unknown) => typeof v === "string") : [],
+        customIds: Array.isArray(value?.customIds) ? value.customIds : undefined,
+        basicOrder: Array.isArray(value?.basicOrder) ? value.basicOrder : [],
+        parameterOrder: Array.isArray(value?.parameterOrder) ? value.parameterOrder : [],
+      }
+    ]));
+  } catch { return {}; }
 }
 
-function saveTemplate(type: SampleTypeId, labels: string[]) {
+function saveTemplate(type: SampleTypeId, template: SheetTemplate) {
   const all = loadTemplates();
-  all[type] = labels;
+  all[type] = template;
   localStorage.setItem(TEMPLATE_KEY, JSON.stringify(all));
 }
 
-function templateToParams(labels: string[]): CustomParam[] {
-  return labels.map((label) => ({ id: `tpl_${crypto.randomUUID()}`, label, value: "" }));
+function templateToParams(labels: string[], ids?: string[]): CustomParam[] {
+  return labels.map((label, index) => ({ id: ids?.[index] || `tpl_${crypto.randomUUID()}`, label, value: "" }));
 }
 
 function getTypeLabel(type: string) {
@@ -168,6 +178,8 @@ export default function SampleEntry() {
   const [mediaSlots, setMediaSlots] = useState<[MediaSlot, MediaSlot, MediaSlot]>([null, null, null]);
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("idle");
   const [customParams, setCustomParams] = useState<CustomParam[]>([]);
+  const [basicOrder, setBasicOrder] = useState<string[]>([]);
+  const [parameterOrder, setParameterOrder] = useState<string[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [isSavingMedia, setIsSavingMedia] = useState(false);
   const [isLoadingMedia, setIsLoadingMedia] = useState(isEdit);
@@ -305,14 +317,20 @@ export default function SampleEntry() {
   const locationValue = watch("fields.location") as string | undefined;
   const isPending = isSubmitting || createSample.isPending || updateSample.isPending || isSavingMedia || isLoadingMedia;
 
+  useEffect(() => {
+    const template = loadTemplates()[currentType as SampleTypeId];
+    setBasicOrder(template?.basicOrder ?? []);
+    setParameterOrder(template?.parameterOrder ?? []);
+  }, [currentType]);
+
   const prevTypeRef = useRef<string | null>(null);
   useEffect(() => {
     if (isEdit) return;
     if (prevTypeRef.current === currentType) return;
     prevTypeRef.current = currentType;
     const templates = loadTemplates();
-    const labels = templates[currentType as SampleTypeId] ?? [];
-    if (labels.length > 0) setCustomParams(templateToParams(labels));
+    const labels = templates[currentType as SampleTypeId]?.labels ?? [];
+    if (labels.length > 0) setCustomParams(templateToParams(labels, templates[currentType as SampleTypeId]?.customIds));
     else if (currentType === "other") setCustomParams([]);
   }, [currentType, isEdit]);
 
@@ -488,17 +506,22 @@ export default function SampleEntry() {
     setIsRecording(true);
   };
 
-  const addCustomParam = () => setCustomParams((prev) => [...prev, { id: `cp_${Date.now()}`, label: "", value: "" }]);
+  const addCustomParam = () => setCustomParams((prev) => [...prev, { id: `cp_${crypto.randomUUID()}`, label: "", value: "" }]);
   const updateCustomParam = (id: string, field: "label" | "value", val: string) =>
     setCustomParams((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: val } : p)));
   const removeCustomParam = (id: string) => setCustomParams((prev) => prev.filter((p) => p.id !== id));
 
   const saveAsDefault = () => {
-    const labels = customParams.map((p) => p.label).filter(Boolean);
-    saveTemplate(currentType as SampleTypeId, labels);
+    const namedParams = customParams.filter(p => p.label.trim());
+    const labels = namedParams.map(p => p.label);
+    try { saveTemplate(currentType as SampleTypeId, { labels, customIds: namedParams.map(p => p.id), basicOrder, parameterOrder }); }
+    catch {
+      toast({ title: "Default could not be saved", description: "Your current sheet is unchanged. Free device storage and try again.", variant: "destructive" });
+      return;
+    }
     toast({
       title: "Template saved",
-      description: `${labels.length} custom parameter${labels.length !== 1 ? "s" : ""} will now appear on all new ${getTypeLabel(currentType)} sheets.`,
+      description: `Parameter order and custom parameters saved for future ${getTypeLabel(currentType)} sheets on this device.`,
     });
   };
 
@@ -641,7 +664,7 @@ export default function SampleEntry() {
           <div className="p-6 md:p-8 space-y-8 bg-gradient-to-b from-card to-muted/20">
             <div className="space-y-4">
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">1</span>Basic Information{!isEdit && (<span className={cn("ml-2 inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium", gpsStatus === "loading" && "bg-yellow-100 text-yellow-700", gpsStatus === "success" && "bg-green-100 text-green-700", (gpsStatus === "error" || gpsStatus === "denied") && "bg-red-100 text-red-600", gpsStatus === "idle" && "bg-muted text-muted-foreground")}>{gpsStatus === "loading" && <><Loader2 className="w-3 h-3 animate-spin" />Getting GPS...</>}{gpsStatus === "success" && <><MapPin className="w-3 h-3" />GPS captured</>}{gpsStatus === "denied" && <><MapPin className="w-3 h-3" />Location denied</>}{gpsStatus === "error" && <><MapPin className="w-3 h-3" />GPS unavailable</>}</span>)}</h3>
-              <BaseFields register={register} errors={errors} />
+              <BaseFields register={register} errors={errors} order={basicOrder} onOrderChange={setBasicOrder} />
               {Number.isFinite(watch("fields.gpsAccuracy")) && <p className="text-sm text-muted-foreground">GPS estimated accuracy: ±{watch("fields.gpsAccuracy")} m. For a better fix, stay still with a clear view of the sky and enable Precise Location.</p>}
               {(
                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={gpsStatus === "loading"} onClick={captureGps}>
@@ -655,40 +678,35 @@ export default function SampleEntry() {
               {(() => { const coords = parseCoordsUTM(locationValue); if (!coords) return null; const utm = latLngToUTM(coords[0], coords[1]); return <div className="flex items-start gap-2.5 bg-muted/40 border border-border rounded-lg px-3.5 py-2.5 text-sm"><MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" /><div><p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">UTM Coordinates (WGS84)</p><p className="font-mono text-sm text-foreground">{utm.display}</p><p className="text-xs text-muted-foreground mt-0.5">Zone {utm.zone}{utm.letter} · {utm.hemisphere === "N" ? "Northern" : "Southern"} Hemisphere</p></div></div>; })()}
             </div>
 
-            {currentType !== "other" && (
-              <>
-                <div className="h-px bg-border/60 w-full" />
-
-                <div className="space-y-4">
-                  <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>Parameters</h3>
-                  <AnimatePresence mode="wait"><motion.div key={currentType} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>{currentType === "water" && <WaterFields register={register} />}{currentType === "rock" && <RockFields register={register} />}{currentType === "soil_sand" && <SoilFields register={register} />}{currentType === "air" && <AirFields register={register} />}</motion.div></AnimatePresence>
-                </div>
-              </>
-            )}
-
-            {currentType === "other" && (
-              <>
-                <div className="h-px bg-border/60 w-full" />
-                <div className="space-y-4">
-                  <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">2</span>Other Sample Details</h3>
-                  <div className="space-y-2">
-                    <Label htmlFor="other-sample-title">Sample Type</Label>
-                    <Input
-                      id="other-sample-title"
-                      {...register("fields.otherSampleTitle")}
-                      placeholder="e.g. Vegetation, Ice, Biological material"
-                    />
-                    <p className="text-xs text-muted-foreground">This name appears at the top of the saved sample instead of “Other.”</p>
-                  </div>
-                </div>
-              </>
-            )}
-
             <div className="h-px bg-border/60 w-full" />
-
             <div className="space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2"><h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">3</span>Custom Parameters</h3><div className="flex items-center gap-2">{customParams.length > 0 && <Button type="button" variant="outline" size="sm" className="gap-2 border-primary/40 text-primary hover:bg-primary/5" onClick={saveAsDefault} title={`Save these parameters as the default template for all new ${getTypeLabel(currentType)} sheets`}><BookmarkCheck className="w-4 h-4" />Save as default</Button>}<Button type="button" variant="outline" size="sm" className="gap-2" onClick={addCustomParam}><Plus className="w-4 h-4" />Add Parameter</Button></div></div>
-              {customParams.length === 0 ? <p className="text-sm text-muted-foreground italic px-1">No custom parameters yet. Click <strong>Add Parameter</strong> to add one.</p> : <div className="space-y-3">{customParams.map((param) => <div key={param.id} className="flex gap-2 items-start group"><GripVertical className="w-4 h-4 mt-2.5 text-muted-foreground/40 shrink-0" /><Input value={param.label} onChange={(e) => updateCustomParam(param.id, "label", e.target.value)} placeholder="Parameter name" className="w-40 shrink-0 text-sm" /><Input value={param.value} onChange={(e) => updateCustomParam(param.id, "value", e.target.value)} placeholder="Value (e.g. 7.2, Present, 42 mg/L)" className="flex-1 text-sm" /><button type="button" onClick={() => removeCustomParam(param.id)} className="mt-2 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"><X className="w-4 h-4" /></button></div>)}</div>}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h3 className="text-lg font-display font-semibold">Parameters</h3>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={saveAsDefault}><BookmarkCheck className="w-4 h-4 mr-2" />Set as default</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={addCustomParam}><Plus className="w-4 h-4 mr-2" />Add Parameter</Button>
+                </div>
+              </div>
+              {(() => {
+                const extraFields = customParams.map(param => <div key={param.id} className="space-y-2">
+                  <div className="flex gap-2">
+                    <Input aria-label="Custom parameter name" value={param.label} onChange={e => updateCustomParam(param.id, "label", e.target.value)} placeholder="Parameter name" />
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${param.label || "custom parameter"}`} onClick={() => removeCustomParam(param.id)}><X className="w-4 h-4" /></Button>
+                  </div>
+                  <Input aria-label={`${param.label || "Custom parameter"} value`} value={param.value} onChange={e => updateCustomParam(param.id, "value", e.target.value)} placeholder="Value (e.g. 7.2, Present, 42 mg/L)" />
+                </div>);
+                const props = { register, order: parameterOrder, onOrderChange: setParameterOrder, extraFields };
+                if (currentType === "water") return <WaterFields {...props} />;
+                if (currentType === "rock") return <RockFields {...props} />;
+                if (currentType === "soil_sand") return <SoilFields {...props} />;
+                if (currentType === "air") return <AirFields {...props} />;
+                return <OrderedFields {...props} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div key="otherSampleTitle" className="space-y-2">
+                    <Label htmlFor="other-sample-title">Sample Type</Label>
+                    <Input id="other-sample-title" {...register("fields.otherSampleTitle")} placeholder="e.g. Vegetation, Ice, Biological material" />
+                  </div>
+                </OrderedFields>;
+              })()}
             </div>
 
             <div className="h-px bg-border/60 w-full" />

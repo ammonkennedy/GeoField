@@ -1,3 +1,4 @@
+import { OrderedFields, type FieldOrderProps } from "./OrderedFields";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 
@@ -31,27 +32,27 @@ function ParameterInput({ register, name, placeholder }: { register: any; name: 
   );
 }
 
-export const BaseFields = ({ register, errors }: any) => (
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <div className="space-y-2">
+export const BaseFields = ({ register, errors, order, onOrderChange, extraFields }: any) => (
+  <OrderedFields extraFields={extraFields} order={order} onOrderChange={onOrderChange} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div key="sampleId" className="space-y-2">
       <Label htmlFor="sampleId">Sample ID / Label</Label>
       <Input id="sampleId" placeholder="e.g. W-24-001" {...register("sampleId")} />
       {errors.sampleId && <span className="text-xs text-destructive">{errors.sampleId.message}</span>}
     </div>
-    <div className="space-y-2">
+    <div key="collectionDate" className="space-y-2">
       <Label htmlFor="collectionDate">Collection Date &amp; Time</Label>
       <Input type="datetime-local" id="collectionDate" {...register("fields.collectionDate")} />
     </div>
-    <div className="space-y-2 md:col-span-2">
+    <div key="location" className="space-y-2 md:col-span-2">
       <Label htmlFor="location">Location / GPS</Label>
       <Input id="location" placeholder="Lat, Long or description" {...register("fields.location")} />
     </div>
-  </div>
+  </OrderedFields>
 );
 
-export const WaterFields = ({ register }: any) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-    <div className="space-y-2">
+export const WaterFields = ({ register, order, onOrderChange, extraFields }: any) => (
+  <OrderedFields extraFields={extraFields} order={order} onOrderChange={onOrderChange} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div key="waterSource" className="space-y-2">
       <Label htmlFor="waterSource">Water Source</Label>
       <select id="waterSource" className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.waterSource")}>
         <option value="">Select water source...</option>
@@ -59,22 +60,22 @@ export const WaterFields = ({ register }: any) => (
         <option value="Surface water">Surface water</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Water Temp (°C)</Label><ParameterInput register={register} name="fields.temperature" /></div>
-    <div className="space-y-2"><Label>pH Level</Label><ParameterInput register={register} name="fields.ph" /></div>
-    <div className="space-y-2"><Label>Dissolved Oxygen (mg/L)</Label><ParameterInput register={register} name="fields.do" /></div>
-    <div className="space-y-2"><Label>Conductivity (μS/cm)</Label><ParameterInput register={register} name="fields.conductivity" /></div>
-    <div className="space-y-2"><Label>Turbidity (NTU)</Label><ParameterInput register={register} name="fields.turbidity" /></div>
-    <div className="space-y-2"><Label>Flow Rate (m³/s)</Label><ParameterInput register={register} name="fields.flowRate" /></div>
-    <div className="space-y-2"><Label>Water Color</Label><Input {...register("fields.color")} placeholder="e.g. Clear, murky brown" /></div>
-    <div className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, sulfur" /></div>
-    <div className="space-y-2"><Label>Preservation Method</Label><Input {...register("fields.preservation")} placeholder="e.g. HNO3, None" /></div>
-  </div>
+    <div key="temperature" className="space-y-2"><Label>Water Temp (°C)</Label><ParameterInput register={register} name="fields.temperature" /></div>
+    <div key="ph" className="space-y-2"><Label>pH Level</Label><ParameterInput register={register} name="fields.ph" /></div>
+    <div key="do" className="space-y-2"><Label>Dissolved Oxygen (mg/L)</Label><ParameterInput register={register} name="fields.do" /></div>
+    <div key="conductivity" className="space-y-2"><Label>Conductivity (μS/cm)</Label><ParameterInput register={register} name="fields.conductivity" /></div>
+    <div key="turbidity" className="space-y-2"><Label>Turbidity (NTU)</Label><ParameterInput register={register} name="fields.turbidity" /></div>
+    <div key="flowRate" className="space-y-2"><Label>Flow Rate (m³/s)</Label><ParameterInput register={register} name="fields.flowRate" /></div>
+    <div key="color" className="space-y-2"><Label>Water Color</Label><Input {...register("fields.color")} placeholder="e.g. Clear, murky brown" /></div>
+    <div key="odor" className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, sulfur" /></div>
+    <div key="preservation" className="space-y-2"><Label>Preservation Method</Label><Input {...register("fields.preservation")} placeholder="e.g. HNO3, None" /></div>
+  </OrderedFields>
 );
 
-export const AirFields = ({ register }: any) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-    <div className="space-y-2"><Label>PID Reading</Label><ParameterInput register={register} name="fields.pidReading" placeholder="e.g. 2.450 or ND" /></div>
-    <div className="space-y-2">
+export const AirFields = ({ register, order, onOrderChange, extraFields }: any) => (
+  <OrderedFields extraFields={extraFields} order={order} onOrderChange={onOrderChange} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div key="pidReading" className="space-y-2"><Label>PID Reading</Label><ParameterInput register={register} name="fields.pidReading" placeholder="e.g. 2.450 or ND" /></div>
+    <div key="pidUnits" className="space-y-2">
       <Label>PID Units</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.pidUnits")}>
         <option value="">Select units...</option>
@@ -84,8 +85,8 @@ export const AirFields = ({ register }: any) => (
         <option value="ug/m3">ug/m3</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Target Compound / VOC</Label><Input {...register("fields.targetCompound")} placeholder="e.g. Benzene, total VOCs" /></div>
-    <div className="space-y-2">
+    <div key="targetCompound" className="space-y-2"><Label>Target Compound / VOC</Label><Input {...register("fields.targetCompound")} placeholder="e.g. Benzene, total VOCs" /></div>
+    <div key="lampEnergy" className="space-y-2">
       <Label>Lamp Energy</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.lampEnergy")}>
         <option value="">Select lamp...</option>
@@ -94,8 +95,8 @@ export const AirFields = ({ register }: any) => (
         <option value="11.7 eV">11.7 eV</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Calibration Gas</Label><Input {...register("fields.calibrationGas")} placeholder="e.g. Isobutylene" /></div>
-    <div className="space-y-2">
+    <div key="calibrationGas" className="space-y-2"><Label>Calibration Gas</Label><Input {...register("fields.calibrationGas")} placeholder="e.g. Isobutylene" /></div>
+    <div key="alarmStatus" className="space-y-2">
       <Label>Alarm Status</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.alarmStatus")}>
         <option value="">Select status...</option>
@@ -106,7 +107,7 @@ export const AirFields = ({ register }: any) => (
         <option value="TWA Alarm">TWA Alarm</option>
       </select>
     </div>
-    <div className="space-y-2">
+    <div key="samplingMode" className="space-y-2">
       <Label>Sampling Mode</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.samplingMode")}>
         <option value="">Select mode...</option>
@@ -116,15 +117,15 @@ export const AirFields = ({ register }: any) => (
         <option value="Breathing Zone">Breathing Zone</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Ambient Temp (°C)</Label><ParameterInput register={register} name="fields.ambientTemperature" /></div>
-    <div className="space-y-2"><Label>Relative Humidity (%)</Label><ParameterInput register={register} name="fields.relativeHumidity" /></div>
-    <div className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, solvent, petroleum" /></div>
-  </div>
+    <div key="ambientTemperature" className="space-y-2"><Label>Ambient Temp (°C)</Label><ParameterInput register={register} name="fields.ambientTemperature" /></div>
+    <div key="relativeHumidity" className="space-y-2"><Label>Relative Humidity (%)</Label><ParameterInput register={register} name="fields.relativeHumidity" /></div>
+    <div key="odor" className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, solvent, petroleum" /></div>
+  </OrderedFields>
 );
 
-export const RockFields = ({ register }: { register: any }) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-    <div className="space-y-2">
+export const RockFields = ({ register, order, onOrderChange, extraFields }: { register: any } & FieldOrderProps) => (
+  <OrderedFields extraFields={extraFields} order={order} onOrderChange={onOrderChange} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div key="rockType" className="space-y-2">
       <Label>Rock Type</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.rockType")}>
         <option value="">Select type...</option>
@@ -133,8 +134,8 @@ export const RockFields = ({ register }: { register: any }) => (
         <option value="Metamorphic">Metamorphic</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Rock Name</Label><Input {...register("fields.rockName")} placeholder="e.g. Basalt, Sandstone" /></div>
-    <div className="space-y-2">
+    <div key="rockName" className="space-y-2"><Label>Rock Name</Label><Input {...register("fields.rockName")} placeholder="e.g. Basalt, Sandstone" /></div>
+    <div key="lithology" className="space-y-2">
       <Label>Lithology</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.lithology")}>
         <option value="">Select lithology...</option>
@@ -176,9 +177,9 @@ export const RockFields = ({ register }: { register: any }) => (
         </optgroup>
       </select>
     </div>
-    <div className="space-y-2"><Label>Color</Label><Input {...register("fields.color")} /></div>
-    <div className="space-y-2"><Label>Texture</Label><Input {...register("fields.texture")} placeholder="e.g. Fine, Porphyritic" /></div>
-    <div className="space-y-2">
+    <div key="color" className="space-y-2"><Label>Color</Label><Input {...register("fields.color")} /></div>
+    <div key="texture" className="space-y-2"><Label>Texture</Label><Input {...register("fields.texture")} placeholder="e.g. Fine, Porphyritic" /></div>
+    <div key="sorting" className="space-y-2">
       <Label>Sorting</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.sorting")}>
         <option value="">Select sorting...</option>
@@ -190,16 +191,16 @@ export const RockFields = ({ register }: { register: any }) => (
         <option value="N/A">N/A (non-clastic)</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Hardness (Mohs)</Label><ParameterInput register={register} name="fields.hardness" /></div>
-    <div className="space-y-2"><Label>Specific Gravity</Label><ParameterInput register={register} name="fields.specificGravity" /></div>
-    <div className="space-y-2"><Label>Magnetism</Label><Input {...register("fields.magnetism")} /></div>
-    <div className="space-y-2"><Label>Weight (g)</Label><ParameterInput register={register} name="fields.weight" /></div>
-  </div>
+    <div key="hardness" className="space-y-2"><Label>Hardness (Mohs)</Label><ParameterInput register={register} name="fields.hardness" /></div>
+    <div key="specificGravity" className="space-y-2"><Label>Specific Gravity</Label><ParameterInput register={register} name="fields.specificGravity" /></div>
+    <div key="magnetism" className="space-y-2"><Label>Magnetism</Label><Input {...register("fields.magnetism")} /></div>
+    <div key="weight" className="space-y-2"><Label>Weight (g)</Label><ParameterInput register={register} name="fields.weight" /></div>
+  </OrderedFields>
 );
 
-export const SoilFields = ({ register }: any) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-    <div className="space-y-2"><Label>Soil Texture</Label>
+export const SoilFields = ({ register, order, onOrderChange, extraFields }: any) => (
+  <OrderedFields extraFields={extraFields} order={order} onOrderChange={onOrderChange} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div key="texture" className="space-y-2"><Label>Soil Texture</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.texture")}>
         <option value="">Select texture...</option>
         <option value="Sand">Sand</option>
@@ -208,9 +209,9 @@ export const SoilFields = ({ register }: any) => (
         <option value="Loam">Loam</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>Color (Munsell)</Label><Input {...register("fields.color")} placeholder="e.g. 10YR 4/6" /></div>
-    <div className="space-y-2"><Label>Horizon</Label><Input {...register("fields.horizon")} placeholder="e.g. O, A, B, C" /></div>
-    <div className="space-y-2"><Label>Moisture Content</Label>
+    <div key="color" className="space-y-2"><Label>Color (Munsell)</Label><Input {...register("fields.color")} placeholder="e.g. 10YR 4/6" /></div>
+    <div key="horizon" className="space-y-2"><Label>Horizon</Label><Input {...register("fields.horizon")} placeholder="e.g. O, A, B, C" /></div>
+    <div key="moisture" className="space-y-2"><Label>Moisture Content</Label>
       <select className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm" {...register("fields.moisture")}>
         <option value="">Select...</option>
         <option value="Dry">Dry</option>
@@ -218,11 +219,11 @@ export const SoilFields = ({ register }: any) => (
         <option value="Wet">Wet</option>
       </select>
     </div>
-    <div className="space-y-2"><Label>pH Level</Label><ParameterInput register={register} name="fields.ph" /></div>
-    <div className="space-y-2"><Label>Depth (cm)</Label><ParameterInput register={register} name="fields.depth" /></div>
-    <div className="space-y-2"><Label>Structure</Label><Input {...register("fields.structure")} placeholder="e.g. Granular, Blocky" /></div>
-    <div className="space-y-2"><Label>Organic Matter (%)</Label><ParameterInput register={register} name="fields.organicMatter" /></div>
-    <div className="space-y-2"><Label>Electrical Conductivity (mS/cm)</Label><ParameterInput register={register} name="fields.ec" /></div>
-    <div className="space-y-2"><Label>Weight (g)</Label><ParameterInput register={register} name="fields.weight" /></div>
-  </div>
+    <div key="ph" className="space-y-2"><Label>pH Level</Label><ParameterInput register={register} name="fields.ph" /></div>
+    <div key="depth" className="space-y-2"><Label>Depth (cm)</Label><ParameterInput register={register} name="fields.depth" /></div>
+    <div key="structure" className="space-y-2"><Label>Structure</Label><Input {...register("fields.structure")} placeholder="e.g. Granular, Blocky" /></div>
+    <div key="organicMatter" className="space-y-2"><Label>Organic Matter (%)</Label><ParameterInput register={register} name="fields.organicMatter" /></div>
+    <div key="ec" className="space-y-2"><Label>Electrical Conductivity (mS/cm)</Label><ParameterInput register={register} name="fields.ec" /></div>
+    <div key="weight" className="space-y-2"><Label>Weight (g)</Label><ParameterInput register={register} name="fields.weight" /></div>
+  </OrderedFields>
 );
