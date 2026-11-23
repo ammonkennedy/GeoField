@@ -104,3 +104,29 @@ checks or scan the entire repository merely to start a new conversation.
 - Custom fields now append directly to the built-in parameter grid, with the same earlier/later controls and a shared order. Removed the separate Custom Parameters section. Other Sample Type participates in its parameter grid too.
 - Default templates retain custom field IDs with their labels so mixed built-in/custom order survives reopening; old label-only defaults remain supported. Moving/removing fields does not change their values.
 - Three ordering tests and app typecheck passed. No native installation or deployment.
+
+## Nov 22 — 24-hour time
+- Shared app date/time displays now explicitly use h23 (00:00–23:59), including existing sample cards, map popups, notes and track times. Existing timestamps are not migrated or shifted.
+- Sample/measurement date-time editors use a date input plus validated HH:mm text entry, independent of native AM/PM picker settings. ISO timestamps are converted to local values for editing; unchanged records retain their original timestamp.
+- Two time-format tests and app typecheck passed. Spreadsheet creation times already use HH:mm. No native installation/deployment; free-text notes/custom values are not rewritten.
+
+## Nov 22 — Project deletion choices
+- Dashboard offers Project only (detach records) or Delete data (archive then tombstone), plus Cancel. Applies to samples/attachments, measurements, tracks, saved stereonets and linked trips/sites; unrelated notes have no project association and are untouched.
+- Project deletion mode persists on the local dataset for sync. Before final cloud deletion, downloads cloud samples/measurements and syncs tracks/stereonets/trips, applies the same mode, then uses existing record sync queues. Stops on enumeration failures/account changes/active recording; preserves pending edits. Local project hidden immediately on dashboard.
+- Recently Deleted supports archived tracks/trips/stereonets and deduplicates local/cloud sample/project rows. Restored snapshot records use new IDs to avoid deletion-wins sync; project-deleted sample drafts restore as new queued samples to retain unsynced edits. Restored content is detached from the deleted project. Track geometry/media references are retained.
+- 425 full regression tests passed, then four focused deletion tests passed (including added unrelated-project case). App typecheck/web build passed before final track concurrency guard; focused tests passed afterward. No physical-device/cloud deletion test, native install, or deployment. Prior time-format changes retained, including a fixed Node-compatible import in track-map.ts.
+
+## Nov 22 — Return sample edits to originating project
+- Project sample links carry their originating project ID. Save/Update, Cancel and the sample back arrow return there; All Samples entry still returns home. New project samples use the same path.
+- Uses Wouter useSearch so query parameters are read correctly. Resolves offline project IDs after sync and falls back home if the originating project was locally deleted.
+- App typecheck and web build passed. No native install/deployment.
+
+## Nov 22 — Editable sample UTM
+- Sample sheet now exposes WGS84 zone, hemisphere, easting and northing. Valid manual UTM edits commit to GPS on blur/Enter; GPS edits regenerate the UTM display. Invalid/incomplete UTM blocks form submission and retains the previous GPS value.
+- No conversion back to GPS occurs during mounting, GPS updates or untouched focus/blur; automatically captured GPS precision is retained. Beginning a UTM edit cancels an outstanding GPS result so it cannot overwrite manual work. Refresh GPS remains available and updates both displays.
+- Added inverse WGS84 transverse Mercator and fixed longitude +180 zone selection. Three tests cover hemispheres, Ecuador/other-zone round trips, antimeridian rounding and invalid inputs. Typecheck passed; web build verified. No physical-phone test/native install/deployment.
+
+## Nov 22 — False recovered samples during photo additions
+- Found two same-device sync races: an open queued sheet saved after photo upload saw local/cloud attachment paths as different content and lost its baseline; edits made during upload remained creates instead of updates.
+- Added narrowly matched upload equivalence (same attachment ID/local key, only transport metadata changes). Reopened edits reuse the confirmed revision; changed pending edits are rebased to the acknowledged sample ID/revision. Editor can refresh an unchanged cached baseline. Real field/caption/photo conflicts still preserve recovery copies.
+- All 432 regression tests passed, including camera-roll addition after upload, edit during upload, real attachment changes and existing conflict tests. App typecheck/web build checked. No existing recovered records removed or merged; no device/live-account reproduction, installation or deployment.

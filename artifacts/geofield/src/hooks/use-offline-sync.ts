@@ -1,3 +1,5 @@
+import { setQueue } from "@/lib/offline-queue";
+import { applyProjectContents, loadProjectDeletionContents } from "@/lib/project-deletion";
 import { isConnectionUnavailable } from "@/lib/sync-retry";
 import { loadStereonets, STEREONETS_UPDATED } from '@/lib/stereonet/storage';
 import { syncStereonets } from '@/lib/stereonet/sync-account';
@@ -130,6 +132,13 @@ function getPendingSyncItems(accountId = "") {
 function getPendingSyncCount(accountId = "") { return getPendingSyncItems(accountId).length; }
 
 async function syncLocalDataset(dataset: LocalDataset, checkAccount: () => void, accountId: string) {
+  if (dataset.deletedAt && dataset.deletionMode) {
+    await loadProjectDeletionContents(dataset, accountId);
+    checkAccount();
+    if (getLocalDatasets(true).find(item => item.id === dataset.id)?.localRevision !== dataset.localRevision) throw new Error("Project changed during deletion. The newer change remains pending.");
+    await applyProjectContents(dataset, dataset.deletionMode, accountId);
+    if (getLocalDatasets(true).find(item => item.id === dataset.id)?.localRevision !== dataset.localRevision) throw new Error("Project changed during deletion. The newer change remains pending.");
+  }
   if (dataset.cloudId) {
     if (dataset.deletedAt) await deleteFolder({ id: dataset.cloudId, accountId });
     else {
@@ -349,6 +358,11 @@ export function useOfflineSync() {
               restore: async (id) => { await requireFieldNoteAccount(accountId); await restoreSample(id, accountId); return getSample(id, accountId); },
               cache: (saved) => { checkAccount(); cacheCloudSamples([...getCachedCloudSamples().filter((sample) => String(sample.id) !== String(saved.id)), saved]); },
               remove: (id) => { checkAccount(); removeFromQueue(id); },
+              rebase: (current, saved) => {
+                checkAccount();
+                setQueue(getQueue(true).map(record => record.queuedId === current.queuedId && JSON.stringify(record) === JSON.stringify(current)
+                  ? { ...record, targetId: String(saved.id), baseUpdatedAt: saved.updatedAt } : record));
+              },
             });
             if (changed) retryNeeded = true;
             synced++;

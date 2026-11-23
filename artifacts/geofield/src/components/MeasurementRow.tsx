@@ -1,3 +1,4 @@
+import { DateTime24Input } from "./DateTime24Input";
 import { capturePhotoLocation, withPhotoLocation } from "@/lib/photo-location";
 import { capturePhoto } from "@/lib/capture-photo";
 import { preservePhotoDirection } from "@/lib/photo-direction";
@@ -13,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getStoredMediaDataUrl, storeMediaDataUrl } from "@/lib/media-storage";
 import { loadMeasurements, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { getStorageAccountId } from "@/lib/storage-account";
-import { formatElevation } from "@/lib/elevation";
+import { ElevationInput } from "./ElevationInput";
 
 function compressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -289,11 +290,11 @@ export function MeasurementRow({
             </div>
             <div className="space-y-1">
               <Label className="text-xs font-semibold text-foreground/80">Date &amp; Time</Label>
-              <Input type="datetime-local" value={measurement.date} onChange={(e) => upd("date", e.target.value)} className="h-8 text-sm" />
+              <DateTime24Input value={measurement.date} onChange={(value) => upd("date", value)} className="h-8 text-sm" />
             </div>
             <div className="col-span-2 sm:col-span-3 space-y-1">
-              <Label className="text-xs font-semibold text-foreground/80">Elevation (GPS)</Label>
-              <p className="text-sm">{formatElevation(measurement.elevation, measurement.elevationAccuracy)}</p>
+              <Label className="text-xs font-semibold text-foreground/80">Elevation (m)</Label>
+              <ElevationInput value={measurement.elevation} accuracy={measurement.elevationAccuracy} onChange={value => onChange({ elevation: value, elevationAccuracy: null })} />
             </div>
             <div className="col-span-2 sm:col-span-3 space-y-1">
               <Label className="text-xs font-semibold text-foreground/80">Notes</Label>

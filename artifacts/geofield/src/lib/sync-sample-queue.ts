@@ -1,5 +1,5 @@
 import type { QueuedSample } from "./offline-queue.ts";
-import { sameSampleContent, sampleRecoveryId } from "./sample-content.ts";
+import { sameSampleContent, sameSampleAfterUpload, sampleRecoveryId } from "./sample-content.ts";
 
 interface QueueStore {
   load: () => QueuedSample[];
@@ -11,6 +11,7 @@ interface QueueStore {
   delete?: (id: string) => Promise<unknown>;
   restore?: (id: string) => Promise<unknown>;
   remove: (id: string) => void;
+  rebase?: (current: QueuedSample, saved: any) => void;
 }
 
 async function createConfirmed(id: string, payload: QueuedSample["payload"], store: QueueStore) {
@@ -73,5 +74,10 @@ export async function syncQueuedSample(item: QueuedSample, store: QueueStore) {
   store.cache(saved);
   const current = store.load().find((record) => record.queuedId === item.queuedId);
   if (current && JSON.stringify(current) === JSON.stringify(item)) store.remove(item.queuedId);
+  else if (current && !item.deletedAt && !item.restore && saved.updatedAt && sameSampleAfterUpload(saved, item.payload)) {
+    // This device changed the sample while its previous version was uploading.
+    // Continue as an update to that confirmed version, not another create.
+    store.rebase?.(current, saved);
+  }
   return Boolean(current && JSON.stringify(current) !== JSON.stringify(item));
 }

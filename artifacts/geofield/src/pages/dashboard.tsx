@@ -1,3 +1,6 @@
+import { applyProjectContents, type ProjectDeletionMode } from "@/lib/project-deletion";
+import { editCloudDatasetOffline, markProjectDeleted } from "@/lib/local-datasets";
+import { formatDateTime24 } from "@/lib/date-time";
 import { ProjectTypeFilter } from "@/components/ProjectTypeFilter";
 import { DatasetSection } from "@/components/DatasetSection";
 import { DatasetStereonets } from "@/components/DatasetStereonets";
@@ -18,14 +21,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar, Cloud, Database, Compass, Route } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useSamplesMutations, useFoldersMutations } from "@/hooks/use-geofield";
+import { useSamplesMutations } from "@/hooks/use-geofield";
 import { ExportDialog } from "@/components/ExportDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getQueue, deleteQueuedSample, QUEUE_UPDATED_EVENT } from "@/lib/offline-queue";
-import { deleteLocalDataset, getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
-import { saveMeasurements, deleteMeasurement, loadMeasurements, reassignMeasurementsDataset, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
+import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
+import { saveMeasurements, deleteMeasurement, loadMeasurements, STRIKE_DIP_UPDATED_EVENT, type StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { archiveLocalItem } from "@/lib/recently-deleted";
-import { CLOUD_SAMPLES_UPDATED_EVENT, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
+import { CLOUD_SAMPLES_UPDATED_EVENT, cacheCloudSamples, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 import { requireAccountForSave } from "@/lib/guest-access";
 
 const typeStyles = {
@@ -71,6 +74,8 @@ export default function Dashboard() {
     setSampleTypeFilter("");
     setFeatureTypeFilter("");
   }, [folderId, authData?.user?.id]);
+  const [deleteProjectOpen, setDeleteProjectOpen] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
   const [deleteId, setDeleteId] = useState<string | number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [queuedSamples, setQueuedSamples] = useState(() => getQueue(true));
@@ -90,7 +95,6 @@ export default function Dashboard() {
   }, [authData?.user?.id]);
 
   const { deleteSample } = useSamplesMutations();
-  const { deleteFolder } = useFoldersMutations();
   useEffect(() => {
     const refreshQueue = () => setQueuedSamples(getQueue(true));
     window.addEventListener(QUEUE_UPDATED_EVENT, refreshQueue);
@@ -132,7 +136,8 @@ export default function Dashboard() {
   }, []);
 
   const visibleLocalDatasets = getVisibleLocalDatasets(localDatasets, folders);
-  const allFolders = [...(folders || []), ...visibleLocalDatasets];
+  const deletedCloudIds = new Set(getLocalDatasets(true).filter(item => item.deletedAt).map(item => item.cloudId));
+  const allFolders = [...(folders || []).filter(item => !deletedCloudIds.has(String(item.id))), ...visibleLocalDatasets];
   const activeFolder = allFolders.find((f: any) => String(resolveDatasetId(f.id, localDatasets)) === String(activeFolderId));
 
   const allLocalSamples = queuedSamples
@@ -177,20 +182,23 @@ export default function Dashboard() {
 
   const handleDeleteFolder = () => {
     if (!requireAccountForSave(authData?.user, setLocation)) return;
-    if (!activeFolder || !confirm("Are you sure you want to delete this project? Samples will become uncategorized.")) return;
-
-    if ((activeFolder as any).isLocal || (typeof activeFolder.id === "number" && activeFolder.id < 0)) {
-      deleteLocalDataset(activeFolder.id as number);
-      setLocation("/");
-      return;
-    }
-
-    deleteFolder.mutate({ id: activeFolder.id }, {
-      onSuccess: () => {
-        reassignMeasurementsDataset(activeFolder.id, null);
-        setLocation("/");
-      }
-    });
+    setDeleteProjectOpen(true);
+  };
+  const confirmDeleteProject = async (mode: ProjectDeletionMode) => {
+    if (!activeFolder || !authData?.user?.id || deletingProject) return;
+    setDeletingProject(true);
+    try {
+      const dataset = getLocalDatasets(true).find(item => String(item.id) === String(activeFolder.id) || item.cloudId === String(activeFolder.id))
+        ?? editCloudDatasetOffline(activeFolder.id, { name: activeFolder.name, description: activeFolder.description ?? '' });
+      if (samples?.length) cacheCloudSamples(samples);
+      await applyProjectContents(dataset, mode, String(authData.user.id));
+      markProjectDeleted(dataset.id, mode);
+      setDeleteProjectOpen(false);
+      toast({ title: mode === 'delete-data' ? 'Project and contents moved to Recently Deleted' : 'Project deleted; contents kept', description: 'Saved on this device. Cloud changes will sync when connected.' });
+      setLocation('/');
+    } catch (error) {
+      toast({ title: 'Project deletion could not finish', description: error instanceof Error ? error.message : 'Please retry. Saved data has been retained.', variant: 'destructive' });
+    } finally { setDeletingProject(false); }
   };
 
   const handleDeleteSample = () => {
@@ -324,13 +332,13 @@ export default function Dashboard() {
             const style = typeStyles[sample.sampleType as keyof typeof typeStyles] || typeStyles.rock;
             const folder = allFolders.find((f: any) => String(f.id) === String(sample.folderId));
             const rawDate = sample.fields?.collectionDate as string || sample.createdAt;
-            const date = rawDate ? new Date(rawDate).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "";
+            const date = rawDate ? formatDateTime24(rawDate) : "";
             const locationStr = sample.fields?.location as string;
 
             return (
               <Card key={sample.id} className="group overflow-hidden border-border/80 bg-card shadow-sm hover:-translate-y-0.5 hover:shadow-xl hover:border-primary/30 transition-all duration-300 flex flex-col">
                 <div className="h-1.5 bg-primary/80" />
-                <div className="p-5 flex-1 cursor-pointer" onClick={() => setLocation(`/sample/${sample.id}`)}>
+                <div className="p-5 flex-1 cursor-pointer" onClick={() => setLocation(`/sample/${encodeURIComponent(String(sample.id))}${activeFolderId ? `?folderId=${encodeURIComponent(String(activeFolderId))}` : ""}`)}>
                   <div className="flex justify-between items-start mb-4 gap-2">
                     <Badge variant={style.variant} className="capitalize text-sm px-3 py-1">
                       {getSampleTypeLabel(sample)}{sample.isOffline ? " · Offline" : ""}
@@ -361,7 +369,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className="border-t border-border/60 bg-slate-50/70 p-3 flex justify-end gap-2 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button variant="ghost" size="sm" onClick={() => setLocation(`/sample/${sample.id}`)}>
+                  <Button variant="ghost" size="sm" onClick={() => setLocation(`/sample/${encodeURIComponent(String(sample.id))}${activeFolderId ? `?folderId=${encodeURIComponent(String(activeFolderId))}` : ""}`)}>
                     <Edit2 className="w-4 h-4 mr-2" /> Edit
                   </Button>
                   <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setDeleteId(sample.id)}>
@@ -441,6 +449,17 @@ export default function Dashboard() {
             <Button variant="destructive" onClick={handleDeleteSample} disabled={deleteSample.isPending}>
               {deleteSample.isPending ? "Deleting..." : "Delete Sample"}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteProjectOpen} onOpenChange={open => { if (!deletingProject) setDeleteProjectOpen(open); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Delete {activeFolder?.name || 'project'}?</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Delete only the project and keep its contents as uncategorized, or delete the project and all its samples, measurements, tracks, trips and saved stereonets. Deleted items can be restored in Recently Deleted.</p>
+          <div className="flex flex-col gap-2">
+            <Button variant="outline" disabled={deletingProject} onClick={() => confirmDeleteProject('project-only')}>Project only</Button>
+            <Button variant="destructive" disabled={deletingProject} onClick={() => confirmDeleteProject('delete-data')}>Delete data</Button>
+            <Button variant="ghost" disabled={deletingProject} onClick={() => setDeleteProjectOpen(false)}>Cancel</Button>
           </div>
         </DialogContent>
       </Dialog>

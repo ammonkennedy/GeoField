@@ -1,6 +1,6 @@
 export type LocalDeletedItem = {
   trashId: string;
-  kind: "dataset" | "sample" | "measurement";
+  kind: "dataset" | "sample" | "measurement" | "track" | "stereonet" | "trip";
   name: string;
   deletedAt: string;
   data: any;

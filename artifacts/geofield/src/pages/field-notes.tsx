@@ -1,3 +1,4 @@
+import { formatDateTime24 } from "@/lib/date-time";
 import { prepareNoteVideo } from "@/lib/note-media";
 import { saveFile } from "@/lib/save-file";
 import { capturePhoto } from "@/lib/capture-photo";
@@ -138,7 +139,7 @@ function NotesContent({ accountId }: { accountId: string }) {
       <Button variant="outline" onClick={back} disabled={addingMedia}><ArrowLeft className="mr-2 h-4 w-4" />{folder ? folder.name : "All Notes"}</Button>
       <div className="space-y-4 rounded-xl border bg-card p-4 sm:p-6">
         <div><Label htmlFor="note-title">Title</Label><Input id="note-title" maxLength={240} value={draft?.title ?? note.title} onChange={(event) => save({ title: event.target.value })} placeholder="e.g. North ridge observations" disabled={Boolean(note.deletedAt)} /></div>
-        <p className="text-xs text-muted-foreground">Created {new Date(note.createdAt).toLocaleString()} · {draft ? "Unsaved changes" : note.localRevision ? "Saved on this device · waiting to sync" : "Synced with your account"}</p>
+        <p className="text-xs text-muted-foreground">Created {formatDateTime24(note.createdAt)} · {draft ? "Unsaved changes" : note.localRevision ? "Saved on this device · waiting to sync" : "Synced with your account"}</p>
         <div><Label htmlFor="note-body">Field notes</Label><Textarea id="note-body" maxLength={50000} value={draft?.body ?? note.body} onChange={(event) => save({ body: event.target.value })} placeholder="Write your observations here…" className="min-h-[300px] text-base leading-relaxed" disabled={Boolean(note.deletedAt)} /></div>
         {draft && <Button onClick={() => save({})}>Save again</Button>}
         <div className="space-y-2"><h2 className="font-semibold">Photos &amp; videos (optional)</h2>{!note.deletedAt && <div className="flex flex-wrap gap-2">
@@ -191,7 +192,7 @@ function NotesContent({ accountId }: { accountId: string }) {
       </div>}
       <div className="flex gap-2"><Input aria-label="Search notes" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search notes…" /><Button variant="outline" onClick={() => setShowDeleted(!showDeleted)}>{showDeleted ? "Active Notes" : "Recently deleted"}</Button></div>
       {!visible.length && <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">{showDeleted ? "No deleted notes." : folder ? "No notes in this folder yet. Add existing notes or create a note." : "No notes yet. Create a note to start writing."}</div>}
-      <div className="space-y-3">{visible.map((item) => <div key={item.id} className="rounded-xl border bg-card overflow-hidden"><button className="block w-full p-4 text-left hover:bg-muted/50" onClick={() => open(item)}><h2 className="font-semibold">{item.title || "Untitled note"}</h2><p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-muted-foreground">{item.body || "No text yet"}</p><p className="mt-2 text-xs text-muted-foreground">Created {new Date(item.createdAt).toLocaleString()} · {item.photos.filter(media => media.kind !== "video").length} photos · {item.photos.filter(media => media.kind === "video").length} videos</p></button>
+      <div className="space-y-3">{visible.map((item) => <div key={item.id} className="rounded-xl border bg-card overflow-hidden"><button className="block w-full p-4 text-left hover:bg-muted/50" onClick={() => open(item)}><h2 className="font-semibold">{item.title || "Untitled note"}</h2><p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-muted-foreground">{item.body || "No text yet"}</p><p className="mt-2 text-xs text-muted-foreground">Created {formatDateTime24(item.createdAt)} · {item.photos.filter(media => media.kind !== "video").length} photos · {item.photos.filter(media => media.kind === "video").length} videos</p></button>
         {folder && !showDeleted && <Button variant="ghost" size="sm" className="mb-2 ml-2" onClick={() => { try { updateFolderNotes(accountId, folder.id, [item.id], true); } catch { setError("Could not remove the note from this folder. Please try again."); } }}>Remove from folder</Button>}
       </div>)}</div>
     </>}
@@ -214,7 +215,7 @@ function NotesContent({ accountId }: { accountId: string }) {
         <Input aria-label="Find notes to add" value={addSearch} onChange={event => setAddSearch(event.target.value)} placeholder="Search existing notes…" />
         <div className="max-h-72 space-y-2 overflow-y-auto">{notes.filter(item => !item.deletedAt && !folder?.noteIds.includes(item.id) && `${item.title} ${item.body}`.toLowerCase().includes(addSearch.toLowerCase())).sort((a,b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0) || a.id.localeCompare(b.id)).map(item => <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-lg border p-3">
           <input type="checkbox" className="mt-1" checked={chosenNotes.includes(item.id)} onChange={event => setChosenNotes(current => event.target.checked ? [...current, item.id] : current.filter(id => id !== item.id))} />
-          <span className="min-w-0"><span className="block break-words font-medium">{item.title || "Untitled note"}</span><span className="text-xs text-muted-foreground">Created {new Date(item.createdAt).toLocaleString()}</span></span>
+          <span className="min-w-0"><span className="block break-words font-medium">{item.title || "Untitled note"}</span><span className="text-xs text-muted-foreground">Created {formatDateTime24(item.createdAt)}</span></span>
         </label>)}</div>
         {!notes.some(item => !item.deletedAt && !folder?.noteIds.includes(item.id)) && <p className="text-sm text-muted-foreground">No other notes to add. You can create a new note in this folder.</p>}
         {dialogError && <p role="alert" className="text-sm text-destructive">{dialogError}</p>}

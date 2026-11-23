@@ -13,3 +13,16 @@ test("recovery IDs are stable across retries and URL refreshes but distinguish e
   assert.equal(first,await sampleRecoveryId("id",sample("new","b")));
   assert.notEqual(first,await sampleRecoveryId("id",{...sample("old","a"),notes:"Different"}));
 });
+
+test('upload transport changes are recognized, but captions and replacement photos are real changes', async () => {
+  const { sameSampleAfterUpload } = await import('../src/lib/sample-content.ts');
+  const original = { sampleId: 'Water', sampleType: 'water', fields: { ph: 7, media: [{ id: 'photo1', kind: 'photo', storageKey: 'local-photo1', caption: 'River' }] } };
+  const uploaded = structuredClone(original);
+  Object.assign(uploaded.fields.media[0], { storageKey: 'media/account/photo1', localKey: 'local-photo1', syncStatus: 'synced' });
+  assert.equal(sameSampleAfterUpload(uploaded, original), true);
+  uploaded.fields.media[0].caption = 'Changed caption';
+  assert.equal(sameSampleAfterUpload(uploaded, original), false);
+  uploaded.fields.media[0].caption = 'River';
+  uploaded.fields.media[0].id = 'replacement';
+  assert.equal(sameSampleAfterUpload(uploaded, original), false);
+});

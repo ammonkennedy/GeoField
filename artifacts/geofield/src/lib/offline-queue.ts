@@ -1,5 +1,5 @@
 import { getCachedCloudSamples } from "./cloud-samples.ts";
-import { sameSampleContent } from "./sample-content.ts";
+import { sameSampleContent, sameSampleAfterUpload } from "./sample-content.ts";
 export interface QueuedSample {
   queuedId: string;
   targetId?: string;
@@ -52,7 +52,7 @@ export function updateQueuedSample(queuedId: string, payload: QueuedSample["payl
   }
   if (!latest) {
     const saved = getCachedCloudSamples().find(sample => String(sample.id) === String(expected?.targetId ?? queuedId));
-    if (saved) enqueue(payload, String(saved.id), expected && sameSampleContent(saved, expected.payload) ? saved.updatedAt : undefined);
+    if (saved) enqueue(payload, String(saved.id), expected && sameSampleAfterUpload(saved, expected.payload) ? saved.updatedAt : undefined);
     else enqueue({ ...payload, sampleId: `${payload.sampleId} (recovered edit)` });
     return;
   }

@@ -1,3 +1,4 @@
+import { formatDateTime24 } from "./date-time.ts";
 import type { Map } from 'maplibre-gl';
 import type { TrackData } from './track-sync.ts';
 import { trackStats } from './track-math.ts';
@@ -38,7 +39,7 @@ export function trackPopupContent(track: TrackData): HTMLElement {
     row.append(term, detail); list.append(row);
   }
   content.append(list);
-  const date = document.createElement('p'); date.textContent = `${track.downloadedTrail ? 'Downloaded' : 'Started'} ${new Date(track.startedAt).toLocaleString()}`; content.append(date);
+  const date = document.createElement('p'); date.textContent = `${track.downloadedTrail ? 'Downloaded' : 'Started'} ${formatDateTime24(track.startedAt)}`; content.append(date);
   if (track.downloadedTrail) {
     const note = document.createElement('p'); note.style.cssText = 'margin-top:8px;font-size:11px';
     note.textContent = 'Distance covers saved trail geometry, not a round trip. Basemap tiles are not included in the download.'; content.append(note);

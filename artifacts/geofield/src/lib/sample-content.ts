@@ -28,3 +28,17 @@ export async function sampleRecoveryId(id: string, sample: any) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
   return `${id}-recovered-${Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
+
+/** Recognize this device's local attachments after upload without ignoring real edits. */
+export function sameSampleAfterUpload(actual: any, original: any): boolean {
+  const uploaded = actual?.fields?.media;
+  const local = original?.fields?.media;
+  if (!Array.isArray(uploaded) || !Array.isArray(local)) return sameSampleContent(actual, original);
+  const media = local.map((attachment: any) => {
+    if (attachment?.storageKey?.startsWith('media/')) return attachment;
+    const key = attachment?.localKey || attachment?.storageKey;
+    const match = uploaded.find((item: any) => key && item.localKey === key && item.id === attachment.id && item.storageKey?.startsWith('media/'));
+    return match ? { ...attachment, storageKey: match.storageKey, localKey: key, syncStatus: match.syncStatus } : attachment;
+  });
+  return sameSampleContent(actual, { ...original, fields: { ...original.fields, media } });
+}

@@ -8,6 +8,7 @@ export interface LocalDataset {
   localRevision?: string;
   deletedAt?: string | null;
   restore?: boolean;
+  deletionMode?: "project-only" | "delete-data";
   name: string;
   description?: string;
   createdAt: string;
@@ -228,4 +229,13 @@ export function attachTripDataset(tripId: string, cloudId: string, name: string)
   const dataset: LocalDataset = { id: nextLocalDatasetId(), tripId, cloudId, name, createdAt: new Date().toISOString(), isLocal: true, syncStatus: "synced" };
   saveLocalDatasets([...datasets, dataset]);
   return dataset;
+}
+
+/** Finalize only after local contents have been preserved or archived. */
+export function markProjectDeleted(id: number, deletionMode: "project-only" | "delete-data") {
+  const all = getLocalDatasets(true);
+  const project = all.find(item => item.id === id);
+  if (!project) throw new Error("Project is unavailable.");
+  archiveLocalItem("dataset", project.name, { ...project, deletionMode: undefined });
+  saveLocalDatasets(all.map(item => item.id === id ? { ...item, deletionMode, deletedAt: new Date().toISOString(), localRevision: crypto.randomUUID() } : item));
 }

@@ -1,3 +1,6 @@
+import { ElevationInput } from "@/components/ElevationInput";
+import { sameSampleAfterUpload } from "@/lib/sample-content";
+import { resolveDatasetId } from "@/lib/dataset-identity";
 import { OrderedFields } from "@/components/fields/OrderedFields";
 import { capturePhotoLocation, withPhotoLocation } from "@/lib/photo-location";
 import { capturePhoto } from "@/lib/capture-photo";
@@ -8,9 +11,9 @@ import { getAccuratePosition } from "@/lib/gps";
 import { findSamplePrecisionError } from "@/lib/sample-precision";
 import { getCachedCloudSamples } from "@/lib/cloud-samples";
 import { loadTrips, saveTrips } from "@/lib/trips";
-import { elevationFromCoordinates, formatElevation } from "@/lib/elevation";
+import { elevationFromCoordinates } from "@/lib/elevation";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useLocation, useParams } from "wouter";
+import { useLocation, useParams, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -30,7 +33,7 @@ import { storeMediaDataUrl, getStoredMediaDataUrl, type StoredMediaMetadata } fr
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { AirFields, BaseFields, WaterFields, RockFields, SoilFields } from "@/components/fields/SchemaForms";
 import { cn } from "@/lib/utils";
-import { latLngToUTM, parseCoords as parseCoordsUTM } from "@/lib/utm";
+import { SampleUTMEditor } from "@/components/SampleUTMEditor";
 import { Capacitor } from "@capacitor/core";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 import { SavePhotoButton } from "@/components/SavePhotoButton";
@@ -155,9 +158,15 @@ export default function SampleEntry() {
   const queuedAtOpen = useMemo(() => getQueue().find((item) => (item.queuedId === id || item.targetId === id)), [id]);
   const isOfflineEdit = Boolean(queuedAtOpen);
   const sampleLookupId = isEdit && !isOfflineEdit && id ? id : "";
-  const initialFolderId = !isEdit
-    ? new URLSearchParams(location.split("?")[1] ?? "").get("folderId") || ""
-    : "";
+  const search = useSearch();
+  const originProjectId = new URLSearchParams(search).get("folderId") || "";
+  const initialFolderId = !isEdit ? originProjectId : "";
+  const leaveSample = () => {
+    const projects = getLocalDatasets(true);
+    const original = projects.find(project => String(project.id) === originProjectId || project.cloudId === originProjectId);
+    const target = originProjectId && !original?.deletedAt ? resolveDatasetId(originProjectId, projects) : null;
+    setLocation(target ? `/dataset/${encodeURIComponent(String(target))}` : "/");
+  };
   const { toast } = useToast();
   const { data: authData } = useGetCurrentAuthUser();
   const draftAccount = useRef<string | null>(getStorageAccountId());
@@ -223,11 +232,13 @@ export default function SampleEntry() {
   }, [localDatasets, selectedDataset, setValue]);
 
   const gpsRequest = useRef(0);
+  const elevationEditRevision = useRef(0);
   useEffect(() => () => { gpsRequest.current++; }, [id]);
 
   const captureGps = useCallback(async () => {
     const request = ++gpsRequest.current;
     const originalLocation = getValues("fields.location");
+    const elevationRevision = elevationEditRevision.current;
     const account = getStorageAccountId();
     setGpsStatus("loading");
     try {
@@ -237,8 +248,10 @@ export default function SampleEntry() {
       setValue("fields.location", `${coords.latitude.toFixed(7)}, ${coords.longitude.toFixed(7)}`, { shouldDirty: true });
       if (Number.isFinite(coords.accuracy)) setValue("fields.gpsAccuracy", Math.round(coords.accuracy!), { shouldDirty: true });
       const height = elevationFromCoordinates(coords);
-      setValue("fields.elevation", height.elevation, { shouldDirty: true });
-      setValue("fields.elevationAccuracy", height.elevationAccuracy, { shouldDirty: true });
+      if (elevationRevision === elevationEditRevision.current) {
+        setValue("fields.elevation", height.elevation, { shouldDirty: true });
+        setValue("fields.elevationAccuracy", height.elevationAccuracy, { shouldDirty: true });
+      }
       setGpsStatus("success");
       if (height.elevation === null) toast({ title: "Location saved without elevation", description: "The phone supplied coordinates but no altitude. Try GPS Again with a clear view of the sky." });
     } catch (error: any) {
@@ -600,7 +613,12 @@ export default function SampleEntry() {
       }
       assertStorageAccount(savingAccountId);
       if (isOfflineEdit && queuedAtOpen) updateQueuedSample(queuedAtOpen.queuedId, payload, queuedAtOpen);
-      else enqueue(payload, isEdit && id ? id : undefined, sampleBaseline.current?.updatedAt);
+      else {
+        const cached = isEdit && id ? getCachedCloudSamples().find(sample => String(sample.id) === id) : undefined;
+        const baseline = cached && sampleBaseline.current && sameSampleAfterUpload(cached, sampleBaseline.current)
+          ? cached.updatedAt : sampleBaseline.current?.updatedAt;
+        enqueue(payload, isEdit && id ? id : undefined, baseline);
+      }
       // Update the trip only after the complete sample is durable.
       if (plannedSiteId && processedFields.collectedAt) try {
         const collectedAt = processedFields.collectedAt;
@@ -616,7 +634,7 @@ export default function SampleEntry() {
         toast({ title: "Sample saved; trip update pending", description: "The sample is safe. Reopen the trip after syncing to refresh its collection status." });
       }
       toast({ title: "Sample saved", description: "Saved on this device. Changes and photos will sync when connected." });
-      setLocation("/");
+      leaveSample();
     } catch (error) {
       toast({ title: "Sample could not be saved", description: error instanceof Error ? error.message : "Keep this page open and try again.", variant: "destructive" });
     }
@@ -636,7 +654,7 @@ export default function SampleEntry() {
   return (
     <Layout>
       <div className="flex items-center gap-4 mb-8">
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/")} className="rounded-full"><ArrowLeft className="w-5 h-5" /></Button>
+        <Button variant="ghost" size="icon" onClick={leaveSample} className="rounded-full"><ArrowLeft className="w-5 h-5" /></Button>
         <div>
           <h1 className="text-3xl font-bold font-display">{isEdit ? "Edit Sample" : "New Field Sample"}</h1>
           <p className="text-muted-foreground mt-1">Record accurate parameter data directly from the field.</p>
@@ -664,7 +682,7 @@ export default function SampleEntry() {
           <div className="p-6 md:p-8 space-y-8 bg-gradient-to-b from-card to-muted/20">
             <div className="space-y-4">
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">1</span>Basic Information{!isEdit && (<span className={cn("ml-2 inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium", gpsStatus === "loading" && "bg-yellow-100 text-yellow-700", gpsStatus === "success" && "bg-green-100 text-green-700", (gpsStatus === "error" || gpsStatus === "denied") && "bg-red-100 text-red-600", gpsStatus === "idle" && "bg-muted text-muted-foreground")}>{gpsStatus === "loading" && <><Loader2 className="w-3 h-3 animate-spin" />Getting GPS...</>}{gpsStatus === "success" && <><MapPin className="w-3 h-3" />GPS captured</>}{gpsStatus === "denied" && <><MapPin className="w-3 h-3" />Location denied</>}{gpsStatus === "error" && <><MapPin className="w-3 h-3" />GPS unavailable</>}</span>)}</h3>
-              <BaseFields register={register} errors={errors} order={basicOrder} onOrderChange={setBasicOrder} />
+              <BaseFields collectionDate={watch("fields.collectionDate")} onCollectionDateChange={(value: string) => setValue("fields.collectionDate", value, { shouldDirty: true })} register={register} errors={errors} order={basicOrder} onOrderChange={setBasicOrder} />
               {Number.isFinite(watch("fields.gpsAccuracy")) && <p className="text-sm text-muted-foreground">GPS estimated accuracy: ±{watch("fields.gpsAccuracy")} m. For a better fix, stay still with a clear view of the sky and enable Precise Location.</p>}
               {(
                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={gpsStatus === "loading"} onClick={captureGps}>
@@ -672,10 +690,15 @@ export default function SampleEntry() {
                 </Button>
               )}
               <div className="rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Elevation (GPS)</p>
-                <p>{gpsStatus === "loading" ? "Reading elevation…" : formatElevation(watch("fields.elevation") ?? watch("fields.altitude"), watch("fields.elevationAccuracy"))}</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Elevation (m)</p>
+                <ElevationInput value={watch("fields.elevation") ?? watch("fields.altitude")} accuracy={watch("fields.elevationAccuracy")} onChange={value => {
+                  elevationEditRevision.current++;
+                  setValue("fields.elevation", value, { shouldDirty: true });
+                  setValue("fields.altitude", value, { shouldDirty: true });
+                  setValue("fields.elevationAccuracy", null, { shouldDirty: true });
+                }} />
               </div>
-              {(() => { const coords = parseCoordsUTM(locationValue); if (!coords) return null; const utm = latLngToUTM(coords[0], coords[1]); return <div className="flex items-start gap-2.5 bg-muted/40 border border-border rounded-lg px-3.5 py-2.5 text-sm"><MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" /><div><p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">UTM Coordinates (WGS84)</p><p className="font-mono text-sm text-foreground">{utm.display}</p><p className="text-xs text-muted-foreground mt-0.5">Zone {utm.zone}{utm.letter} · {utm.hemisphere === "N" ? "Northern" : "Southern"} Hemisphere</p></div></div>; })()}
+              <SampleUTMEditor onEdit={() => { gpsRequest.current++; setGpsStatus("idle"); }} location={locationValue} onChange={value => setValue("fields.location", value, { shouldDirty: true, shouldValidate: true })} />
             </div>
 
             <div className="h-px bg-border/60 w-full" />
@@ -781,7 +804,7 @@ export default function SampleEntry() {
           </div>
         </Card>
 
-        <div className="flex justify-end gap-4 sticky bottom-6 z-20"><Button type="button" variant="outline" size="lg" className="bg-background shadow-md" onClick={() => setLocation("/")}>Cancel</Button><Button type="submit" size="lg" disabled={isPending} className="shadow-xl"><Save className="w-5 h-5 mr-2" />{isPending ? "Saving..." : isEdit ? "Update Sample" : "Save Sample"}</Button></div>
+        <div className="flex justify-end gap-4 sticky bottom-6 z-20"><Button type="button" variant="outline" size="lg" className="bg-background shadow-md" onClick={leaveSample}>Cancel</Button><Button type="submit" size="lg" disabled={isPending} className="shadow-xl"><Save className="w-5 h-5 mr-2" />{isPending ? "Saving..." : isEdit ? "Update Sample" : "Save Sample"}</Button></div>
       </form>
       <FolderDialog open={datasetDialogOpen} onOpenChange={setDatasetDialogOpen} onCreated={dataset => {
         setLocalDatasets(getLocalDatasets());

@@ -65,3 +65,15 @@ test('water samples and cloud cache survive 30 days of repeated storage reopens'
     }
   } finally { Date.now = originalNow; }
 });
+
+test('adding a camera-roll photo after the previous photo synced keeps the original cloud revision', () => {
+  storage();
+  const original = { ...payload, fields: { ph: 7, media: [{ id: 'photo1', kind: 'photo', storageKey: 'local-photo1' }] } };
+  const opened = enqueue(original); setQueue([]);
+  cacheCloudSamples([{ id: opened.queuedId, ...original, fields: { ph: 7, media: [{ id: 'photo1', kind: 'photo', storageKey: 'media/account/photo1', localKey: 'local-photo1', syncStatus: 'synced' }] }, updatedAt: '2026-11-22T12:00:00Z' } as any]);
+  updateQueuedSample(opened.queuedId, { ...original, fields: { ...original.fields, media: [...original.fields.media, { id: 'photo2', kind: 'photo', storageKey: 'local-photo2' }] } }, opened);
+  assert.equal(getQueue()[0].targetId, opened.queuedId);
+  assert.equal(getQueue()[0].baseUpdatedAt, '2026-11-22T12:00:00Z');
+  assert.equal(getQueue()[0].payload.fields.media.length, 2);
+  assert.equal(getQueue()[0].payload.sampleId, payload.sampleId);
+});

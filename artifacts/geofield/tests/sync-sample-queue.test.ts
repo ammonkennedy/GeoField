@@ -102,3 +102,33 @@ test('120 offline water samples survive restart and lost cloud responses without
  assert.equal(queue.length, 0); assert.equal(cloud.size, 120); assert.equal(cache.size, 120);
  for (const original of originals) assert.deepEqual(cache.get(original.queuedId).fields, original.payload.fields);
 });
+
+test('an edit during the first upload continues on the same sample ID instead of creating a recovery copy', async () => {
+  let queue: any[] = [structuredClone(initial)];
+  let cloud: any;
+  let creates = 0, updates = 0;
+  const store = {
+    load: () => queue,
+    prepare: async (item: any) => item.payload,
+    create: async (id: string, payload: any) => {
+      creates++;
+      queue[0].payload.fields.media = [{ id: 'photo2', storageKey: 'local-photo2' }];
+      cloud = { id, ...structuredClone(payload), updatedAt: 'first-upload' };
+      return cloud;
+    },
+    get: async () => cloud,
+    update: async (id: string, payload: any, revision?: string) => {
+      assert.equal(revision, 'first-upload'); updates++;
+      return { id, ...payload, updatedAt: 'second-upload' };
+    },
+    cache: () => {}, remove: () => { queue = []; },
+    rebase: (current: any, saved: any) => { queue = [{ ...current, targetId: saved.id, baseUpdatedAt: saved.updatedAt }]; },
+  };
+  await syncQueuedSample(structuredClone(initial), store);
+  assert.equal(queue[0].targetId, initial.queuedId);
+  assert.equal(queue[0].payload.fields.media.length, 1);
+  await syncQueuedSample(structuredClone(queue[0]), store);
+  assert.equal(creates, 1);
+  assert.equal(updates, 1);
+  assert.equal(queue.length, 0);
+});

@@ -1,3 +1,4 @@
+import { formatDateTime24 } from "@/lib/date-time";
 import { MapConnectivity } from "@/components/MapConnectivity";
 import { registerGeologyProtocol } from "@/lib/geology-tile-cache";
 import { GeologyOfflineStatus } from "@/components/GeologyOfflineStatus";
@@ -813,7 +814,7 @@ export default function MapViewPage() {
       const label = getSampleLabel(sample);
       const letter = sample.sampleType === "water" ? "W" : sample.sampleType === "rock" ? "R" : sample.sampleType === "air" ? "A" : sample.sampleType === "other" ? String(label).charAt(0).toUpperCase() || "O" : "S";
       const dateStr = (sample.fields as any)?.collectionDate
-        ? new Date((sample.fields as any).collectionDate).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+        ? formatDateTime24((sample.fields as any).collectionDate)
         : "";
       const fields = sample.fields as any;
       const firstPhotoIndex = Array.isArray(fields?.media) ? fields.media.findIndex((item: any) => (item?.kind || item?.type) === "photo") : -1;

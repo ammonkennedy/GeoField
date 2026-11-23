@@ -1,3 +1,4 @@
+import { DateTime24Input } from "../DateTime24Input";
 import { OrderedFields, type FieldOrderProps } from "./OrderedFields";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -32,7 +33,7 @@ function ParameterInput({ register, name, placeholder }: { register: any; name: 
   );
 }
 
-export const BaseFields = ({ register, errors, order, onOrderChange, extraFields }: any) => (
+export const BaseFields = ({ register, errors, collectionDate, onCollectionDateChange, order, onOrderChange, extraFields }: any) => (
   <OrderedFields extraFields={extraFields} order={order} onOrderChange={onOrderChange} className="grid grid-cols-1 md:grid-cols-2 gap-6">
     <div key="sampleId" className="space-y-2">
       <Label htmlFor="sampleId">Sample ID / Label</Label>
@@ -41,7 +42,7 @@ export const BaseFields = ({ register, errors, order, onOrderChange, extraFields
     </div>
     <div key="collectionDate" className="space-y-2">
       <Label htmlFor="collectionDate">Collection Date &amp; Time</Label>
-      <Input type="datetime-local" id="collectionDate" {...register("fields.collectionDate")} />
+      <DateTime24Input id="collectionDate" value={collectionDate} onChange={onCollectionDateChange} />
     </div>
     <div key="location" className="space-y-2 md:col-span-2">
       <Label htmlFor="location">Location / GPS</Label>

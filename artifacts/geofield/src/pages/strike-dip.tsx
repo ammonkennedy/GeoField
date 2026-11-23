@@ -245,6 +245,8 @@ export default function StrikeDipPage() {
               item.latitude !== measurement.latitude || item.longitude !== measurement.longitude) return item;
           return {
             ...addGpsToMeasurement(item, position),
+            ...(item.elevation !== measurement.elevation || item.elevationAccuracy !== measurement.elevationAccuracy
+              ? { elevation: item.elevation, elevationAccuracy: item.elevationAccuracy } : {}),
             updatedAt: new Date(Math.max(Date.now(), (Date.parse(item.updatedAt ?? "") || 0) + 1)).toISOString(),
           };
         }));

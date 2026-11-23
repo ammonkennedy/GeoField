@@ -1,3 +1,4 @@
+import { restoreProjectContent } from "@/lib/project-deletion";
 import { removeAccountTracks } from "@/lib/track-storage";
 import { removeAccountLocalData } from "@/lib/storage-account";
 import { useEffect, useState } from "react";
@@ -22,7 +23,7 @@ import { Label } from "@/components/ui/label";
 import { AlertCircle, CheckCircle2, KeyRound, Loader2, Settings, UserRound, Trash2, RotateCcw } from "lucide-react";
 import { getLocalDeletedItems, removeLocalDeletedItem, type LocalDeletedItem } from "@/lib/recently-deleted";
 import { restoreLocalDataset } from "@/lib/local-datasets";
-import { getQueue, setQueue } from "@/lib/offline-queue";
+import { enqueue, getQueue, setQueue } from "@/lib/offline-queue";
 import { restoreMeasurement } from "@/lib/strike-dip-measurements";
 
 type CloudDeletedItem = { id: number | string; name?: string; sampleId?: string; deletedAt: string; kind: "dataset" | "sample" };
@@ -63,8 +64,8 @@ export default function AccountSettingsPage() {
       ]);
       setDeletedItems([
         ...local,
-        ...datasets.map((item: any) => ({ ...item, kind: "dataset" as const })),
-        ...samples.map((item: any) => ({ ...item, kind: "sample" as const })),
+        ...datasets.filter(item => !local.some(entry => entry.kind === "dataset" && String(entry.data.cloudId) === String(item.id))).map((item: any) => ({ ...item, kind: "dataset" as const })),
+        ...samples.filter(item => !local.some(entry => entry.kind === "sample" && String(entry.data.targetId ?? entry.data.queuedId) === String(item.id))).map((item: any) => ({ ...item, kind: "sample" as const })),
       ].sort((a, b) => +new Date(b.deletedAt) - +new Date(a.deletedAt)));
     } catch { setDeletedItems(local); }
     finally { setTrashLoading(false); }
@@ -76,6 +77,11 @@ export default function AccountSettingsPage() {
     if ("trashId" in item) {
       if (item.kind === "dataset") await restoreLocalDataset(item);
       else if (item.kind === "measurement") restoreMeasurement(item);
+      else if (["track", "trip", "stereonet"].includes(item.kind)) await restoreProjectContent(item, String(user?.id ?? ""));
+      else if (item.data.projectDeletionRecovery) {
+        enqueue(item.data.payload);
+        removeLocalDeletedItem(item.trashId);
+      }
       else {
         setQueue([...getQueue(true).filter((queued) => queued.queuedId !== item.data.queuedId), { ...item.data, deletedAt: null, restore: true }]);
         removeLocalDeletedItem(item.trashId);
@@ -237,7 +243,7 @@ export default function AccountSettingsPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-semibold">Recently Deleted</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Deleted projects, samples, and measurements can be restored here.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Deleted projects, samples, measurements, tracks, trips, and stereonets can be restored here.</p>
                 </div>
               </div>
               {trashLoading ? <p className="text-sm text-muted-foreground">Loading deleted items…</p> : deletedItems.length === 0 ? (
