@@ -1,10 +1,11 @@
-import { Link } from "wouter";
+import { useBackNavigation } from "@/hooks/use-back-navigation";
 import { ArrowLeft, Camera, Mail, MessageCircle, Smartphone } from "lucide-react";
 import { GeoFieldLogo } from "@/components/GeoFieldLogo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 export default function SupportPage() {
+  const goBack = useBackNavigation();
   return (
     <main className="relative min-h-screen min-h-[100dvh] overflow-hidden bg-background px-4 py-8 sm:px-6 sm:py-12">
       <div
@@ -105,11 +106,9 @@ export default function SupportPage() {
               </ul>
             </section>
 
-            <Button asChild variant="outline" className="h-11 w-full gap-2 sm:w-auto">
-              <Link href="/">
+            <Button onClick={() => goBack()} variant="outline" className="h-11 w-full gap-2 sm:w-auto">
                 <ArrowLeft className="h-4 w-4" />
-                Return to GeoField home
-              </Link>
+                Back
             </Button>
           </div>
         </Card>

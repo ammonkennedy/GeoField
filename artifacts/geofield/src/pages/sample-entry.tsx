@@ -1,3 +1,5 @@
+import { useBackNavigation } from "@/hooks/use-back-navigation";
+import { restoreCustomParameterIds } from "@/lib/sample-parameter-order";
 import { PlacePointButton } from "@/components/PlacePointButton";
 import { ElevationInput } from "@/components/ElevationInput";
 import { sameSampleAfterUpload } from "@/lib/sample-content";
@@ -162,11 +164,12 @@ export default function SampleEntry() {
   const search = useSearch();
   const originProjectId = new URLSearchParams(search).get("folderId") || "";
   const initialFolderId = !isEdit ? originProjectId : "";
+  const goBack = useBackNavigation();
   const leaveSample = () => {
     const projects = getLocalDatasets(true);
     const original = projects.find(project => String(project.id) === originProjectId || project.cloudId === originProjectId);
     const target = originProjectId && !original?.deletedAt ? resolveDatasetId(originProjectId, projects) : null;
-    setLocation(target ? `/dataset/${encodeURIComponent(String(target))}` : "/");
+    goBack(target ? `/dataset/${encodeURIComponent(String(target))}` : "/");
   };
   const { toast } = useToast();
   const { data: authData } = useGetCurrentAuthUser();
@@ -294,11 +297,7 @@ export default function SampleEntry() {
       fields: { ...fields, photo: undefined, media: undefined, customParams: undefined },
     });
     if (Array.isArray(fields.customParams)) {
-      setCustomParams(fields.customParams.map((p: any, i: number) => ({
-        id: `cp_${i}_${Date.now()}`,
-        label: p.label ?? "",
-        value: p.value ?? "",
-      })));
+      setCustomParams(restoreCustomParameterIds(fields.customParams, loadTemplates()[queued.payload.sampleType as SampleTypeId]));
     }
     setIsLoadingMedia(true);
     hydrateMediaSlots(fields).then((slots) => { if (initializedSample.current === id && getStorageAccountId() === draftAccount.current) { setMediaSlots(slots); setIsLoadingMedia(false); } }).catch(() => { if (initializedSample.current === id && getStorageAccountId() === draftAccount.current) toast({ title: "Could not load sample photos", description: "Keep this sheet open and try again before saving.", variant: "destructive" }); });
@@ -312,11 +311,7 @@ export default function SampleEntry() {
       setIsLoadingMedia(true);
       hydrateMediaSlots(fields).then((slots) => { if (initializedSample.current === id && getStorageAccountId() === draftAccount.current) { setMediaSlots(slots); setIsLoadingMedia(false); } }).catch(() => { if (initializedSample.current === id && getStorageAccountId() === draftAccount.current) toast({ title: "Could not load sample photos", description: "Keep this sheet open and try again before saving.", variant: "destructive" }); });
       if (Array.isArray(fields.customParams)) {
-        setCustomParams(fields.customParams.map((p: any, i: number) => ({
-          id: `cp_${i}_${Date.now()}`,
-          label: p.label ?? "",
-          value: p.value ?? "",
-        })));
+        setCustomParams(restoreCustomParameterIds(fields.customParams, loadTemplates()[existingSample.sampleType as SampleTypeId]));
       }
       reset({
         sampleType: existingSample.sampleType as any,
@@ -336,7 +331,7 @@ export default function SampleEntry() {
     const template = loadTemplates()[currentType as SampleTypeId];
     setBasicOrder(template?.basicOrder ?? []);
     setParameterOrder(template?.parameterOrder ?? []);
-  }, [currentType]);
+  }, [currentType, id]);
 
   const prevTypeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -536,7 +531,7 @@ export default function SampleEntry() {
     }
     toast({
       title: "Template saved",
-      description: `Parameter order and custom parameters saved for future ${getTypeLabel(currentType)} sheets on this device.`,
+      description: `Parameter order and custom parameters saved for all existing and future ${getTypeLabel(currentType)} sheets on this device.`,
     });
   };
 

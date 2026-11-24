@@ -338,7 +338,7 @@ export function useOfflineSync() {
         for (const item of queue) {
           if (
             item.payload.fields?.collectionStatus === "planned" ||
-            isLocalDatasetId(item.payload.folderId)
+            (!item.deletedAt && isLocalDatasetId(item.payload.folderId))
           ) {
             if (isLocalDatasetId(item.payload.folderId)) {
               reportFailure(new Error("A sample is still assigned to a local project. Try syncing again."));

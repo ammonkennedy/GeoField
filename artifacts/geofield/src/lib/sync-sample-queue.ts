@@ -42,7 +42,13 @@ export async function syncQueuedSample(item: QueuedSample, store: QueueStore) {
     try { saved = await store.get(id); }
     catch (error) {
       if (!(error instanceof Error) || error.message !== "Sample not found") throw error;
-      const payload = item.deletedAt ? item.payload : await store.prepare(item);
+      // A never-uploaded deletion still needs a stable cloud tombstone, but
+      // its local-only project ID cannot be sent as a cloud relationship.
+      // Keep the original queue/archive untouched for recovery.
+      const localProject = Number(item.payload.folderId) < 0;
+      const payload = item.deletedAt
+        ? { ...item.payload, folderId: localProject ? null : item.payload.folderId }
+        : await store.prepare(item);
       try { saved = await store.create(id, payload); }
       catch (createError) { try { saved = await store.get(id); } catch { throw createError; } }
     }

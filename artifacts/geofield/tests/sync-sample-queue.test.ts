@@ -132,3 +132,20 @@ test('an edit during the first upload continues on the same sample ID instead of
   assert.equal(updates, 1);
   assert.equal(queue.length, 0);
 });
+test('deleting a never-uploaded sample does not require its local project or media upload', async () => {
+ const item = { ...structuredClone(initial), deletedAt: '2026-11-24', payload: { ...structuredClone(initial.payload), folderId: -123 } };
+ let current = [item]; let remote:any = null;
+ const s=setup();
+ await syncQueuedSample(item, { ...s.store,
+  load: () => current,
+  prepare: async () => { throw new Error('must not upload media for deletion'); },
+  get: async () => { if (!remote) throw new Error('Sample not found'); return remote; },
+  create: async (id, payload) => { assert.equal(payload.folderId, null); remote = {id, ...payload}; return remote; },
+  delete: async () => { remote = {...remote, deletedAt: item.deletedAt}; return remote; },
+  remove: () => { current = []; },
+ });
+ assert.equal(current.length, 0);
+ assert.equal(s.cache[0].deletedAt, item.deletedAt);
+ assert.equal(item.payload.folderId, -123);
+ assert.deepEqual(item.payload.fields, initial.payload.fields);
+});

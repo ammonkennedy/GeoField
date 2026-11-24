@@ -146,3 +146,18 @@ checks or scan the entire repository merely to start a new conversation.
 - Place point map now includes the shared project multiselect (Select all/Uncategorized), sample/future-site and measurement reference markers, label popups, and Show points to frame the selection. Reference marker clicks do not move the new pin.
 - Combines cloud listings, account-scoped cached samples, pending edits and locally saved measurements; queue deletions suppress old cloud markers and project aliases use the shared identity resolver. Local data events refresh the display; no records are changed by toggling projects.
 - App typecheck, ten focused project-selection/cache/queue tests, web build and whitespace check passed. No physical-device interaction test, native installation or deployment.
+
+## Nov 24 — Deletion blocked by local project sync
+- Sync's unresolved-local-project guard also skipped deleted sample queue entries, leaving deletions stuck with the pictured error. Ordinary sample deletions now bypass that relationship guard; active uploads still wait for the project.
+- When the deleted sample never reached cloud, its stable-ID deletion record is created without an unresolved local project relationship, then cloud deletion must be confirmed before clearing the queue. Original archived fields/project/media stay unchanged; no attachment upload is required for deletion.
+- Sixteen queue sync tests (including local-project deletion regression), app typecheck/web build and whitespace check passed. No actual user sample deleted or device state inspected; fix not installed/deployed.
+
+## Nov 24 — Apply parameter defaults when reopening samples
+- Existing cloud and queued sheets regenerated custom parameter IDs, so saved mixed built-in/custom order could not match them. Hydration now matches custom labels to the current per-type template IDs, handling duplicate labels separately and preserving all values and unmatched parameters.
+- Basic/parameter order reloads when the sample ID changes as well as its type. Default confirmation now states existing and future sheets; defaults remain device-local as before.
+- Five ordering regression tests, app typecheck/web build and whitespace check passed. No native install/deployment or physical-device verification.
+
+## Nov 24 — Return to previous page
+- Added tracked in-app browser history metadata, preserving other history state and resetting app-back depth at sign-in boundaries. Shared Back buttons in mobile header/desktop layout now return through actual route history for projects, clinometer, stereonets, map, tracks and other shared pages. Explicit All Samples navigation remains available.
+- Sample Save/Update, Cancel and back arrow use that history; direct-open sheets retain project-aware fallback. Support uses the same Back action. Direct links without known app history use a replace-navigation fallback instead of leaving the app.
+- Three navigation tests (including mocked history traversal/state preservation), app typecheck/web build and whitespace check passed. No physical-device/native back-gesture verification, native install or deployment. Route return does not retain every page's transient filter/editor state.

@@ -65,7 +65,7 @@ export const WaterFields = ({ register, order, onOrderChange, extraFields }: any
     <div key="ph" className="space-y-2"><Label>pH Level</Label><ParameterInput register={register} name="fields.ph" /></div>
     <div key="do" className="space-y-2"><Label>Dissolved Oxygen (mg/L)</Label><ParameterInput register={register} name="fields.do" /></div>
     <div key="conductivity" className="space-y-2"><Label>Conductivity (μS/cm)</Label><ParameterInput register={register} name="fields.conductivity" /></div>
-    <div key="turbidity" className="space-y-2"><Label>Turbidity (NTU)</Label><ParameterInput register={register} name="fields.turbidity" /></div>
+    <div key="turbidity" className="space-y-2"><Label>Turbidity (FNU)</Label><ParameterInput register={register} name="fields.turbidity" /></div>
     <div key="flowRate" className="space-y-2"><Label>Flow Rate (m³/s)</Label><ParameterInput register={register} name="fields.flowRate" /></div>
     <div key="color" className="space-y-2"><Label>Water Color</Label><Input {...register("fields.color")} placeholder="e.g. Clear, murky brown" /></div>
     <div key="odor" className="space-y-2"><Label>Odor</Label><Input {...register("fields.odor")} placeholder="e.g. None, sulfur" /></div>

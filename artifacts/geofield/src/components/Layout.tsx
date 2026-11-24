@@ -1,3 +1,4 @@
+import { useBackNavigation } from "@/hooks/use-back-navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { ReactNode, useState, useEffect, useLayoutEffect } from "react";
 import { Link, useLocation } from "wouter";
@@ -5,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { isAuthConfigured, signOutUser, useGetCurrentAuthUser, useGetFolders } from "@workspace/api-client-react";
 import { Button } from "./ui/button";
 import { FolderDialog } from "./FolderDialog";
-import { FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Compass, Cloud, ShieldCheck, Settings, X, BarChart2, AlertCircle, NotebookPen } from "lucide-react";
+import { ArrowLeft, FolderOpen, MapPin, LogOut, ChevronRight, Menu, Plus, Map, Bookmark, WifiOff, RefreshCw, Compass, Cloud, ShieldCheck, Settings, X, BarChart2, AlertCircle, NotebookPen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { loadTrips, type Trip } from "@/lib/trips";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
@@ -17,6 +18,7 @@ import { stopTracking } from "@/lib/tracks";
 
 export function Layout({ children, lockPageScroll = false }: { children: ReactNode; lockPageScroll?: boolean }) {
   const [location] = useLocation();
+  const goBack = useBackNavigation();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { data: authData } = useGetCurrentAuthUser();
@@ -160,6 +162,7 @@ export function Layout({ children, lockPageScroll = false }: { children: ReactNo
         sidebarOpen && "pointer-events-none"
       )}>
         <div className="flex items-center gap-3 text-primary font-display font-bold text-xl">
+          {location !== "/" && <Button type="button" variant="ghost" size="icon" aria-label="Back to previous page" onClick={() => goBack()}><ArrowLeft className="h-5 w-5" /></Button>}
           <button type="button" className="touch-manipulation rounded-[22%] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="View GeoField logo full screen" onClick={() => setLogoOpen(true)}>
             <GeoFieldLogo className="h-9 w-9" />
           </button>
@@ -416,6 +419,7 @@ export function Layout({ children, lockPageScroll = false }: { children: ReactNo
           style={lockPageScroll ? { overflow: "hidden", overscrollBehavior: "none" } : undefined}
           className="mx-auto min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch] md:max-w-6xl md:overflow-visible md:p-8"
         >
+          {location !== "/" && !location.startsWith("/sample/") && <Button type="button" variant="ghost" className="mb-3 hidden md:inline-flex" onClick={() => goBack()}><ArrowLeft className="mr-2 h-4 w-4" />Back</Button>}
           {children}
         </div>
       </main>

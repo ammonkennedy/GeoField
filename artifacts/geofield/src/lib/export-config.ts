@@ -71,7 +71,7 @@ export const FIELD_LABELS: Record<string, string> = {
   ph: "pH Level",
   do: "Dissolved Oxygen (mg/L)",
   conductivity: "Conductivity (μS/cm)",
-  turbidity: "Turbidity (NTU)",
+  turbidity: "Turbidity (FNU)",
   flowRate: "Flow Rate (m³/s)",
   color: "Color",
   odor: "Odor",

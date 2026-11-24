@@ -31,7 +31,7 @@ const NUMERIC_PARAMS: Record<string, { label: string; unit: string; type: string
   ph:             { label: "pH Level",            unit: "",       type: "any"   },
   do:             { label: "Dissolved Oxygen",    unit: "mg/L",   type: "water" },
   conductivity:   { label: "Conductivity",        unit: "μS/cm",  type: "water" },
-  turbidity:      { label: "Turbidity",           unit: "NTU",    type: "water" },
+  turbidity:      { label: "Turbidity",           unit: "FNU",    type: "water" },
   flowRate:       { label: "Flow Rate",           unit: "m³/s",   type: "water" },
   hardness:       { label: "Hardness",            unit: "Mohs",   type: "rock"  },
   specificGravity:{ label: "Specific Gravity",    unit: "",       type: "rock"  },
