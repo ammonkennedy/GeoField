@@ -33,7 +33,7 @@ function ParameterInput({ register, name, placeholder }: { register: any; name: 
   );
 }
 
-export const BaseFields = ({ register, errors, collectionDate, onCollectionDateChange, order, onOrderChange, extraFields }: any) => (
+export const BaseFields = ({ register, errors, collectionDate, onCollectionDateChange, order, onOrderChange, extraFields, locationAction }: any) => (
   <OrderedFields extraFields={extraFields} order={order} onOrderChange={onOrderChange} className="grid grid-cols-1 md:grid-cols-2 gap-6">
     <div key="sampleId" className="space-y-2">
       <Label htmlFor="sampleId">Sample ID / Label</Label>
@@ -45,7 +45,7 @@ export const BaseFields = ({ register, errors, collectionDate, onCollectionDateC
       <DateTime24Input id="collectionDate" value={collectionDate} onChange={onCollectionDateChange} />
     </div>
     <div key="location" className="space-y-2 md:col-span-2">
-      <Label htmlFor="location">Location / GPS</Label>
+      <div className="flex items-center justify-between gap-2"><Label htmlFor="location">Location / GPS</Label>{locationAction}</div>
       <Input id="location" placeholder="Lat, Long or description" {...register("fields.location")} />
     </div>
   </OrderedFields>

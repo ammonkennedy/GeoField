@@ -250,7 +250,7 @@ export default function StrikeDipPage() {
             updatedAt: new Date(Math.max(Date.now(), (Date.parse(item.updatedAt ?? "") || 0) + 1)).toISOString(),
           };
         }));
-          if (elevationFromCoordinates(position.coords).elevation === null) toast({ title: "Measurement saved without elevation", description: "The phone supplied coordinates but no altitude. Your measurement and location are saved." });
+          if (elevationFromCoordinates(position.coords).elevation === null) toast({ title: "GPS elevation unavailable", description: "The phone supplied coordinates but no altitude. Your measurement and any manually entered elevation are preserved." });
           if (position.coords.accuracy > 20) toast({ title: "GPS accuracy is limited", description: `Estimated accuracy: ±${Math.round(position.coords.accuracy)} m. A clear view of the sky and Precise Location can help.` });
         } catch { toast({ title: "Measurement saved without GPS", description: "The location update could not be saved. Your measurement is still available.", variant: "destructive" }); }
       },

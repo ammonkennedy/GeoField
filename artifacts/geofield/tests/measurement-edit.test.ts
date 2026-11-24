@@ -4,6 +4,16 @@ import { applyMeasurementEdit, validMeasurementAngle } from '../src/lib/measurem
 import { lineationOrientationFromVector } from '../src/lib/strike-dip-math.ts';
 import type { StrikeDipMeasurement } from '../src/lib/strike-dip-measurements.ts';
 const measurement: StrikeDipMeasurement = { id: 'm', label: 'Outcrop', strike: '45', dip: '30', dipDegrees: 30, dipDir: '135', location: 'GPS', date: '', featureType: '', rockLayerType: '', notes: '', latitude: 40.123, longitude: -111.123, photoKey: 'new-photo', datasetId: 'new-dataset', cloudUpdatedAt: 'cloud-version' };
+test('manual elevation edits preserve zero, negative values and clearing for planes and lineations', () => {
+  for (const measurementType of ['plane', 'lineation'] as const) {
+    const original = { ...measurement, measurementType, elevation: 123, elevationAccuracy: 5 };
+    for (const elevation of [0, -12.5, 2850.25, null]) {
+      const next = applyMeasurementEdit(original, { elevation, elevationAccuracy: null });
+      assert.deepEqual(next, { ...original, elevation, elevationAccuracy: null });
+      assert.equal(original.elevation, 123);
+    }
+  }
+});
 test('blank, malformed and out-of-range angles cannot become saved zeroes; actual zero stays valid', () => {
   for (const value of ['', ' ', 'abc', '1..2', '-1', 'Infinity', '360']) assert.equal(validMeasurementAngle(value, 360, true), null);
   assert.equal(validMeasurementAngle('0', 360, true), 0);

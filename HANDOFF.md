@@ -130,3 +130,14 @@ checks or scan the entire repository merely to start a new conversation.
 - Found two same-device sync races: an open queued sheet saved after photo upload saw local/cloud attachment paths as different content and lost its baseline; edits made during upload remained creates instead of updates.
 - Added narrowly matched upload equivalence (same attachment ID/local key, only transport metadata changes). Reopened edits reuse the confirmed revision; changed pending edits are rebased to the acknowledged sample ID/revision. Editor can refresh an unchanged cached baseline. Real field/caption/photo conflicts still preserve recovery copies.
 - All 432 regression tests passed, including camera-roll addition after upload, edit during upload, real attachment changes and existing conflict tests. App typecheck/web build checked. No existing recovered records removed or merged; no device/live-account reproduction, installation or deployment.
+
+## Nov 24 — Manual elevation verification
+- Manual elevation in metres is available across sample sheets and planar/lineation measurement editors. Zero, negative and cleared elevations are supported; manual edits clear GPS altitude accuracy. Pending GPS responses preserve edited elevation.
+- GPS refresh now updates the legacy sample altitude field too, preventing a cleared/unavailable elevation from falling back to an old altitude. GPS notices distinguish unavailable GPS altitude from preserved manual elevation.
+- Five measurement edit tests, app typecheck and web build passed. No physical-device verification, native installation or deployment.
+
+## Nov 24 — Place sample point on map
+- Added Place point beside Location / GPS for all sample sheets. Modal follows trip planning map layout and shares its extracted map style; satellite/street/topographic controls, current-position control, tap/drag pin, GPS/UTM/elevation preview, Cancel and Save. Save applies to the open sheet; normal sample Save/Update persists through existing queues and map location parsing.
+- Manual point saving cancels pending GPS, updates location and elevation/legacy altitude together, and clears old GPS/elevation accuracy. Account changes block applying the picker result; Cancel leaves sheet fields untouched.
+- Terrain elevation comes from zoom-12 Terrarium tiles with an eight-second network timeout, caching public tiles for offline reuse. Missing/failed coverage remains null rather than zero or the previous point's elevation. Basemap offline availability still depends on cached coverage.
+- Six focused terrain/UTM tests, app typecheck, web build and diff whitespace check passed. No physical-device/browser interaction verification, native installation or deployment.

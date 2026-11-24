@@ -1,3 +1,4 @@
+import { PlacePointButton } from "@/components/PlacePointButton";
 import { ElevationInput } from "@/components/ElevationInput";
 import { sameSampleAfterUpload } from "@/lib/sample-content";
 import { resolveDatasetId } from "@/lib/dataset-identity";
@@ -250,10 +251,11 @@ export default function SampleEntry() {
       const height = elevationFromCoordinates(coords);
       if (elevationRevision === elevationEditRevision.current) {
         setValue("fields.elevation", height.elevation, { shouldDirty: true });
+        setValue("fields.altitude", height.elevation, { shouldDirty: true });
         setValue("fields.elevationAccuracy", height.elevationAccuracy, { shouldDirty: true });
       }
       setGpsStatus("success");
-      if (height.elevation === null) toast({ title: "Location saved without elevation", description: "The phone supplied coordinates but no altitude. Try GPS Again with a clear view of the sky." });
+      if (height.elevation === null && elevationRevision === elevationEditRevision.current) toast({ title: "GPS elevation unavailable", description: "The phone supplied coordinates but no altitude. Enter elevation manually or try GPS again with a clear view of the sky." });
     } catch (error: any) {
       if (request !== gpsRequest.current || account !== getStorageAccountId()) return;
       console.error("[GeoField GPS] Location capture failed", error);
@@ -682,7 +684,16 @@ export default function SampleEntry() {
           <div className="p-6 md:p-8 space-y-8 bg-gradient-to-b from-card to-muted/20">
             <div className="space-y-4">
               <h3 className="text-lg font-display font-semibold flex items-center gap-2"><span className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">1</span>Basic Information{!isEdit && (<span className={cn("ml-2 inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium", gpsStatus === "loading" && "bg-yellow-100 text-yellow-700", gpsStatus === "success" && "bg-green-100 text-green-700", (gpsStatus === "error" || gpsStatus === "denied") && "bg-red-100 text-red-600", gpsStatus === "idle" && "bg-muted text-muted-foreground")}>{gpsStatus === "loading" && <><Loader2 className="w-3 h-3 animate-spin" />Getting GPS...</>}{gpsStatus === "success" && <><MapPin className="w-3 h-3" />GPS captured</>}{gpsStatus === "denied" && <><MapPin className="w-3 h-3" />Location denied</>}{gpsStatus === "error" && <><MapPin className="w-3 h-3" />GPS unavailable</>}</span>)}</h3>
-              <BaseFields collectionDate={watch("fields.collectionDate")} onCollectionDateChange={(value: string) => setValue("fields.collectionDate", value, { shouldDirty: true })} register={register} errors={errors} order={basicOrder} onOrderChange={setBasicOrder} />
+              <BaseFields locationAction={<PlacePointButton location={locationValue || ""} onSave={point => {
+                gpsRequest.current++;
+                elevationEditRevision.current++;
+                setGpsStatus("idle");
+                setValue("fields.location", `${point.latitude.toFixed(7)}, ${point.longitude.toFixed(7)}`, { shouldDirty: true, shouldValidate: true });
+                setValue("fields.gpsAccuracy", null, { shouldDirty: true });
+                setValue("fields.elevation", point.elevation, { shouldDirty: true });
+                setValue("fields.altitude", point.elevation, { shouldDirty: true });
+                setValue("fields.elevationAccuracy", null, { shouldDirty: true });
+              }} />} collectionDate={watch("fields.collectionDate")} onCollectionDateChange={(value: string) => setValue("fields.collectionDate", value, { shouldDirty: true })} register={register} errors={errors} order={basicOrder} onOrderChange={setBasicOrder} />
               {Number.isFinite(watch("fields.gpsAccuracy")) && <p className="text-sm text-muted-foreground">GPS estimated accuracy: ±{watch("fields.gpsAccuracy")} m. For a better fix, stay still with a clear view of the sky and enable Precise Location.</p>}
               {(
                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={gpsStatus === "loading"} onClick={captureGps}>
