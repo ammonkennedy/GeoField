@@ -141,3 +141,8 @@ checks or scan the entire repository merely to start a new conversation.
 - Manual point saving cancels pending GPS, updates location and elevation/legacy altitude together, and clears old GPS/elevation accuracy. Account changes block applying the picker result; Cancel leaves sheet fields untouched.
 - Terrain elevation comes from zoom-12 Terrarium tiles with an eight-second network timeout, caching public tiles for offline reuse. Missing/failed coverage remains null rather than zero or the previous point's elevation. Basemap offline availability still depends on cached coverage.
 - Six focused terrain/UTM tests, app typecheck, web build and diff whitespace check passed. No physical-device/browser interaction verification, native installation or deployment.
+
+## Nov 24 — Project reference points in Place point
+- Place point map now includes the shared project multiselect (Select all/Uncategorized), sample/future-site and measurement reference markers, label popups, and Show points to frame the selection. Reference marker clicks do not move the new pin.
+- Combines cloud listings, account-scoped cached samples, pending edits and locally saved measurements; queue deletions suppress old cloud markers and project aliases use the shared identity resolver. Local data events refresh the display; no records are changed by toggling projects.
+- App typecheck, ten focused project-selection/cache/queue tests, web build and whitespace check passed. No physical-device interaction test, native installation or deployment.

@@ -1,3 +1,4 @@
+import { PointPickerProjects } from './PointPickerProjects';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import maplibregl from 'maplibre-gl';
@@ -73,6 +74,7 @@ function PointPicker({ location, onCancel, onSave }: { location: string; onCance
     <div className="flex h-[90dvh] max-h-full min-h-0 w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-card shadow-2xl">
       <div className="flex shrink-0 items-center justify-between border-b p-4"><h2 className="text-xl font-bold">Place point</h2><Button type="button" variant="outline" onClick={onCancel} aria-label="Close map"><X /></Button></div>
       <div className="flex shrink-0 gap-1 border-b p-2">{(['satellite', 'street', 'topographic'] as const).map(layer => <Button type="button" key={layer} className="flex-1" variant={base === layer ? 'default' : 'outline'} onClick={() => { setBase(layer); baseRef.current = layer; if (map?.isStyleLoaded()) applyBaseMap(map, layer); }}>{layer === 'topographic' ? 'USGS Topo' : layer === 'street' ? 'Street' : 'Satellite'}</Button>)}</div>
+      <PointPickerProjects map={map} />
       <MapConnectivity map={map} />
       <div ref={container} className="min-h-0 flex-1" />
       <div className="shrink-0 space-y-2 border-t p-3">
