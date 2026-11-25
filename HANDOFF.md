@@ -161,3 +161,9 @@ checks or scan the entire repository merely to start a new conversation.
 - Added tracked in-app browser history metadata, preserving other history state and resetting app-back depth at sign-in boundaries. Shared Back buttons in mobile header/desktop layout now return through actual route history for projects, clinometer, stereonets, map, tracks and other shared pages. Explicit All Samples navigation remains available.
 - Sample Save/Update, Cancel and back arrow use that history; direct-open sheets retain project-aware fallback. Support uses the same Back action. Direct links without known app history use a replace-navigation fallback instead of leaving the app.
 - Three navigation tests (including mocked history traversal/state preservation), app typecheck/web build and whitespace check passed. No physical-device/native back-gesture verification, native install or deployment. Route return does not retain every page's transient filter/editor state.
+
+## Nov 24 — Website deployment failure diagnosed
+- Read live geofielddata.com index/bundle: index-B1Et8PX8.js still has NTU and lacks Place point/project reference points/new back navigation. GitHub master matches local HEAD 9b39d6c, but further local changes remain uncommitted.
+- AWS Amplify d2vn10cqbsssgw/master auto-build enabled. Jobs 212–215 all failed; latest job 215 (9b39d6c) failed Nov 24 21:12 UTC in backend assembly: cannot import amplify/auth/pre-sign-up/resource. Deploy/verify canceled.
+- Trigger file is tracked/present. Fixed extensionless auth import to ./pre-sign-up/resource.ts, consistent with backend.ts. Reproduced Node module-not-found before fix; successful module import plus all three signup tests afterward. No AWS resources changed, Git push or deployment performed.
+- Xcode build script only runs local web build and cap copy ios; it does not push Git or publish Amplify. A successful native build cannot verify backend compilation/deployment.

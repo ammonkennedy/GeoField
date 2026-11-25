@@ -1,4 +1,4 @@
-import { preSignUp } from "./pre-sign-up/resource";
+import { preSignUp } from "./pre-sign-up/resource.ts";
 import { defineAuth } from "@aws-amplify/backend";
 
 /**
