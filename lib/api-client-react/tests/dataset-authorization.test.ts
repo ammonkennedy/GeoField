@@ -27,3 +27,14 @@ test('account switch during refresh never submits the queued update as the other
  }, 'Trip'), /Account changed/);
  assert.equal(writes, 1);
 });
+
+test('denied project deletion and restoration identify the operation without blaming sample deletion', async () => {
+ for (const operation of ['delete', 'restore'] as const) {
+  await assert.rejects(updateDatasetWithAuthorization(async () => rejection, 'project-id', operation), error => {
+   assert.equal((error as Error).name, 'DatasetAccessDenied');
+   assert.match((error as Error).message, new RegExp(`could not ${operation} project project-id`));
+   assert.match((error as Error).message, /does not confirm that a sample deletion failed/);
+   return true;
+  });
+ }
+});

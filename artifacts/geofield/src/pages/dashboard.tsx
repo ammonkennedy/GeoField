@@ -190,7 +190,7 @@ export default function Dashboard() {
     try {
       const dataset = getLocalDatasets(true).find(item => String(item.id) === String(activeFolder.id) || item.cloudId === String(activeFolder.id))
         ?? editCloudDatasetOffline(activeFolder.id, { name: activeFolder.name, description: activeFolder.description ?? '' });
-      if (samples?.length) cacheCloudSamples(samples);
+      if (samples?.length) await cacheCloudSamples(samples);
       await applyProjectContents(dataset, mode, String(authData.user.id));
       markProjectDeleted(dataset.id, mode);
       setDeleteProjectOpen(false);

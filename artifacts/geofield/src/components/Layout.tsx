@@ -12,7 +12,6 @@ import { loadTrips, type Trip } from "@/lib/trips";
 import { useOfflineSync } from "@/hooks/use-offline-sync";
 import { getLocalDatasets, getVisibleLocalDatasets, LOCAL_DATASETS_UPDATED_EVENT, type LocalDataset } from "@/lib/local-datasets";
 import { GeoFieldLogo } from "@/components/GeoFieldLogo";
-import { clearCachedCloudSamples } from "@/lib/cloud-samples";
 import { leaveGuestMode } from "@/lib/guest-access";
 import { stopTracking } from "@/lib/tracks";
 
@@ -45,7 +44,7 @@ export function Layout({ children, lockPageScroll = false }: { children: ReactNo
     await stopTracking();
     await signOutUser();
     leaveGuestMode();
-    clearCachedCloudSamples();
+    // Account-scoped samples stay on disk for the next offline sign-in.
     queryClient.clear();
     setSidebarOpen(false);
     setLocation("/login");

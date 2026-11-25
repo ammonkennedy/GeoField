@@ -433,7 +433,11 @@ export default function SampleEntry() {
     if (filled.length === 0) return [];
     return Promise.all(filled.map(async (slot) => {
       if (slot.stored) return { ...slot.stored, caption: slot.caption ?? slot.stored.caption };
-      return { ...await storeMediaDataUrl({ kind: slot.type, dataUrl: slot.dataUrl, fileName: slot.fileName, mimeType: slot.mimeType }), caption: slot.caption };
+      const stored = { ...await storeMediaDataUrl({ kind: slot.type, dataUrl: slot.dataUrl, fileName: slot.fileName, mimeType: slot.mimeType }), caption: slot.caption };
+      // If saving the sheet later fails, retry with these verified bytes rather
+      // than writing another full copy of each photo/video to the device.
+      setMediaSlots(current => current.map(item => item === slot ? { ...slot, stored } : item) as [MediaSlot, MediaSlot, MediaSlot]);
+      return stored;
     }));
   }
 

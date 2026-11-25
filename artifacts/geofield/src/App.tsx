@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { initializeSampleCache } from "@/lib/sample-cache-storage";
 import { initializeTrackStorage } from "@/lib/track-storage";
 import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -29,12 +30,12 @@ function TrackStorageReady({ children }: { children: React.ReactNode }) {
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    initializeTrackStorage().then(() => { if (!cancelled) setReady(true); })
-      .catch(error => { if (!cancelled) setError(error?.message || "Could not load saved tracks."); });
+    Promise.all([initializeTrackStorage(), initializeSampleCache()]).then(() => { if (!cancelled) setReady(true); })
+      .catch(error => { if (!cancelled) setError(error?.message || "Could not load saved data."); });
     return () => { cancelled = true; };
   }, [attempt]);
   if (ready) return <>{children}</>;
-  return <div className="p-6" role="status">{error || "Loading saved tracks…"}
+  return <div className="p-6" role="status">{error || "Loading saved data…"}
     {error && <button className="ml-3 text-primary" onClick={() => { setError(""); setAttempt(value => value + 1); }}>Retry</button>}
   </div>;
 }

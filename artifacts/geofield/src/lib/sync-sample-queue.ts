@@ -7,7 +7,7 @@ interface QueueStore {
   create: (id: string, payload: QueuedSample["payload"]) => Promise<unknown>;
   update: (id: string, payload: QueuedSample["payload"], baseUpdatedAt?: string) => Promise<unknown>;
   get: (id: string) => Promise<unknown>;
-  cache: (saved: any) => void;
+  cache: (saved: any) => void | Promise<void>;
   delete?: (id: string) => Promise<unknown>;
   restore?: (id: string) => Promise<unknown>;
   remove: (id: string) => void;
@@ -77,7 +77,7 @@ export async function syncQueuedSample(item: QueuedSample, store: QueueStore) {
     }
   }
   // Keep a durable downloaded copy BEFORE removing the only local queue copy.
-  store.cache(saved);
+  await store.cache(saved);
   const current = store.load().find((record) => record.queuedId === item.queuedId);
   if (current && JSON.stringify(current) === JSON.stringify(item)) store.remove(item.queuedId);
   else if (current && !item.deletedAt && !item.restore && saved.updatedAt && sameSampleAfterUpload(saved, item.payload)) {

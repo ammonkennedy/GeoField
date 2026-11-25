@@ -149,3 +149,9 @@ test('deleting a never-uploaded sample does not require its local project or med
  assert.equal(item.payload.folderId, -123);
  assert.deepEqual(item.payload.fields, initial.payload.fields);
 });
+
+test('asynchronous local cache failure never acknowledges the queued sample', async () => {
+ const s = setup();
+ await assert.rejects(syncQueuedSample(initial, { ...s.store, cache: async () => { await Promise.resolve(); throw new Error('disk full'); } }), /disk full/);
+ assert.equal(s.queue().length, 1);
+});

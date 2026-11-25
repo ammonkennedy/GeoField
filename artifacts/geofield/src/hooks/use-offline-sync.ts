@@ -356,7 +356,7 @@ export function useOfflineSync() {
               get: (id) => getSample(id, accountId),
               delete: async (id) => { await requireFieldNoteAccount(accountId); await deleteSample({ id, accountId }); return getSample(id, accountId); },
               restore: async (id) => { await requireFieldNoteAccount(accountId); await restoreSample(id, accountId); return getSample(id, accountId); },
-              cache: (saved) => { checkAccount(); cacheCloudSamples([...getCachedCloudSamples().filter((sample) => String(sample.id) !== String(saved.id)), saved]); },
+              cache: async (saved) => { checkAccount(); await cacheCloudSamples([...getCachedCloudSamples().filter((sample) => String(sample.id) !== String(saved.id)), saved]); },
               remove: (id) => { checkAccount(); removeFromQueue(id); },
               rebase: (current, saved) => {
                 checkAccount();
@@ -379,9 +379,10 @@ export function useOfflineSync() {
                 `Downloading cloud samples: ${downloaded} received (page ${page})…`,
               ),
               true, accountId,
-            ).then(samples => {
+            ).then(async samples => {
               checkAccount();
-              const cached = cacheCloudSamples(samples);
+              const cached = await cacheCloudSamples(samples);
+              checkAccount();
               queryClient.setQueryData(getGetSamplesQueryKey(), cached);
               return samples;
             }),
@@ -406,7 +407,8 @@ export function useOfflineSync() {
           for (const result of results)
             if (result.status === "rejected") reportFailure(result.reason);
           if (samplesResult.status === "fulfilled") {
-            const mergedRemote = cacheCloudSamples(samplesResult.value);
+            const mergedRemote = await cacheCloudSamples(samplesResult.value);
+            checkAccount();
             markCloudBackfillComplete(mergedRemote.length);
             setDownloadedCount(mergedRemote.length);
             setTimeout(() => setDownloadedCount(0), 5000);
@@ -414,12 +416,12 @@ export function useOfflineSync() {
             for (const sample of mergedRemote) {
               checkAccount();
               try {
-                const cached = await cacheSamplePhotos(sample, partial => {
+                const cached = await cacheSamplePhotos(sample, async partial => {
                   checkAccount();
-                  cacheCloudSamples([partial], true);
+                  await cacheCloudSamples([partial], true);
                 });
                 checkAccount();
-                if (cached !== sample) cacheCloudSamples([cached], true);
+                if (cached !== sample) await cacheCloudSamples([cached], true);
               } catch (error) {
                 checkAccount();
                 reportFailure(error);

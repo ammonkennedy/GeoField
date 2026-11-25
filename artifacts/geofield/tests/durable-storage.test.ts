@@ -61,3 +61,28 @@ test("async saves refuse a switched or logged-out storage account", () => {
   s.values.set("geofield-account:pool", JSON.stringify({signedOut:true}));
   assert.throws(() => assertStorageAccount("a"), /account changed/);
 });
+
+test('redundant backup cannot block a primary save at the storage quota', () => {
+ const s = setup();
+ writeDurableArray('items', [{id:1}]);
+ const set = localStorage.setItem;
+ localStorage.setItem = (key, value) => {
+   const next = new Map(s.values); next.set(key, value);
+   if ([...next.values()].join('').length > 25) throw new DOMException('full', 'QuotaExceededError');
+   set(key, value);
+ };
+ writeDurableArray('items', [{id:2, value:3}]);
+ assert.deepEqual(readDurableArray('items'), [{id:2, value:3}]);
+ assert.throws(() => writeDurableArray('items', [{text:'too big'.repeat(100)}]), /full/);
+ assert.deepEqual(readDurableArray('items'), [{id:2, value:3}]);
+});
+
+test('first save succeeds when there is space for one copy but not two', () => {
+ const s = setup();
+ localStorage.setItem = (key, value) => {
+  if (key.endsWith('__backup')) throw new DOMException('full', 'QuotaExceededError');
+  s.values.set(key, value);
+ };
+ writeDurableArray('items', [{id:1}]);
+ assert.deepEqual(readDurableArray('items'), [{id:1}]);
+});

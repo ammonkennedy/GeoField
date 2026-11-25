@@ -1,16 +1,15 @@
 import type { Sample } from "@workspace/api-client-react";
-import { readDurableArray, writeDurableArray } from "./durable-storage.ts";
+import { readSampleCache, mutateSampleCache } from "./sample-cache-storage.ts";
 
-const KEY = "geofield_cloud_samples";
 const BACKFILL_KEY = "geofield_cloud_samples_backfill";
 export const CLOUD_SAMPLES_UPDATED_EVENT = "cloud-samples-updated";
 
 export function getCachedCloudSamples(): Sample[] {
-  return readDurableArray<Sample>(KEY).filter((sample: any) => !sample.deletedAt);
+  return (readSampleCache() as Sample[]).filter((sample: any) => !sample.deletedAt);
 }
 
-export function clearCachedCloudSamples() {
-  writeDurableArray<Sample>(KEY, []);
+export async function clearCachedCloudSamples() {
+  await mutateSampleCache(() => []);
   window.dispatchEvent(new CustomEvent(CLOUD_SAMPLES_UPDATED_EVENT));
 }
 
@@ -36,21 +35,22 @@ function timestamp(sample: Sample): number {
 }
 
 /** Replace the complete cloud snapshot, retaining the newest version for each cloud ID. */
-export function cacheCloudSamples(remote: Sample[], replaceMediaCache = false): Sample[] {
-  const previous = new Map(readDurableArray<Sample>(KEY).map((sample) => [String(sample.id), sample]));
-  for (const sample of remote) {
-    const id = String(sample.id);
-    const cached = previous.get(id);
-    if (!cached || timestamp(sample) >= timestamp(cached)) {
-      const media = (sample.fields as any)?.media;
-      const cachedMedia = (cached?.fields as any)?.media;
-      previous.set(id, Array.isArray(media) ? { ...sample, fields: { ...sample.fields, media: media.map((item: any) => ({ ...item, localKey: replaceMediaCache ? item.localKey : cachedMedia?.find((old: any) => old.storageKey === item.storageKey)?.localKey ?? item.localKey })) } } : sample);
+export async function cacheCloudSamples(remote: Sample[], replaceMediaCache = false): Promise<Sample[]> {
+  const merged = await mutateSampleCache(records => {
+    const previous = new Map((records as Sample[]).map((sample) => [String(sample.id), sample]));
+    for (const sample of remote) {
+      const id = String(sample.id);
+      const cached = previous.get(id);
+      if (!cached || timestamp(sample) >= timestamp(cached)) {
+        const media = (sample.fields as any)?.media;
+        const cachedMedia = (cached?.fields as any)?.media;
+        previous.set(id, Array.isArray(media) ? { ...sample, fields: { ...sample.fields, media: media.map((item: any) => ({ ...item, localKey: replaceMediaCache ? item.localKey : cachedMedia?.find((old: any) => old.storageKey === item.storageKey)?.localKey ?? item.localKey })) } } : sample);
+      }
     }
-  }
-  // An eventually consistent list can omit a just-uploaded record. Only an
-  // explicit cloud tombstone is a deletion instruction.
-  const merged = [...previous.values()];
-  writeDurableArray(KEY, merged);
+    // An eventually consistent list can omit a just-uploaded record. Only an
+    // explicit cloud tombstone is a deletion instruction.
+    return [...previous.values()];
+  });
   window.dispatchEvent(new CustomEvent(CLOUD_SAMPLES_UPDATED_EVENT));
   return merged.filter((sample: any) => !sample.deletedAt);
 }
@@ -63,6 +63,6 @@ export function mergeCloudAndLocal<T extends { id: string | number }>(cloud: T[]
     const existing = byId.get(String(item.id));
     if (!existing || (item as any).isOffline || timestamp(item as any) > timestamp(existing as any)) byId.set(String(item.id), item);
   });
-  const deleted = new Map(readDurableArray<Sample>(KEY).filter((item: any) => item.deletedAt).map((item) => [String(item.id), timestamp(item)]));
+  const deleted = new Map((readSampleCache() as Sample[]).filter((item: any) => item.deletedAt).map((item) => [String(item.id), timestamp(item)]));
   return [...byId.values()].filter((item) => (item as any).isOffline || !deleted.has(String(item.id)) || timestamp(item as any) > deleted.get(String(item.id))!);
 }

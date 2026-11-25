@@ -32,7 +32,7 @@ export async function prepareSampleUpload(item: QueuedSample, accountId: string)
 }
 
 /** Refresh device-local photo copies without persisting expiring signed URLs. */
-export async function cacheSamplePhotos(sample: any, onProgress?: (sample: any) => void) {
+export async function cacheSamplePhotos(sample: any, onProgress?: (sample: any) => void | Promise<void>) {
   return cacheSampleAttachments(sample, async attachment => {
     const kind = attachment.kind || attachment.type;
     if ((kind !== "photo" && kind !== "video") || !attachment.storageKey?.startsWith("media/")) return attachment;

@@ -27,12 +27,28 @@ export function writeDurableArray<T>(key: string, items: T[]) {
   if (!Array.isArray(JSON.parse(serialized))) throw new Error("Expected a saved collection.");
   // Validate before overwriting either copy. Corruption is never an empty store.
   const previous = readDurableArray<T>(key);
-  const hadPrevious = localStorage.getItem(key) !== null || localStorage.getItem(`${key}${BACKUP_SUFFIX}`) !== null;
-  if (hadPrevious) localStorage.setItem(`${key}${BACKUP_SUFFIX}`, JSON.stringify(previous));
-  else localStorage.setItem(`${key}${BACKUP_SUFFIX}`, serialized);
-  localStorage.setItem(key, serialized);
+  const primary = localStorage.getItem(key);
+  let primaryValid = false;
+  try { primaryValid = primary !== null && Array.isArray(JSON.parse(primary)); } catch { /* backup is authoritative */ }
+  // localStorage replacement is atomic. Redundancy must not consume the space
+  // needed to commit the primary, nor discard the only readable copy.
+  if (primaryValid) {
+    try { localStorage.setItem(`${key}${BACKUP_SUFFIX}`, JSON.stringify(previous)); }
+    catch (error) { if (!isStorageQuotaError(error)) throw error; }
+  }
+  try { localStorage.setItem(key, serialized); }
+  catch (error) {
+    if (!isStorageQuotaError(error) || !primaryValid) throw error;
+    localStorage.removeItem(`${key}${BACKUP_SUFFIX}`);
+    // If this also fails, the previous primary is still intact.
+    localStorage.setItem(key, serialized);
+  }
   if (localStorage.getItem(key) !== serialized) throw new Error(`Could not verify saved data for ${key}`);
   // Once committed, both copies should represent the acknowledged save.
   // Failure refreshing redundancy must not report a committed save as lost.
   try { localStorage.setItem(`${key}${BACKUP_SUFFIX}`, serialized); } catch {}
+}
+
+function isStorageQuotaError(error: unknown): boolean {
+  return error instanceof Error && (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED");
 }

@@ -471,6 +471,7 @@ export async function deleteFolder({ id, accountId }: { id: string | number; acc
   await updateDatasetWithAuthorization(
     async forceRefresh => client.models.Dataset.update(input, await accountRequestOptions(deletingAccount, forceRefresh)),
     String(id),
+    "delete",
   );
 }
 
@@ -496,6 +497,7 @@ export async function restoreFolder(id: string | number, accountId?: string): Pr
   await updateDatasetWithAuthorization(
     async forceRefresh => client.models.Dataset.update(input, await accountRequestOptions(restoringAccount, forceRefresh)),
     String(id),
+    "restore",
   );
 }
 export function useDeleteFolder(options?: MutationOptions<void, { id: string | number }>) {

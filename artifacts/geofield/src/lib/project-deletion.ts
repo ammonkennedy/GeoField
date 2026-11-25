@@ -25,7 +25,7 @@ export async function loadProjectDeletionContents(dataset: LocalDataset, account
   await syncStereonets(account);
   await syncTrips(account);
   assertStorageAccount(account);
-  cacheCloudSamples(samples);
+  await cacheCloudSamples(samples);
   const local = loadMeasurements(true);
   const ids = new Set(local.map(item => item.id));
   saveMeasurements([...local, ...measurements.filter(item => !ids.has(item.id)) as any[]], { fromSync: true });

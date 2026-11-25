@@ -1,42 +1,36 @@
+import { sampleStorageFixture as storage } from "./sample-storage-fixture.ts";
+import { initializeSampleCache } from "../src/lib/sample-cache-storage.ts";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { enqueue, getQueue, setQueue, updateQueuedSample, deleteQueuedSample } from '../src/lib/offline-queue.ts';
 import { cacheCloudSamples } from '../src/lib/cloud-samples.ts';
-function storage() {
-  const values = new Map<string, string>();
-  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
-    get length() { return values.size; }, key: (i: number) => [...values.keys()][i] ?? null,
-    getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value),
-  }});
-  Object.defineProperty(globalThis, 'window', { configurable: true, value: { dispatchEvent() {} } });
-}
 const payload = { sampleType: 'water', sampleId: 'EC-001', folderId: null, fields: { ph: 7 } };
-test('an open offline sheet can be saved after its queue item finishes syncing', () => {
-  storage(); const opened = enqueue(payload); setQueue([]);
-  cacheCloudSamples([{ id: opened.queuedId, ...payload, updatedAt: '2026-11-11T12:00:00Z' } as any]);
+test('an open offline sheet can be saved after its queue item finishes syncing', async () => {
+  await storage(); const opened = enqueue(payload); setQueue([]);
+  await cacheCloudSamples([{ id: opened.queuedId, ...payload, updatedAt: '2026-11-11T12:00:00Z' } as any]);
   updateQueuedSample(opened.queuedId, { ...payload, fields: { ph: 6.5 } }, opened);
   const pending = getQueue()[0];
   assert.equal(pending.targetId, opened.queuedId);
   assert.equal(pending.baseUpdatedAt, '2026-11-11T12:00:00Z');
   assert.equal(pending.payload.fields.ph, 6.5);
 });
-test('stale sample sheet cannot overwrite a newer local edit or deletion', () => {
-  storage(); const opened = enqueue(payload);
+test('stale sample sheet cannot overwrite a newer local edit or deletion', async () => {
+  await storage(); const opened = enqueue(payload);
   updateQueuedSample(opened.queuedId, { ...payload, fields: { ph: 8 } });
   assert.throws(() => updateQueuedSample(opened.queuedId, payload, opened), /changed/);
   assert.equal(getQueue()[0].payload.fields.ph, 8);
   deleteQueuedSample(opened.queuedId);
   assert.throws(() => updateQueuedSample(opened.queuedId, payload, opened), /deleted/);
 });
-test('if the original queue and cloud ID are unavailable, preserve a new recovery record', () => {
-  storage(); const opened = enqueue(payload); setQueue([]);
+test('if the original queue and cloud ID are unavailable, preserve a new recovery record', async () => {
+  await storage(); const opened = enqueue(payload); setQueue([]);
   updateQueuedSample(opened.queuedId, payload, opened);
   assert.equal(getQueue()[0].targetId, undefined);
   assert.match(getQueue()[0].payload.sampleId, /recovered edit/);
 });
 
 test('water samples and cloud cache survive 30 days of repeated storage reopens', async () => {
-  storage();
+  await storage();
   const { getCachedCloudSamples } = await import('../src/lib/cloud-samples.ts');
   const originalNow = Date.now;
   const start = originalNow();
@@ -44,15 +38,16 @@ test('water samples and cloud cache survive 30 days of repeated storage reopens'
     for (let day = 1; day <= 30; day++) {
       Date.now = () => start + day * 86400000;
       enqueue({ ...payload, sampleId: `EC-${day}`, fields: { ph: 0, temperature: 12.5, location: '-0.1234567, -78.1234567', customParams: [{ label: 'Bottle', value: `00${day}` }], media: [{ localKey: `photo-${day}`, kind: 'photo' }] } });
-      cacheCloudSamples([{ id: `cloud-${day}`, ...payload, updatedAt: new Date(Date.now()).toISOString() } as any]);
+      await cacheCloudSamples([{ id: `cloud-${day}`, ...payload, updatedAt: new Date(Date.now()).toISOString() } as any]);
       for (let launch = 0; launch < 4; launch++) {
         // Serialize and reconstruct the backing store, discarding its object identity.
         const saved = Array.from({ length: localStorage.length }, (_, i) => {
           const key = localStorage.key(i)!;
           return [key, localStorage.getItem(key)!] as const;
         });
-        storage();
+        await storage(false);
         for (const [key, value] of JSON.parse(JSON.stringify(saved))) localStorage.setItem(key, value);
+        await initializeSampleCache(true);
         const records = getQueue();
         assert.equal(records.length, day);
         assert.equal(getCachedCloudSamples().length, day);
@@ -66,11 +61,11 @@ test('water samples and cloud cache survive 30 days of repeated storage reopens'
   } finally { Date.now = originalNow; }
 });
 
-test('adding a camera-roll photo after the previous photo synced keeps the original cloud revision', () => {
-  storage();
+test('adding a camera-roll photo after the previous photo synced keeps the original cloud revision', async () => {
+  await storage();
   const original = { ...payload, fields: { ph: 7, media: [{ id: 'photo1', kind: 'photo', storageKey: 'local-photo1' }] } };
   const opened = enqueue(original); setQueue([]);
-  cacheCloudSamples([{ id: opened.queuedId, ...original, fields: { ph: 7, media: [{ id: 'photo1', kind: 'photo', storageKey: 'media/account/photo1', localKey: 'local-photo1', syncStatus: 'synced' }] }, updatedAt: '2026-11-22T12:00:00Z' } as any]);
+  await cacheCloudSamples([{ id: opened.queuedId, ...original, fields: { ph: 7, media: [{ id: 'photo1', kind: 'photo', storageKey: 'media/account/photo1', localKey: 'local-photo1', syncStatus: 'synced' }] }, updatedAt: '2026-11-22T12:00:00Z' } as any]);
   updateQueuedSample(opened.queuedId, { ...original, fields: { ...original.fields, media: [...original.fields.media, { id: 'photo2', kind: 'photo', storageKey: 'local-photo2' }] } }, opened);
   assert.equal(getQueue()[0].targetId, opened.queuedId);
   assert.equal(getQueue()[0].baseUpdatedAt, '2026-11-22T12:00:00Z');

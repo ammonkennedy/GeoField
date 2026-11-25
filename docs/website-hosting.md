@@ -1,5 +1,15 @@
 # GeoField website hosting
 
+## Current status — November 24, 2026
+
+- Public website: https://geofielddata.com (may redirect to www).
+- Amplify master job 217 successfully deployed commit 7494278; live JS: index-NQgSY3ei.js. Current sample/map/default-order/FNU/navigation updates verified in live bundle and isolated guest browser.
+- Recent builds failed because amplify/auth/resource.ts omitted the .ts extension on its pre-sign-up import; fixed and deployed.
+- Xcode only builds and copies local web assets into iOS. GitHub pushes trigger Amplify separately; always check job success and the live site.
+- Automatic email alerts are not configured yet: waiting for the user’s recipient address and subsequent subscription confirmation.
+
+The remaining sections document the original hosting setup and historical checks.
+
 Public URL: https://master.d2vn10cqbsssgw.amplifyapp.com
 
 AWS console: select US East (Ohio), us-east-2, then Amplify → GeoField → master.

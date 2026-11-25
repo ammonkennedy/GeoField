@@ -53,3 +53,6 @@ feature documentation only when relevant. Keep these files concise.
   user's app. Use isolated fixtures/accounts. Keep signing keys and secrets out of Git.
 - Give concise results and material limits. Do not claim physical-device, live
   cross-device sync, deployment, or store-release verification from unit tests.
+- When publishing updates, monitor the Amplify master deployment to completion
+  and verify the live website. Report failures explicitly; a Git push or Xcode
+  build is not a successful website update. Keep deployment alerts configured.

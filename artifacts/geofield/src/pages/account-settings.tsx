@@ -1,3 +1,5 @@
+import { removeAccountNativeMedia } from "@/lib/media-storage";
+import { removeAccountSampleCache } from "@/lib/sample-cache-storage";
 import { restoreProjectContent } from "@/lib/project-deletion";
 import { removeAccountTracks } from "@/lib/track-storage";
 import { removeAccountLocalData } from "@/lib/storage-account";
@@ -99,7 +101,7 @@ export default function AccountSettingsPage() {
     setDeleteAccountError("");
     try {
       await deleteCurrentAccount();
-      if (user?.id) { await removeAccountTracks(String(user.id)); removeAccountLocalData(String(user.id)); }
+      if (user?.id) { await removeAccountTracks(String(user.id)); await removeAccountSampleCache(String(user.id)); await removeAccountNativeMedia(String(user.id)); removeAccountLocalData(String(user.id)); }
       queryClient.clear();
       window.location.assign("/login");
     } catch (error: any) {

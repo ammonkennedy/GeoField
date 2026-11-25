@@ -2,7 +2,7 @@
 export async function cacheSampleAttachments<T extends { fields?: any }>(
   sample: T,
   cache: (attachment: any) => Promise<any>,
-  onProgress?: (sample: T) => void,
+  onProgress?: (sample: T) => void | Promise<void>,
 ): Promise<T> {
   if (!Array.isArray(sample.fields?.media)) return sample;
   const media: any[] = [];
@@ -13,7 +13,7 @@ export async function cacheSampleAttachments<T extends { fields?: any }>(
   for (const attachment of sample.fields.media) {
     const cached = await cache(attachment);
     media.push(cached);
-    if (cached !== attachment) onProgress?.(snapshot([...media, ...sample.fields.media.slice(media.length)]));
+    if (cached !== attachment) await onProgress?.(snapshot([...media, ...sample.fields.media.slice(media.length)]));
   }
   return snapshot(media);
 }
