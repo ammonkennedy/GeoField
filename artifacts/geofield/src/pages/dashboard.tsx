@@ -19,7 +19,7 @@ import { Layout } from "@/components/Layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar, Cloud, Database, Compass, Route } from "lucide-react";
+import { Plus, Download, Search, Edit2, Trash2, FolderOpen, MapPin, Calendar, Cloud, Database, Compass, Route, Share2, Upload } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useSamplesMutations } from "@/hooks/use-geofield";
 import { ExportDialog } from "@/components/ExportDialog";
@@ -30,6 +30,7 @@ import { saveMeasurements, deleteMeasurement, loadMeasurements, STRIKE_DIP_UPDAT
 import { archiveLocalItem } from "@/lib/recently-deleted";
 import { CLOUD_SAMPLES_UPDATED_EVENT, cacheCloudSamples, getCachedCloudSamples, mergeCloudAndLocal } from "@/lib/cloud-samples";
 import { requireAccountForSave } from "@/lib/guest-access";
+import { buildProjectBundle, importProjectBundle, readProjectBundleFile, shareProjectBundle } from "@/lib/project-transfer";
 
 const typeStyles = {
   water: { label: "Water", variant: "water" as const },
@@ -78,6 +79,9 @@ export default function Dashboard() {
   const [deletingProject, setDeletingProject] = useState(false);
   const [deleteId, setDeleteId] = useState<string | number | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [sharingProject, setSharingProject] = useState(false);
+  const [importingProject, setImportingProject] = useState(false);
+  const importProjectInput = useRef<HTMLInputElement>(null);
   const [queuedSamples, setQueuedSamples] = useState(() => getQueue(true));
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
   const [trips, setTrips] = useState(() => loadTrips());
@@ -201,6 +205,36 @@ export default function Dashboard() {
     } finally { setDeletingProject(false); }
   };
 
+  const handleShareProject = async () => {
+    if (!activeFolder || !activeFolderId || !authData?.user?.id || sharingProject) return;
+    if (!requireAccountForSave(authData.user, setLocation)) return;
+    setSharingProject(true);
+    try {
+      const bundle = await buildProjectBundle({ project: activeFolder, samples: allSamples, measurements, accountId: authData.user.id });
+      const safeName = activeFolder.name.trim().replace(/[^\p{L}\p{N}_-]+/gu, "-").replace(/^-|-$/g, "") || "GeoField-Project";
+      const result = await shareProjectBundle(bundle, `${safeName}.geofield`);
+      toast({ title: result === "shared" ? "Project ready to share" : "Project file downloaded", description: result === "shared" ? "Choose a messaging or file-sharing app. The recipient can import this as their own copy." : "Send this .geofield file to the recipient; they can import it from the GeoField dashboard." });
+    } catch (error) {
+      if ((error as Error)?.name !== "AbortError") toast({ title: "Project could not be shared", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally { setSharingProject(false); }
+  };
+
+  const handleImportProject = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || importingProject) return;
+    if (!requireAccountForSave(authData?.user, setLocation)) return;
+    setImportingProject(true);
+    try {
+      const bundle = await readProjectBundleFile(file);
+      const dataset = await importProjectBundle(bundle, authData!.user!.id);
+      toast({ title: "Project imported", description: `${dataset.name} and its contents were added to your projects. They will sync when connected.` });
+      setLocation(`/dataset/${encodeURIComponent(String(dataset.id))}`);
+    } catch (error) {
+      toast({ title: "Project could not be imported", description: error instanceof Error ? error.message : "Please try again.", variant: "destructive" });
+    } finally { setImportingProject(false); }
+  };
+
   const handleDeleteSample = () => {
     if (!requireAccountForSave(authData?.user, setLocation)) return;
     if (!deleteId) return;
@@ -251,10 +285,20 @@ export default function Dashboard() {
                   Delete Project
                 </Button>
               )}
-              <Button variant="secondary" className="rounded-full bg-white shadow-sm" onClick={() => setExportOpen(true)}>
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button variant="secondary" className="rounded-full bg-white shadow-sm" onClick={() => setExportOpen(true)}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Export
+                </Button>
+                {activeFolder && <Button variant="outline" className="rounded-full bg-white shadow-sm" onClick={handleShareProject} disabled={sharingProject || isLoading}>
+                  <Share2 className="w-4 h-4 mr-2" />
+                  {sharingProject ? "Preparing…" : "Share Project"}
+                </Button>}
+              </div>
+              {!activeFolder && <Button variant="outline" className="rounded-full bg-white shadow-sm" onClick={() => importProjectInput.current?.click()} disabled={importingProject}>
+                <Upload className="w-4 h-4 mr-2" />
+                {importingProject ? "Importing…" : "Import Project"}
+              </Button>}
               <Button className="rounded-full px-5 shadow-sm" onClick={() => setLocation(newSamplePath)}>
                 <Plus className="w-4 h-4 mr-2" />
                 New Sample
@@ -437,6 +481,8 @@ export default function Dashboard() {
         measurements={measurements}
         initialSelection={activeFolderId ?? "all"}
       />
+
+      <input ref={importProjectInput} type="file" accept=".geofield,application/vnd.geofield.project+json" className="hidden" onChange={handleImportProject} />
 
       <Dialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>
         <DialogHeader>

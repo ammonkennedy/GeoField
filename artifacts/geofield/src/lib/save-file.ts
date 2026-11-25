@@ -2,12 +2,26 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { FileOpener } from "@capacitor-community/file-opener";
 
-const AndroidFiles = registerPlugin<{ saveFile(options: { base64: string; filename: string; mimeType: string }): Promise<void> }>("GeoFieldFiles");
+const AndroidFiles = registerPlugin<{ saveFile(options: { base64: string; filename: string; mimeType: string }): Promise<void>; shareFile(options: { base64: string; filename: string; mimeType: string; title: string }): Promise<void> }>("GeoFieldFiles");
 
 export type SaveFileResult = "shared" | "downloaded";
 
 export interface SaveFileOptions {
   previewAfterSave?: boolean;
+}
+
+export async function shareFile(blob: Blob, filename: string, title: string): Promise<SaveFileResult> {
+  if (Capacitor.getPlatform() === "android") {
+    await AndroidFiles.shareFile({ base64: await blobToBase64(blob), filename, mimeType: blob.type || "application/octet-stream", title });
+    return "shared";
+  }
+  const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+  if (typeof navigator.share === "function" && (typeof navigator.canShare !== "function" || navigator.canShare({ files: [file] }))) {
+    await navigator.share({ files: [file], title });
+    return "shared";
+  }
+  await saveFile(blob, filename);
+  return "downloaded";
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
