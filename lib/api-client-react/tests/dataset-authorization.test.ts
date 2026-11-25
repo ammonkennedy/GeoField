@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { updateDatasetWithAuthorization } from '../src/dataset-authorization.ts';
+import { updateDatasetWithAuthorization, deleteDatasetWithAuthorization } from '../src/dataset-authorization.ts';
 import { captureAccountAuthorization } from '../src/account-authorization.ts';
 const rejection = { data: null, errors: [{ errorType: 'Unauthorized', message: 'Not Authorized to access updateDataset on type Mutation' }] };
 test('refreshes once and accepts confirmed dataset update', async () => {
@@ -37,4 +37,29 @@ test('denied project deletion and restoration identify the operation without bla
    return true;
   });
  }
+});
+
+test('deleting a missing cloud project finishes only after authenticated absence confirmation', async () => {
+ const calls: string[] = [];
+ await deleteDatasetWithAuthorization(async refresh => {calls.push(`update:${refresh}`);return rejection;}, 'missing', async () => {calls.push('read');return {data:null};});
+ assert.deepEqual(calls, ['update:false','update:true','read']);
+});
+test('existing inaccessible, active, partial, or malformed reads never discard pending project deletion', async () => {
+ for (const response of [rejection, {data:null,errors:[{message:'Read failed'}]}, {data:{id:'existing'}}, {}, {data:undefined}]) {
+  await assert.rejects(deleteDatasetWithAuthorization(async () => rejection, 'project', async () => response), {name:'DatasetAccessDenied'});
+ }
+});
+test('network failures and account switches during absence confirmation retain pending deletion', async () => {
+ for (const reason of ['Network unavailable', 'Account changed']) {
+  await assert.rejects(deleteDatasetWithAuthorization(async () => rejection, 'project', async () => {throw Error(reason);}), new RegExp(reason));
+ }
+});
+test('successful deletion requires no follow-up read and uncertain mutation failures cannot be accepted', async () => {
+ let reads=0;
+ const read=async()=>{reads++;return {data:null};};
+ await deleteDatasetWithAuthorization(async()=>({data:{id:'project',deletedAt:'now'}}),'project',read);
+ assert.equal(reads,0);
+ await assert.rejects(deleteDatasetWithAuthorization(async()=>{throw Error('network');},'project',read),/network/);
+ await assert.rejects(deleteDatasetWithAuthorization(async()=>({data:null}),'project',read),/did not confirm/);
+ assert.equal(reads,0);
 });

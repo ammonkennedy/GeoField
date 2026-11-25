@@ -22,3 +22,23 @@ export async function updateDatasetWithAuthorization<T extends Result>(
   if (!result.data) throw new Error(`Cloud did not confirm ${operation} for project ${label}. Your pending changes remain on this device.`);
   return result;
 }
+
+/** A hard-deleted project has no owner for updateDataset to authorize against.
+ * Only an error-free authenticated lookup returning explicit null confirms that
+ * deletion is already satisfied. An inaccessible existing record returns errors.
+ */
+export async function deleteDatasetWithAuthorization<T extends Result>(
+  request: (forceRefresh: boolean) => Promise<T>,
+  label: string,
+  read: () => Promise<Result>,
+): Promise<void> {
+  try {
+    await updateDatasetWithAuthorization(request, label, 'delete');
+  } catch (error) {
+    if (!(error instanceof Error) || error.name !== 'DatasetAccessDenied') throw error;
+    const existing = await read();
+    if (existing.data === null && !existing.errors?.length) return;
+    // Undefined/partial responses and real authorization failures are not absence.
+    throw error;
+  }
+}

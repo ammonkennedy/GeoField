@@ -1,6 +1,6 @@
 import { parseSampleFields, sampleUpdateCondition } from "../sample-fields";
 import { createPasswordRecovery } from "../password-recovery";
-import { updateDatasetWithAuthorization } from "../dataset-authorization";
+import { updateDatasetWithAuthorization, deleteDatasetWithAuthorization } from "../dataset-authorization";
 import { requestWithCaptionFallback } from "../measurement-caption-request";
 import { captureAccountAuthorization } from "../account-authorization";
 import { isNetworkError, requireCloudSession } from "../cloud-session";
@@ -468,10 +468,10 @@ export async function deleteFolder({ id, accountId }: { id: string | number; acc
     if (!detached.data) throw new Error("Cloud did not confirm that the project contents were preserved. Please retry.");
   }
   const input = { id: String(id), deletedAt: nowIso(), updatedAt: nowIso() };
-  await updateDatasetWithAuthorization(
+  await deleteDatasetWithAuthorization(
     async forceRefresh => client.models.Dataset.update(input, await accountRequestOptions(deletingAccount, forceRefresh)),
     String(id),
-    "delete",
+    async () => client.models.Dataset.get({ id: String(id) }, await accountRequestOptions(deletingAccount, true)),
   );
 }
 
