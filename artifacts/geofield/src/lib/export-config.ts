@@ -1,6 +1,5 @@
 import { readAccountPreference, writeAccountPreference } from "./account-preferences.ts";
 import * as XLSX from "xlsx";
-import { format } from "date-fns";
 import type { Sample } from "@workspace/api-client-react";
 import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 
@@ -119,16 +118,15 @@ export const STRIKE_DIP_COLUMNS: ExportColumn[] = [
   { key: "elevationAccuracy", label: "Elevation Accuracy (m)", enabled: false, defaultWidth: 22 },
   { key: "gpsAccuracy", label: "GPS Accuracy (m)", enabled: false, defaultWidth: 16 },
   { key: "date",        label: "Date & Time",      enabled: true,  defaultWidth: 18 },
-  { key: "notes",       label: "Notes",            enabled: true,  defaultWidth: 40 },
+  { key: "notes",       label: "Field Notes",            enabled: true,  defaultWidth: 40 },
 ];
 
 /* ── Sample columns ─────────────────────────────────────────────────────── */
 export const SAMPLE_FIXED_COLUMNS: ExportColumn[] = [
   { key: "_sampleId",   label: "Sample ID",      enabled: true, defaultWidth: 22 },
   { key: "_sampleType", label: "Sample Type",    enabled: true, defaultWidth: 16 },
-  { key: "_folder",     label: "Folder",         enabled: true, defaultWidth: 20 },
-  { key: "_notes",      label: "Notes",          enabled: true, defaultWidth: 40 },
-  { key: "_createdAt",  label: "Record Created", enabled: true, defaultWidth: 18 },
+  { key: "_folder",     label: "Project",         enabled: true, defaultWidth: 20 },
+  { key: "_notes",      label: "Field Notes",          enabled: true, defaultWidth: 40 },
 ];
 
 type StoredCustomParameter = {
@@ -186,21 +184,19 @@ function isMediaExportField(key: string) {
 }
 
 // Field ownership prevents registered fields from a previous sample type leaking
-// into an export. Unknown populated legacy fields and explicit custom parameters
-// remain exportable so historical observations are not discarded.
+// into an export. Only form fields and explicit custom parameters are exported;
+// internal metadata remains stored in the original sample.
 const TYPE_FIELDS: Record<string, string[]> = {
   water: ['waterSource', 'temperature', 'ph', 'do', 'conductivity', 'turbidity', 'flowRate', 'color', 'odor', 'preservation'],
-  rock: ['rockType', 'rockName', 'lithology', 'color', 'texture', 'sorting', 'hardness', 'specificGravity', 'magnetism', 'weight', 'strike', 'dip'],
+  rock: ['rockType', 'rockName', 'lithology', 'color', 'texture', 'sorting', 'hardness', 'specificGravity', 'magnetism', 'weight'],
   soil_sand: ['texture', 'color', 'horizon', 'moisture', 'ph', 'depth', 'structure', 'organicMatter', 'ec', 'weight'],
   air: ['pidReading', 'pidUnits', 'targetCompound', 'lampEnergy', 'calibrationGas', 'alarmStatus', 'samplingMode', 'ambientTemperature', 'relativeHumidity', 'odor'],
-  other: ['otherSampleTitle', 'title'],
+  other: [], // The user-entered title is already represented by Sample Type.
 };
-const TYPED_FIELDS = new Set(Object.values(TYPE_FIELDS).flat());
-const COMMON_FIELDS = new Set(['collectionDate', 'location', 'latitude', 'longitude', 'utmZone', 'utmEasting', 'utmNorthing', 'elevation', 'elevationAccuracy', 'gpsAccuracy']);
-function sampleFieldApplies(type: string, key: string, value: unknown) {
+const COMMON_FIELDS = new Set(['collectionDate', 'location', 'utmZone', 'utmEasting', 'utmNorthing', 'utmHemisphere', 'elevation']);
+function sampleFieldApplies(type: string, key: string) {
   if (key === 'customParams' || key === 'notes' || key === 'fieldNotes' || key === 'photoCaption' || isMediaExportField(key)) return false;
-  if (TYPED_FIELDS.has(key)) return TYPE_FIELDS[type]?.includes(key) ?? false;
-  return COMMON_FIELDS.has(key) || (value !== '' && value !== null && value !== undefined);
+  return COMMON_FIELDS.has(key) || (TYPE_FIELDS[type]?.includes(key) ?? false);
 }
 export function sampleNotes(sample: Sample): string {
   const fields = (sample.fields ?? {}) as Record<string, unknown>;
@@ -213,8 +209,9 @@ export function getSampleColumns(samples: Sample[]): ExportColumn[] {
   samples.forEach((s) => {
     const fields = (s.fields as Record<string, any>) || {};
     Object.keys(fields).forEach((k) => {
-      if (sampleFieldApplies(s.sampleType, k, fields[k])) fieldKeys.add(k);
+      if (sampleFieldApplies(s.sampleType, k)) fieldKeys.add(k);
     });
+    if (fields.elevation == null && fields.altitude != null) fieldKeys.add('elevation');
     const occurrences = new Map<string, number>();
     getCustomParameters(fields).forEach(({ label }) => {
       const occurrence = occurrences.get(label) ?? 0;
@@ -251,12 +248,12 @@ export function sampleToDataRow(sample: Sample, folderName: string): Record<stri
     _sampleType: sampleTypeLabel,
     _folder: folderName,
     _notes: sampleNotes(sample),
-    _createdAt: format(new Date(sample.createdAt), "yyyy-MM-dd HH:mm"),
   };
   Object.entries(fields).forEach(([key, value]) => {
-    if (!sampleFieldApplies(sample.sampleType, key, value)) return;
+    if (!sampleFieldApplies(sample.sampleType, key)) return;
     row[`field_${key}`] = exportCellValue(value);
   });
+  if (fields.elevation == null && fields.altitude != null) row.field_elevation = exportCellValue(fields.altitude);
   const occurrences = new Map<string, number>();
   getCustomParameters(fields).forEach(({ label, value }) => {
     const occurrence = occurrences.get(label) ?? 0;

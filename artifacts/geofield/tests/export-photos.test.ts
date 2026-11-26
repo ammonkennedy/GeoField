@@ -42,7 +42,7 @@ test('selects all photos, excludes videos, supports legacy images without duplic
 });
 test('mixed sample types get only their own parameters, while shared fields and zero values survive',()=>{
   const fields={rockType:'Basalt',ph:0,horizon:'A',pidReading:2,otherSampleTitle:'Other title',elevation:0,customParams:[{label:'User parameter',value:false}]};
-  const expected:Record<string,string[]>={water:['ph'],rock:['rockType'],soil_sand:['ph','horizon'],air:['pidReading'],other:['otherSampleTitle']};
+  const expected:Record<string,string[]>={water:['ph'],rock:['rockType'],soil_sand:['ph','horizon'],air:['pidReading'],other:[]};
   for(const [type,keys] of Object.entries(expected)) {
     const columns=getSampleColumns([{...sample,sampleType:type,fields}]);
     for(const field of ['rockType','ph','horizon','pidReading','otherSampleTitle']) assert.equal(columns.some(c=>c.key===`field_${field}`),keys.includes(field),`${type}: ${field}`);
@@ -66,4 +66,13 @@ test('unavailable photos fail export visibly instead of producing an incomplete 
 test('account changes during photo loading stop export',async()=>{
   let changed=false;
   await assert.rejects(collectSampleWorkbookPhotos([{...sample,fields:{media:[{kind:'photo'}]}}],options.datasets,'Ecuador',async()=>{changed=true;return {bytes:new Uint8Array(),extension:'png',width:1,height:1};},()=>{if(changed)throw Error('Account changed');}),/Account changed/);
+});
+test('export contains only sheet parameters, never internal metadata or duplicate coordinates',()=>{
+  const record={...sample,fields:{ph:7,location:'1, 2',collectionDate:'2026-11-26T14:40',altitude:0,latitude:1,longitude:2,gpsAccuracy:3,elevationAccuracy:4,plannedSiteId:'internal',collectionStatus:'collected',collectedAt:'internal time',unknownLegacyField:'old',strike:40,dip:20,customParams:[{label:'My observation',value:'Keep'}]}};
+  const columns=getSampleColumns([record]);
+  assert.deepEqual(columns.map(c=>c.key),['_sampleId','_sampleType','_folder','_notes','field_ph','field_location','field_collectionDate','field_elevation','_customParameter:My observation:0']);
+  const workbook=buildDatasetWorkbook({...options,samples:[record]})!;
+  const rows=XLSX.utils.sheet_to_json(workbook.Sheets.Water,{header:1}) as any[];
+  assert.equal(rows[1][7],0);
+  assert.equal(JSON.stringify(rows).includes('internal'),false);
 });
