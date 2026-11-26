@@ -1,3 +1,4 @@
+import { readAccountPreference, writeAccountPreference } from "./account-preferences.ts";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
 import type { Sample } from "@workspace/api-client-react";
@@ -184,13 +185,35 @@ function isMediaExportField(key: string) {
   return MEDIA_EXPORT_FIELDS.has(key) || key.startsWith("media");
 }
 
+// Field ownership prevents registered fields from a previous sample type leaking
+// into an export. Unknown populated legacy fields and explicit custom parameters
+// remain exportable so historical observations are not discarded.
+const TYPE_FIELDS: Record<string, string[]> = {
+  water: ['waterSource', 'temperature', 'ph', 'do', 'conductivity', 'turbidity', 'flowRate', 'color', 'odor', 'preservation'],
+  rock: ['rockType', 'rockName', 'lithology', 'color', 'texture', 'sorting', 'hardness', 'specificGravity', 'magnetism', 'weight', 'strike', 'dip'],
+  soil_sand: ['texture', 'color', 'horizon', 'moisture', 'ph', 'depth', 'structure', 'organicMatter', 'ec', 'weight'],
+  air: ['pidReading', 'pidUnits', 'targetCompound', 'lampEnergy', 'calibrationGas', 'alarmStatus', 'samplingMode', 'ambientTemperature', 'relativeHumidity', 'odor'],
+  other: ['otherSampleTitle', 'title'],
+};
+const TYPED_FIELDS = new Set(Object.values(TYPE_FIELDS).flat());
+const COMMON_FIELDS = new Set(['collectionDate', 'location', 'latitude', 'longitude', 'utmZone', 'utmEasting', 'utmNorthing', 'elevation', 'elevationAccuracy', 'gpsAccuracy']);
+function sampleFieldApplies(type: string, key: string, value: unknown) {
+  if (key === 'customParams' || key === 'notes' || key === 'fieldNotes' || key === 'photoCaption' || isMediaExportField(key)) return false;
+  if (TYPED_FIELDS.has(key)) return TYPE_FIELDS[type]?.includes(key) ?? false;
+  return COMMON_FIELDS.has(key) || (value !== '' && value !== null && value !== undefined);
+}
+export function sampleNotes(sample: Sample): string {
+  const fields = (sample.fields ?? {}) as Record<string, unknown>;
+  return String(sample.notes || fields.notes || fields.fieldNotes || '');
+}
+
 export function getSampleColumns(samples: Sample[]): ExportColumn[] {
   const fieldKeys = new Set<string>();
   const customParameterColumns = new Map<string, ExportColumn>();
   samples.forEach((s) => {
     const fields = (s.fields as Record<string, any>) || {};
     Object.keys(fields).forEach((k) => {
-      if (k !== "customParams" && !isMediaExportField(k)) fieldKeys.add(k);
+      if (sampleFieldApplies(s.sampleType, k, fields[k])) fieldKeys.add(k);
     });
     const occurrences = new Map<string, number>();
     getCustomParameters(fields).forEach(({ label }) => {
@@ -227,11 +250,11 @@ export function sampleToDataRow(sample: Sample, folderName: string): Record<stri
     _sampleId: sample.sampleId,
     _sampleType: sampleTypeLabel,
     _folder: folderName,
-    _notes: sample.notes || "",
+    _notes: sampleNotes(sample),
     _createdAt: format(new Date(sample.createdAt), "yyyy-MM-dd HH:mm"),
   };
   Object.entries(fields).forEach(([key, value]) => {
-    if (key === "customParams" || isMediaExportField(key)) return;
+    if (!sampleFieldApplies(sample.sampleType, key, value)) return;
     row[`field_${key}`] = exportCellValue(value);
   });
   const occurrences = new Map<string, number>();
@@ -420,24 +443,24 @@ export function buildStyledWorksheet(
 
 /* ── localStorage helpers ────────────────────────────────────────────────── */
 export function saveExportConfig(key: string, config: ExportFormatConfig) {
-  try { localStorage.setItem(`geofield_export_fmt_${key}`, JSON.stringify(config)); } catch {}
+  writeAccountPreference(`export-format:${key}`, config);
 }
 export function loadExportConfig(key: string): ExportFormatConfig {
   try {
-    const raw = localStorage.getItem(`geofield_export_fmt_${key}`);
-    if (raw) return { ...DEFAULT_FORMAT_CONFIG, ...JSON.parse(raw) };
+    const raw = readAccountPreference<ExportFormatConfig>(`export-format:${key}`);
+    if (raw) return { ...DEFAULT_FORMAT_CONFIG, ...raw };
   } catch {}
   return { ...DEFAULT_FORMAT_CONFIG };
 }
 
 export function saveColumnPrefs(key: string, columns: ExportColumn[]) {
-  try { localStorage.setItem(`geofield_export_cols_${key}`, JSON.stringify(columns)); } catch {}
+  writeAccountPreference(`export-columns:${key}`, columns);
 }
 export function loadColumnPrefs(key: string, defaults: ExportColumn[]): ExportColumn[] {
   try {
-    const raw = localStorage.getItem(`geofield_export_cols_${key}`);
+    const raw = readAccountPreference<ExportColumn[]>(`export-columns:${key}`);
     if (!raw) return defaults;
-    const saved: ExportColumn[] = JSON.parse(raw);
+    const saved: ExportColumn[] = raw;
     const defaultMap = new Map(defaults.map((d) => [d.key, d]));
     const savedKeys = new Set(saved.map((c) => c.key));
     const merged: ExportColumn[] = saved

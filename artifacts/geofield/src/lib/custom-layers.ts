@@ -1,3 +1,4 @@
+import { loadAccountPreferences, writeAccountPreference } from "./account-preferences.ts";
 /* ── Custom map layer types + localStorage helpers ───────────────────── */
 
 import * as Papa from "papaparse";
@@ -10,7 +11,6 @@ export interface CustomMapLayer {
   createdAt: string;
 }
 
-const KEY = "geofield_custom_layers";
 export const SUPPORTED_LAYER_ACCEPT =
   ".geojson,.json,.kml,.gpx,.csv,.tsv,application/geo+json,application/json,application/vnd.google-earth.kml+xml,application/gpx+xml,text/csv,text/tab-separated-values";
 
@@ -32,12 +32,16 @@ export interface ParsedCustomLayerFile {
 }
 
 export function loadCustomLayers(): CustomMapLayer[] {
-  try { return JSON.parse(localStorage.getItem(KEY) || "[]"); }
-  catch { return []; }
+  return loadAccountPreferences().filter(item => item.key.startsWith("map-layer:") && item.value).map(item => item.value as CustomMapLayer);
 }
 
 export function saveCustomLayers(layers: CustomMapLayer[]) {
-  localStorage.setItem(KEY, JSON.stringify(layers));
+  const previous = new Map(loadCustomLayers().map(layer => [layer.id, layer]));
+  for (const layer of layers) {
+    if (JSON.stringify(previous.get(layer.id)) !== JSON.stringify(layer)) writeAccountPreference(`map-layer:${layer.id}`, layer);
+    previous.delete(layer.id);
+  }
+  for (const id of previous.keys()) writeAccountPreference(`map-layer:${id}`, null);
   window.dispatchEvent(new Event("custom-layers-updated"));
 }
 

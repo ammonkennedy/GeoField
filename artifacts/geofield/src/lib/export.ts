@@ -3,8 +3,10 @@ import { format } from "date-fns";
 import type { Sample } from "@workspace/api-client-react";
 import {
   buildStyledWorksheet,
+  DEFAULT_FORMAT_CONFIG,
   getSampleColumns,
   sampleToDataRow,
+  sampleNotes,
   strikeDipToDataRow,
   STRIKE_DIP_COLUMNS,
   loadExportConfig,
@@ -53,6 +55,20 @@ export function datasetNameForId(
   return datasets.find((dataset) => String(dataset.id) === String(datasetId))?.name || "Unknown Project";
 }
 
+function appendSampleNotes(workbook: XLSX.WorkBook, samples: Sample[], datasets: DatasetLookupItem[], folderName: string) {
+  const rows = samples.filter(sample => sampleNotes(sample).trim()).map(sample => ({
+    sample: sample.sampleId, type: sample.sampleType,
+    project: datasets.length ? datasetNameForId(sample.folderId, datasets) : folderName,
+    notes: sampleNotes(sample),
+  }));
+  if (!rows.length) return;
+  appendSheet(workbook, buildStyledWorksheet([
+    {key:'sample',label:'Sample ID',enabled:true,defaultWidth:24},
+    {key:'type',label:'Sample Type',enabled:true,defaultWidth:16},
+    {key:'project',label:'Project',enabled:true,defaultWidth:24},
+    {key:'notes',label:'Field Notes',enabled:true,defaultWidth:80},
+  ], rows, {...DEFAULT_FORMAT_CONFIG, sheetName: 'Sample Notes'}), 'Sample Notes');
+}
 /**
  * Export samples with a specific column order and formatting config.
  * Called from ExportDialog after the user has customized their export.
@@ -71,11 +87,14 @@ export async function exportSamplesWithConfig(
     s,
     datasets.length ? datasetNameForId(s.folderId, datasets) : folderName,
   ));
-  const ws = buildStyledWorksheet(columns, dataRows, config);
+  const allowed = new Set(getSampleColumns(samples).map(column => column.key));
+  const ws = buildStyledWorksheet(columns.filter(column => allowed.has(column.key)), dataRows, config);
 
   const wb = XLSX.utils.book_new();
   appendSheet(wb, ws, config.sheetName || "Samples");
-  const output = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  appendSampleNotes(wb, samples, datasets, folderName);
+  const { writeWorkbookWithSamplePhotos } = await import("./export-photos.ts");
+  const output = await writeWorkbookWithSamplePhotos(wb, samples, datasets, folderName);
   await saveFile(
     new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`,
@@ -115,13 +134,14 @@ export function buildDatasetWorkbook({
   for (const sheet of SAMPLE_TYPE_SHEETS) {
     const typeSamples = samples.filter((sample) => sample.sampleType === sheet.key);
     if (typeSamples.length === 0) continue;
+    const allowedColumns = new Set(getSampleColumns(typeSamples).map(column => column.key));
     const sampleRows = typeSamples.map((sample) =>
       sampleToDataRow(sample, datasetNameForId(sample.folderId, datasets))
     );
     appendSheet(
       workbook,
       buildStyledWorksheet(
-        sampleColumnsByType[sheet.key] || getSampleColumns(typeSamples),
+        (sampleColumnsByType[sheet.key] || getSampleColumns(typeSamples)).filter(column => allowedColumns.has(column.key)),
         sampleRows,
         { ...sampleConfig, orientation: orientationsByType?.[sheet.key] ?? sampleConfig.orientation, customRows: sampleCustomRowsByType?.[sheet.key] || [] },
       ),
@@ -142,6 +162,7 @@ export function buildDatasetWorkbook({
     );
   }
 
+  appendSampleNotes(workbook, samples, datasets, folderName);
   return workbook;
 }
 
@@ -149,7 +170,8 @@ export async function exportDatasetWorkbookWithConfig(options: Parameters<typeof
   const workbook = buildDatasetWorkbook(options);
   if (!workbook) return;
   const { filename } = options;
-  const output = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const { writeWorkbookWithSamplePhotos } = await import("./export-photos.ts");
+  const output = await writeWorkbookWithSamplePhotos(workbook, options.samples, options.datasets, options.folderName);
   await saveFile(
     new Blob([output], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
     `${filename}-${format(new Date(), "yyyyMMdd-HHmm")}.xlsx`,

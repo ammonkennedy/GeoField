@@ -1,3 +1,4 @@
+import { initializeAccountPreferences } from "@/lib/account-preferences";
 import { useEffect, useState } from "react";
 import { initializeSampleCache } from "@/lib/sample-cache-storage";
 import { initializeTrackStorage } from "@/lib/track-storage";
@@ -30,7 +31,7 @@ function TrackStorageReady({ children }: { children: React.ReactNode }) {
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    Promise.all([initializeTrackStorage(), initializeSampleCache()]).then(() => { if (!cancelled) setReady(true); })
+    Promise.resolve().then(() => { initializeAccountPreferences(); return Promise.all([initializeTrackStorage(), initializeSampleCache()]); }).then(() => { if (!cancelled) setReady(true); })
       .catch(error => { if (!cancelled) setError(error?.message || "Could not load saved data."); });
     return () => { cancelled = true; };
   }, [attempt]);

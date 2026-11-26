@@ -1,7 +1,6 @@
 import type { ExportColumn, ExportCustomRow, ExportFormatConfig } from "./export-config";
-import { readDurableArray, writeDurableArray } from "./durable-storage.ts";
+import { readAccountPreference, writeAccountPreference } from "./account-preferences.ts";
 
-const KEY = "geofield_export_defaults";
 export interface ExportDefault {
   key: string;
   columns: ExportColumn[];
@@ -10,11 +9,10 @@ export interface ExportDefault {
   sheetName?: string;
 }
 export function loadExportDefault(key: string): ExportDefault | undefined {
-  return readDurableArray<ExportDefault>(KEY).find(item => item.key === key);
+  return readAccountPreference<ExportDefault>(`export-default:${key}`);
 }
 export function saveExportDefault(value: ExportDefault) {
-  const current = readDurableArray<ExportDefault>(KEY);
-  writeDurableArray(KEY, [...current.filter(item => item.key !== value.key), value]);
+  writeAccountPreference(`export-default:${value.key}`, value);
 }
 /** Keep saved ordering and choices, omit absent fields, append newly discovered fields. */
 export function applyDefaultColumns(current: ExportColumn[], saved: ExportColumn[]): ExportColumn[] {

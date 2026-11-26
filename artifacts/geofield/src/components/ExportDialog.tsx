@@ -92,7 +92,7 @@ export function ExportDialog({ open, onOpenChange, samples = [], measurements = 
 
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Choose projects to export samples and measurements together.
+              Choose projects to export samples and measurements together. Sample notes and photos are included in separate sheets.
             </p>
 
             <DatasetMultiSelect options={options} identities={localDatasets} value={selected} onChange={setSelected} />

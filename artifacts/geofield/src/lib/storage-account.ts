@@ -1,4 +1,5 @@
 const SCOPED_COLLECTIONS = new Set([
+  "geofield_account_preferences",
   "geofield_stereonets", "geofield_export_defaults", "geofield_offline_queue", "geofield_local_datasets", "geofield_strike_dip",
   "geofield_cloud_samples", "geofield_recently_deleted", "geofield_trips", "geofield_tracks",
 ]);
@@ -49,7 +50,11 @@ export function accountCollectionKey(key: string): string {
 
 export function removeAccountLocalData(accountId: string) {
   const keys = [...SCOPED_COLLECTIONS].map((key) => `${key}:account:${accountId}`);
-  keys.push(`geofield_field_notes:${accountId}`);
+  keys.push(`geofield_field_notes:${accountId}`, `geofield-clinometer-presets:${accountId}`);
+  if (localStorage.getItem("geofield_preferences_legacy_owner") === accountId) {
+    keys.push("geofield_custom_param_templates", "geofield_custom_layers", "geofield_north_reference");
+    for (let i = 0; i < localStorage.length; i++) { const key = localStorage.key(i); if (key?.startsWith("geofield_export_fmt_") || key?.startsWith("geofield_export_cols_")) keys.push(key); }
+  }
   if (localStorage.getItem("geofield_legacy_data_owner") === accountId) keys.push(...SCOPED_COLLECTIONS);
   for (const key of keys) {
     localStorage.removeItem(key);

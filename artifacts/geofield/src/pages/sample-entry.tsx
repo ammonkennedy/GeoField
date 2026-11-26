@@ -1,3 +1,5 @@
+import { loadTemplates, saveTemplate } from "@/lib/sample-sheet-defaults";
+import { useAccountPreferencesRevision } from "@/hooks/use-account-preferences";
 import { useBackNavigation } from "@/hooks/use-back-navigation";
 import { restoreCustomParameterIds } from "@/lib/sample-parameter-order";
 import { PlacePointButton } from "@/components/PlacePointButton";
@@ -75,29 +77,6 @@ interface CustomParam {
   id: string;
   label: string;
   value: string;
-}
-
-const TEMPLATE_KEY = "geofield_custom_param_templates";
-
-type SheetTemplate = { labels: string[]; customIds?: string[]; basicOrder?: string[]; parameterOrder?: string[] };
-function loadTemplates(): Partial<Record<SampleTypeId, SheetTemplate>> {
-  try {
-    const stored = JSON.parse(localStorage.getItem(TEMPLATE_KEY) || "{}");
-    return Object.fromEntries(Object.entries(stored).map(([key, value]: [string, any]) => [key,
-      Array.isArray(value) ? { labels: value.filter(v => typeof v === "string") } : {
-        labels: Array.isArray(value?.labels) ? value.labels.filter((v: unknown) => typeof v === "string") : [],
-        customIds: Array.isArray(value?.customIds) ? value.customIds : undefined,
-        basicOrder: Array.isArray(value?.basicOrder) ? value.basicOrder : [],
-        parameterOrder: Array.isArray(value?.parameterOrder) ? value.parameterOrder : [],
-      }
-    ]));
-  } catch { return {}; }
-}
-
-function saveTemplate(type: SampleTypeId, template: SheetTemplate) {
-  const all = loadTemplates();
-  all[type] = template;
-  localStorage.setItem(TEMPLATE_KEY, JSON.stringify(all));
 }
 
 function templateToParams(labels: string[], ids?: string[]): CustomParam[] {
@@ -191,6 +170,8 @@ export default function SampleEntry() {
   const [mediaSlots, setMediaSlots] = useState<[MediaSlot, MediaSlot, MediaSlot]>([null, null, null]);
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>("idle");
   const [customParams, setCustomParams] = useState<CustomParam[]>([]);
+  const preferencesRevision = useAccountPreferencesRevision();
+  const sheetLayoutEdited = useRef(false);
   const [basicOrder, setBasicOrder] = useState<string[]>([]);
   const [parameterOrder, setParameterOrder] = useState<string[]>([]);
   const [isRecording, setIsRecording] = useState(false);
@@ -327,11 +308,15 @@ export default function SampleEntry() {
   const locationValue = watch("fields.location") as string | undefined;
   const isPending = isSubmitting || createSample.isPending || updateSample.isPending || isSavingMedia || isLoadingMedia;
 
+  useEffect(() => { sheetLayoutEdited.current = false; }, [currentType, id]);
   useEffect(() => {
+    if (sheetLayoutEdited.current) return;
     const template = loadTemplates()[currentType as SampleTypeId];
     setBasicOrder(template?.basicOrder ?? []);
     setParameterOrder(template?.parameterOrder ?? []);
-  }, [currentType, id]);
+    if (isEdit) setCustomParams(current => restoreCustomParameterIds(current, template));
+    else setCustomParams(current => current.some(item => item.value) ? restoreCustomParameterIds(current, template) : templateToParams(template?.labels ?? [], template?.customIds));
+  }, [currentType, id, preferencesRevision, isEdit]);
 
   const prevTypeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -520,10 +505,12 @@ export default function SampleEntry() {
     setIsRecording(true);
   };
 
-  const addCustomParam = () => setCustomParams((prev) => [...prev, { id: `cp_${crypto.randomUUID()}`, label: "", value: "" }]);
-  const updateCustomParam = (id: string, field: "label" | "value", val: string) =>
+  const addCustomParam = () => { sheetLayoutEdited.current = true; setCustomParams((prev) => [...prev, { id: `cp_${crypto.randomUUID()}`, label: "", value: "" }]); };
+  const updateCustomParam = (id: string, field: "label" | "value", val: string) => {
+    sheetLayoutEdited.current = true;
     setCustomParams((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: val } : p)));
-  const removeCustomParam = (id: string) => setCustomParams((prev) => prev.filter((p) => p.id !== id));
+  };
+  const removeCustomParam = (id: string) => { sheetLayoutEdited.current = true; setCustomParams((prev) => prev.filter((p) => p.id !== id)); };
 
   const saveAsDefault = () => {
     const namedParams = customParams.filter(p => p.label.trim());
@@ -535,7 +522,7 @@ export default function SampleEntry() {
     }
     toast({
       title: "Template saved",
-      description: `Parameter order and custom parameters saved for all existing and future ${getTypeLabel(currentType)} sheets on this device.`,
+      description: `Parameter order and custom parameters saved for all existing and future ${getTypeLabel(currentType)} sheets in your account. Changes sync when connected.`,
     });
   };
 
@@ -692,7 +679,7 @@ export default function SampleEntry() {
                 setValue("fields.elevation", point.elevation, { shouldDirty: true });
                 setValue("fields.altitude", point.elevation, { shouldDirty: true });
                 setValue("fields.elevationAccuracy", null, { shouldDirty: true });
-              }} />} collectionDate={watch("fields.collectionDate")} onCollectionDateChange={(value: string) => setValue("fields.collectionDate", value, { shouldDirty: true })} register={register} errors={errors} order={basicOrder} onOrderChange={setBasicOrder} />
+              }} />} collectionDate={watch("fields.collectionDate")} onCollectionDateChange={(value: string) => setValue("fields.collectionDate", value, { shouldDirty: true })} register={register} errors={errors} order={basicOrder} onOrderChange={(order: string[]) => { sheetLayoutEdited.current = true; setBasicOrder(order); }} />
               {Number.isFinite(watch("fields.gpsAccuracy")) && <p className="text-sm text-muted-foreground">GPS estimated accuracy: ±{watch("fields.gpsAccuracy")} m. For a better fix, stay still with a clear view of the sky and enable Precise Location.</p>}
               {(
                 <Button type="button" variant="outline" size="sm" className="gap-2" disabled={gpsStatus === "loading"} onClick={captureGps}>
@@ -728,7 +715,7 @@ export default function SampleEntry() {
                   </div>
                   <Input aria-label={`${param.label || "Custom parameter"} value`} value={param.value} onChange={e => updateCustomParam(param.id, "value", e.target.value)} placeholder="Value (e.g. 7.2, Present, 42 mg/L)" />
                 </div>);
-                const props = { register, order: parameterOrder, onOrderChange: setParameterOrder, extraFields };
+                const props = { register, order: parameterOrder, onOrderChange: (order: string[]) => { sheetLayoutEdited.current = true; setParameterOrder(order); }, extraFields };
                 if (currentType === "water") return <WaterFields {...props} />;
                 if (currentType === "rock") return <RockFields {...props} />;
                 if (currentType === "soil_sand") return <SoilFields {...props} />;

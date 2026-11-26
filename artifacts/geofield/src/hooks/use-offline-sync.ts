@@ -1,3 +1,5 @@
+import { ACCOUNT_PREFERENCES_UPDATED, loadAccountPreferences } from "@/lib/account-preferences";
+import { syncAccountPreferences } from "@/lib/sync-account-preferences";
 import { setQueue } from "@/lib/offline-queue";
 import { applyProjectContents, loadProjectDeletionContents } from "@/lib/project-deletion";
 import { isConnectionUnavailable } from "@/lib/sync-retry";
@@ -119,6 +121,7 @@ function getPendingSyncItems(accountId = "") {
     detail: Number(datasetId) < 0 ? "Waiting for its project to finish syncing." : "",
   });
   return [
+    ...loadAccountPreferences().filter(record => record.pending).map(record => item("Settings", record.key, record.key, record.value === null)),
     ...getSyncableQueue().map(record => item("Sample", record.queuedId, record.payload.sampleId || "Unnamed sample", record.deletedAt, record.payload.folderId)),
     ...loadMeasurements(true).filter(record => record.localRevision).map(record => item("Measurement", record.id, record.label?.trim() || (record.measurementType === "lineation" ? "Lineation" : "Strike and Dip"), record.deletedAt, record.datasetId)),
     ...getPendingLocalDatasets().map(record => item("Project", record.id, record.name, record.deletedAt)),
@@ -260,6 +263,7 @@ export function useOfflineSync() {
 
   useEffect(() => {
     refreshCount();
+    window.addEventListener(ACCOUNT_PREFERENCES_UPDATED, refreshCount);
     window.addEventListener(NOTE_FOLDERS_UPDATED, refreshCount);
     window.addEventListener(FIELD_NOTES_UPDATED, refreshCount);
     window.addEventListener(TRIPS_UPDATED, refreshCount);
@@ -270,6 +274,7 @@ export function useOfflineSync() {
     window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, refreshCount);
     window.addEventListener("storage", refreshCount);
     return () => {
+      window.removeEventListener(ACCOUNT_PREFERENCES_UPDATED, refreshCount);
       window.removeEventListener(NOTE_FOLDERS_UPDATED, refreshCount);
       window.removeEventListener(FIELD_NOTES_UPDATED, refreshCount);
       window.removeEventListener(TRIPS_UPDATED, refreshCount);
@@ -398,6 +403,7 @@ export function useOfflineSync() {
             syncTrips(accountId),
             syncTracks(accountId),
             syncStereonets(accountId),
+            syncAccountPreferences(accountId),
           ]);
           // Wait for every operation before releasing the sync lock. An early
           // Promise.all rejection previously left uploads running behind retries.
@@ -496,7 +502,7 @@ export function useOfflineSync() {
             setCloudSignInRequired(authRequired);
           }
         }
-        if (!failed && (loadStereonets(true).some(net => net.localRevision) || loadNoteFolders(accountId).some(folder => folder.localRevision) || loadTrips(true).some((trip) => trip.localRevision) || getPendingLocalDatasets().length > 0 || loadMeasurements(true).some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
+        if (!failed && (loadAccountPreferences().some(item => item.pending) || loadStereonets(true).some(net => net.localRevision) || loadNoteFolders(accountId).some(folder => folder.localRevision) || loadTrips(true).some((trip) => trip.localRevision) || getPendingLocalDatasets().length > 0 || loadMeasurements(true).some((item) => item.localRevision && !isLocalDatasetId(item.datasetId)) || loadFieldNotes(accountId).some((note) => note.localRevision))) retryNeeded = true;
         if (retryNeeded && !authRequired) scheduleRetry();
       }
     },
@@ -514,6 +520,7 @@ export function useOfflineSync() {
       clearTimeout(timer);
       timer = setTimeout(() => { if (navigator.onLine) void sync(); }, 1500);
     };
+    window.addEventListener(ACCOUNT_PREFERENCES_UPDATED, changed);
     window.addEventListener(QUEUE_UPDATED_EVENT, changed);
     window.addEventListener(LOCAL_DATASETS_UPDATED_EVENT, changed);
     window.addEventListener(NOTE_FOLDERS_UPDATED, changed);
@@ -522,8 +529,18 @@ export function useOfflineSync() {
     window.addEventListener(TRACKS_UPDATED, changed);
     window.addEventListener(STEREONETS_UPDATED, changed);
     window.addEventListener(STRIKE_DIP_UPDATED_EVENT, changed);
-    return () => { clearTimeout(timer); window.removeEventListener(QUEUE_UPDATED_EVENT, changed); window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, changed); window.removeEventListener(NOTE_FOLDERS_UPDATED, changed); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(TRACKS_UPDATED, changed); window.removeEventListener(STEREONETS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
+    return () => { clearTimeout(timer); window.removeEventListener(ACCOUNT_PREFERENCES_UPDATED, changed); window.removeEventListener(QUEUE_UPDATED_EVENT, changed); window.removeEventListener(LOCAL_DATASETS_UPDATED_EVENT, changed); window.removeEventListener(NOTE_FOLDERS_UPDATED, changed); window.removeEventListener(FIELD_NOTES_UPDATED, changed); window.removeEventListener(TRIPS_UPDATED, changed); window.removeEventListener(TRACKS_UPDATED, changed); window.removeEventListener(STEREONETS_UPDATED, changed); window.removeEventListener(STRIKE_DIP_UPDATED_EVENT, changed); };
   }, [accountId, sync]);
+  // S3-backed preferences have no GraphQL subscription. Refresh them while
+  // this screen is visible without redownloading all samples/media every time.
+  useEffect(() => {
+    if (!accountId || !isOnline) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible" || !navigator.onLine || syncingRef.current) return;
+      void syncAccountPreferences(accountId).catch(() => { if (mounted.current) void sync(); });
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [accountId, isOnline, sync]);
   const rebuildCloudCache = useCallback(() => runSync(true), [runSync]);
   useEffect(() => {
     syncRef.current = sync;

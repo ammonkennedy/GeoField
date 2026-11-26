@@ -3,3 +3,5 @@ export * from "./generated/api.schemas";
 export * from './track-storage';
 
 export * from './stereonet-storage';
+
+export * from "./preference-storage";

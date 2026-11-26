@@ -1,3 +1,5 @@
+import { readAccountPreference, writeAccountPreference } from "@/lib/account-preferences";
+import { useAccountPreferencesRevision } from "@/hooks/use-account-preferences";
 import { BulkRecords } from "@/components/BulkRecords";
 import { MeasurementRow, ROCK_LAYER_OPTIONS, PLANE_FEATURE_TYPES, LINEATION_FEATURE_TYPES } from "@/components/MeasurementRow";
 import { getAccuratePosition } from "@/lib/gps";
@@ -140,21 +142,22 @@ export default function StrikeDipPage() {
   const [measurements, setMeasurements] = useState<StrikeDipMeasurement[]>(loadMeasurements);
   const [compassOpen, setCompassOpen] = useState(false);
   const presetAccount = getStorageAccountId() || "guest";
-  const presetKey = `geofield-clinometer-presets:${presetAccount}`;
+  const preferenceRevision = useAccountPreferencesRevision();
   const [presetRevision, setPresetRevision] = useState(0);
   const presets = useMemo(() => {
     const defaults = { planeFeature: "", lineFeature: "Lineation", rockLayerType: "", datasetId: "" };
     try {
-      const stored = JSON.parse(localStorage.getItem(presetKey) || "{}");
+
       for (const key of Object.keys(defaults) as (keyof typeof defaults)[]) {
-        if (typeof stored?.[key] === "string") defaults[key] = stored[key];
+        const stored = readAccountPreference<string>(`clinometer:${key}`);
+        if (typeof stored === "string") defaults[key] = stored;
       }
     } catch { /* Keep usable defaults if preferences are unavailable. */ }
     return defaults;
-  }, [presetKey, presetRevision]);
+  }, [presetAccount, presetRevision, preferenceRevision]);
   const updatePreset = (key: keyof typeof presets, value: string) => {
     try {
-      localStorage.setItem(presetKey, JSON.stringify({ ...presets, [key]: value }));
+      writeAccountPreference(`clinometer:${key}`, value);
       setPresetRevision(revision => revision + 1);
     } catch { toast({ title: "Could not save preset", description: "Check available device storage and try again.", variant: "destructive" }); }
   };

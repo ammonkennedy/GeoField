@@ -1,3 +1,4 @@
+import { useAccountPreferencesRevision } from "@/hooks/use-account-preferences";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -58,11 +59,15 @@ export function ExportCustomizerDialog({
   const [exportError, setExportError] = useState("");
   const [defaultStatus, setDefaultStatus] = useState("");
   const defaultKey = (key: string) => key === "strikedip" ? "measurements" : key;
+  const preferencesRevision = useAccountPreferencesRevision();
+  const appliedPreferenceRevision = useRef(-1);
+  const userInteracted = useRef(false);
   const initializedForOpen = useRef(false);
   useEffect(() => {
-    if (!open) { initializedForOpen.current = false; return; }
+    if (!open) { initializedForOpen.current = false; userInteracted.current = false; return; }
     // A fresh props array or background sync must not reset an in-progress export.
-    if (initializedForOpen.current) return;
+    if (initializedForOpen.current && (userInteracted.current || appliedPreferenceRevision.current === preferencesRevision)) return;
+    appliedPreferenceRevision.current = preferencesRevision;
     initializedForOpen.current = true;
     setColumns(initialColumns);
     setGroups(initialGroups);
@@ -89,7 +94,7 @@ export function ExportCustomizerDialog({
     } catch (error: any) {
       setExportError(error?.message || "Saved defaults could not be loaded.");
     }
-  }, [open, initialColumns, initialGroups, initialConfig, initialFileName, configKey]);
+  }, [open, initialColumns, initialGroups, initialConfig, initialFileName, configKey, preferencesRevision]);
 
   const handleOpenChange = (value: boolean) => onOpenChange(value);
 
@@ -103,7 +108,7 @@ export function ExportCustomizerDialog({
         sheetName: group ? undefined : sheetName,
       });
       setExportError("");
-      setDefaultStatus(group ? `Default saved for ${group.label}.` : "Default saved.");
+      setDefaultStatus(group ? `Default saved for ${group.label}. Syncs with your account when connected.` : "Default saved. Syncs with your account when connected.");
     } catch (error: any) {
       setExportError(error?.message || "The default could not be saved.");
     }
@@ -218,7 +223,7 @@ export function ExportCustomizerDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden p-0">
+      <DialogContent onPointerDownCapture={() => { userInteracted.current = true; }} onKeyDownCapture={() => { userInteracted.current = true; }} className="max-w-lg max-h-[90vh] flex flex-col overflow-hidden p-0">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
           <DialogTitle className="flex items-center gap-2 text-lg">

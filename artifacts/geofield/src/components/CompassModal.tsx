@@ -1,3 +1,5 @@
+import { useAccountPreferencesRevision } from "@/hooks/use-account-preferences";
+import { readAccountPreference, writeAccountPreference } from "@/lib/account-preferences";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
@@ -48,10 +50,9 @@ const GeologyMotion = registerPlugin<GeologyMotionPlugin>("GeologyMotion");
 // Keep roughly 0.8 seconds of history for measurement quality assessment.
 const DISPLAY_WINDOW = 4;
 const STABILITY_WINDOW = 24, AZIMUTH_TOLERANCE = 3, DIP_TOLERANCE = 2;
-const NORTH_REFERENCE_KEY = "geofield_north_reference";
 const emptyFiltered = () => ({ strike: null as number | null, dipDirection: null as number | null, dip: 0, strikeVector: null as Vector3 | null, downDipVector: null as Vector3 | null, screenStrikeVector: null as ScreenVector | null, screenDownDipVector: null as ScreenVector | null, screenNorthVector: null as ScreenVector | null });
 const loadNorthReference = (): NorthReferencePreference =>
-  localStorage.getItem(NORTH_REFERENCE_KEY) === "true" ? "true" : "magnetic";
+  readAccountPreference<string>("north-reference") === "true" ? "true" : "magnetic";
 const fmt = (value: number | null) => value === null ? "—" : `${normalizeAzimuth(Math.round(value)).toString().padStart(3, "0")}°`;
 const signedAngle = (angle: number) => ((angle + 540) % 360) - 180;
 const degrees = (radians: number) => radians * 180 / Math.PI;
@@ -138,7 +139,9 @@ export function CompassModal({ open, onClose, onCapture, renderPresets }: Props)
   const [status, setStatus] = useState<"starting" | "active" | "unavailable" | "error">("starting");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const preferenceRevision = useAccountPreferencesRevision();
   const [selectedNorthReference, setSelectedNorthReference] = useState<NorthReferencePreference>(loadNorthReference);
+  useEffect(() => { if (!open) setSelectedNorthReference(loadNorthReference()); }, [open, preferenceRevision]);
   const [activeNorthReference, setActiveNorthReference] = useState<NorthReferencePreference | null>(null);
   const [reading, setReading] = useState<SensorReading | null>(null);
   const [rawOrientation, setRawOrientation] = useState({ strike: null as number | null, dipDirection: null as number | null, dip: 0 });
@@ -286,7 +289,7 @@ export function CompassModal({ open, onClose, onCapture, renderPresets }: Props)
         setActiveNorthReference(started.northReference);
         if (selectedNorthReference === "true" && started.northReference === "magnetic") {
           setNotice("True north is unavailable. Using magnetic north.");
-          localStorage.setItem(NORTH_REFERENCE_KEY, "magnetic");
+          // Hardware fallback is local; it must not overwrite the account preference.
           setSelectedNorthReference("magnetic");
         }
       } catch (cause: any) { setError(cause?.message || "Could not start geological compass."); setStatus("error"); }
@@ -367,7 +370,8 @@ export function CompassModal({ open, onClose, onCapture, renderPresets }: Props)
   };
   const selectNorthReference = (value: NorthReferencePreference) => {
     if (value === selectedNorthReference) return;
-    localStorage.setItem(NORTH_REFERENCE_KEY, value);
+    try { writeAccountPreference("north-reference", value); }
+    catch { setNotice("North-reference preference could not be saved. Please retry."); return; }
     setNotice("");
     setSelectedNorthReference(value);
   };
