@@ -1,8 +1,11 @@
+import { histogram, correlation, linePoints } from "@/lib/figure-statistics";
 import { sampleFigureFields, figureParameters, figureNumber } from "@/lib/sample-figures";
 import { measurementFigureRecords } from "@/lib/measurement-figures";
 import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
+  LineChart,
+  Line,
   BarChart,
   Bar,
   ScatterChart,
@@ -32,12 +35,15 @@ const TYPE_COLORS: Record<string, string> = {
   air:       "#64748b",
 };
 
-type ChartType = "bar" | "scatter" | "box";
+type ChartType = "bar" | "scatter" | "box" | "line" | "histogram" | "correlation";
 
 const CHART_OPTIONS: { id: ChartType; label: string }[] = [
   { id: "bar", label: "Bar Chart" },
   { id: "scatter", label: "Scatter Plot" },
   { id: "box", label: "Box Plot" },
+  { id: "line", label: "Line Chart" },
+  { id: "histogram", label: "Histogram" },
+  { id: "correlation", label: "Correlation Heatmap" },
 ];
 
 function FigureViewport({ children }: { children: React.ReactNode | ((size: { width: number; height: number }) => React.ReactNode) }) {
@@ -277,12 +283,64 @@ function BoxFigure({ data, paramLabel, paramUnit, labelPoints }: { data: any[]; 
   );
 }
 
+function LineFigure({ data, xLabel, yLabel, labelPoints }: { data: ReturnType<typeof linePoints>; xLabel: string; yLabel: string; labelPoints: boolean }) {
+  return <FigureViewport><ResponsiveContainer width="100%" height="100%">
+    <LineChart data={data} margin={{ top: 28, right: 24, left: 28, bottom: 44 }}>
+      <CartesianGrid strokeDasharray="3 3" />
+      <XAxis dataKey="x" type="number" domain={['dataMin', 'dataMax']} label={{ value: xLabel, position: "insideBottom", offset: -15 }} />
+      <YAxis label={{ value: yLabel, angle: -90, position: "insideLeft" }} />
+      <Tooltip labelFormatter={(_, payload) => payload[0]?.payload?.name ?? ""} />
+      <Line dataKey="value" name={yLabel} type="linear" stroke="#1677e8" dot connectNulls={false} isAnimationActive={false}>
+        {labelPoints && <LabelList dataKey="name" position="top" />}
+      </Line>
+    </LineChart>
+  </ResponsiveContainer></FigureViewport>;
+}
+
+function HistogramFigure({ values, bins, label, labelPoints }: { values: number[]; bins: number; label: string; labelPoints: boolean }) {
+  const data = histogram(values, bins).map(bin => ({ ...bin, range: bin.lower === bin.upper ? String(bin.lower) : `${Number(bin.lower.toPrecision(5))}–${Number(bin.upper.toPrecision(5))}` }));
+  return <FigureViewport><ResponsiveContainer width="100%" height="100%">
+    <BarChart data={data} barCategoryGap={0} margin={{ top: 28, right: 24, left: 24, bottom: 70 }}>
+      <CartesianGrid strokeDasharray="3 3" />
+      <XAxis dataKey="range" angle={-35} textAnchor="end" height={65} label={{ value: label, position: "insideBottom", offset: -15 }} tick={{ fontSize: 10 }} />
+      <YAxis allowDecimals={false} label={{ value: "Count", angle: -90, position: "insideLeft" }} />
+      <Tooltip />
+      <Bar dataKey="count" name="Count" fill="#1677e8" isAnimationActive={false}>
+        {labelPoints && <LabelList dataKey="count" position="top" />}
+      </Bar>
+    </BarChart>
+  </ResponsiveContainer></FigureViewport>;
+}
+
+function CorrelationFigure({ records, parameters }: { records: Record<string, unknown>[]; parameters: [string, { label: string }][] }) {
+  const matrix = useMemo(() => parameters.map(([y]) => parameters.map(([x]) => correlation(records, x, y))), [records, parameters]);
+  return <FigureViewport>{({ width, height }) => {
+    const left = Math.min(190, width * .35), top = 100;
+    const cell = Math.max(10, Math.min((width - left - 15) / parameters.length, (height - top - 40) / parameters.length));
+    return <div className="recharts-wrapper"><svg className="recharts-surface" width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Pearson correlation heatmap">
+      {parameters.map(([key, meta], index) => <g key={key}>
+        <text x={left - 8} y={top + (index + .5) * cell} textAnchor="end" fontSize={11}><title>{meta.label}</title>{meta.label.length > 24 ? meta.label.slice(0, 23) + '…' : meta.label}</text>
+        <text transform={`translate(${left + (index + .5) * cell},${top - 8}) rotate(-45)`} fontSize={11}><title>{meta.label}</title>{index + 1}</text>
+        {matrix[index].map(({ r, n }, column) => <g key={column}>
+          <rect x={left + column * cell} y={top + index * cell} width={cell} height={cell} stroke="white" fill={r === null ? '#e5e7eb' : `hsl(${r < 0 ? 15 : 212} 75% ${96 - Math.abs(r) * 52}%)`}>
+            <title>{meta.label} / {parameters[column][1].label}: {r === null ? 'Unavailable' : r.toFixed(3)}, n={n}</title>
+          </rect>
+          {cell >= 30 && <text x={left + (column + .5) * cell} y={top + (index + .5) * cell + 4} textAnchor="middle" fontSize={Math.min(12, cell / 4)} fill={r !== null && Math.abs(r) > .7 ? 'white' : '#111827'} pointerEvents="none">{r === null ? '—' : r.toFixed(2)}</text>}
+        </g>)}
+      </g>)}
+      <text x={left} y={top + parameters.length * cell + 25} fontSize={11}>Orange: −1 · White: 0 · Blue: +1 · Gray: unavailable</text>
+    </svg></div>;
+  }}</FigureViewport>;
+}
+
 export function DatasetFigures({ samples: sampleRecords, measurements = [], datasetName }: { samples: Sample[]; measurements?: StrikeDipMeasurement[]; datasetName?: string }) {
   const samples = useMemo(() => [...sampleRecords, ...measurementFigureRecords(measurements)].map(sample => ({ ...sample, figure: sampleFigureFields(sample) })), [sampleRecords, measurements]);
   const [open, setOpen] = useState(false);
   const [selectedParam, setSelectedParam] = useState<string>("");
   const [scatterXParam, setScatterXParam] = useState<string>("");
   const [chartType, setChartType] = useState<ChartType>("bar");
+  const [bins, setBins] = useState(10);
+  const [heatKeys, setHeatKeys] = useState<string[]>([]);
   const [labelPoints, setLabelPoints] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -311,7 +369,7 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
       .filter(Boolean) as any[];
   }, [samples, selectedParam, parameterMap]);
 
-  const paramMeta = selectedParam ? parameterMap.get(selectedParam) : null;
+  const paramMeta = chartType === "correlation" ? { label: "Correlation Heatmap", unit: "" } : selectedParam ? parameterMap.get(selectedParam) : null;
   const scatterXMeta = scatterXParam ? parameterMap.get(scatterXParam) : null;
   const scatterData = useMemo(() => {
     if (!selectedParam || !scatterXParam) return [];
@@ -331,6 +389,14 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
       }];
     });
   }, [samples, selectedParam, scatterXParam, scatterXMeta, paramMeta]);
+
+  const lineData = useMemo(() => linePoints(samples.map(sample => ({ name: sample.sampleId, values: sample.figure.values })), selectedParam, scatterXParam), [samples, selectedParam, scatterXParam]);
+  const heatOptions = availableParams.filter(([key]) => !["strike", "azimuth"].includes(key));
+  const heatParams = heatOptions.filter(([key]) => heatKeys.includes(key));
+  const heatRecords = useMemo(() => samples.map(sample => sample.figure.values), [samples]);
+  const plottedData = chartType === "scatter" ? scatterData : chartType === "line" ? lineData.filter(point => point.value !== null) : chartData;
+  const recordCount = chartType === "correlation" ? samples.length : plottedData.length;
+  const hasChart = chartType === "correlation" ? heatParams.length >= 2 : !!selectedParam && plottedData.length > 0;
 
   const downloadChart = () => {
     if (!chartContainerRef.current || !paramMeta) return;
@@ -363,7 +429,7 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
 
     // Title + subtitle
     const title = `${paramMeta.label}${paramMeta.unit ? ` (${paramMeta.unit})` : ""}`;
-    const subtitle = `${chartData.length} record${chartData.length !== 1 ? "s" : ""}${datasetName ? ` — ${datasetName}` : ""}`;
+    const subtitle = `${recordCount} record${recordCount !== 1 ? "s" : ""}${datasetName ? ` — ${datasetName}` : ""}`;
     ctx.fillStyle = "#111827";
     ctx.font = "bold 16px -apple-system, sans-serif";
     ctx.fillText(title, PAD, 24, W);
@@ -431,8 +497,8 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
   };
 
   const stats = useMemo(() => {
-    if (!chartData.length || ["strike", "azimuth"].includes(selectedParam)) return null;
-    const vals = chartData.map((d: any) => d.value);
+    if (chartType === "correlation" || !plottedData.length || ["strike", "azimuth"].includes(selectedParam)) return null;
+    const vals = plottedData.map((d: any) => d.value);
     const avg = vals.reduce((s: number, v: number) => s + v, 0) / vals.length;
     return {
       min: Math.min(...vals).toFixed(3),
@@ -440,7 +506,7 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
       avg: avg.toFixed(3),
       n: vals.length,
     };
-  }, [chartData, selectedParam]);
+  }, [plottedData, selectedParam, chartType]);
 
   return (
     <>
@@ -476,7 +542,7 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
               <>
                 {/* Controls row */}
                 <div className="flex flex-wrap gap-3 items-end">
-                  <div className="flex-1 min-w-48 space-y-1.5">
+                  {chartType !== "correlation" && <div className="flex-1 min-w-48 space-y-1.5">
                     <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Parameter
                     </label>
@@ -495,9 +561,9 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                       </select>
                       <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                     </div>
-                  </div>
+                  </div>}
 
-                  {chartType === "scatter" && (
+                  {(chartType === "scatter" || chartType === "line") && (
                     <div className="flex-1 min-w-48 space-y-1.5">
                       <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">X-axis Parameter</label>
                       <div className="relative">
@@ -506,7 +572,7 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                           value={scatterXParam}
                           onChange={(event) => setScatterXParam(event.target.value)}
                         >
-                          <option value="">Choose an X-axis parameter...</option>
+                          <option value="">{chartType === "line" ? "Sample order" : "Choose an X-axis parameter..."}</option>
                           {availableParams.filter(([key]) => key !== selectedParam).map(([key, meta]) => (
                             <option key={key} value={key}>{meta.label}{meta.unit ? ` (${meta.unit})` : ""}</option>
                           ))}
@@ -520,11 +586,11 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                     <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       Chart Type
                     </label>
-                    <div className="flex items-center gap-1 bg-muted/50 border border-border rounded-lg p-0.5">
+                    <div className="flex flex-wrap items-center gap-1 bg-muted/50 border border-border rounded-lg p-0.5">
                       {CHART_OPTIONS.filter(opt => opt.id !== "box" || !["strike", "azimuth"].includes(selectedParam)).map((opt) => (
                         <button
                           key={opt.id}
-                          onClick={() => setChartType(opt.id)}
+                          onClick={() => { setChartType(opt.id); if (opt.id === "correlation" && heatKeys.length === 0) setHeatKeys(heatOptions.slice(0, 6).map(([key]) => key)); }}
                           className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
                             chartType === opt.id
                               ? "bg-card text-foreground shadow"
@@ -538,8 +604,19 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                   </div>
                 </div>
 
+                {chartType === "histogram" && <label className="flex items-center gap-3 text-sm">Bins
+                  <input aria-label="Histogram bins" type="range" min={1} max={50} value={bins} onChange={event => setBins(Number(event.target.value))} />{bins}
+                </label>}
+                {chartType === "line" && <p className="text-xs text-muted-foreground">{scatterXParam ? "Points are ordered by the X-axis value." : "Points follow the current sample order; this is not elapsed time."} Missing readings leave gaps.</p>}
+                {chartType === "correlation" && <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Select 2–12 parameters. Pearson r uses matching numeric readings from at least three records per pair. Constant values are unavailable. Strike and azimuth are excluded because they wrap around north.</p>
+                  <div className="flex flex-wrap gap-3">{heatOptions.map(([key, meta]) => <label key={key} className="text-sm flex items-center gap-2">
+                    <input type="checkbox" checked={heatKeys.includes(key)} disabled={!heatKeys.includes(key) && heatParams.length >= 12} onChange={event => setHeatKeys(keys => event.target.checked ? [...keys, key] : keys.filter(item => item !== key))} />{meta.label}
+                  </label>)}</div>
+                  <p className="text-xs text-muted-foreground">{heatParams.map(([, meta], index) => `${index + 1}: ${meta.label}`).join(" · ")}</p>
+                </div>}
                 {/* Chart */}
-                {selectedParam && chartData.length > 0 ? (
+                {hasChart ? (
                   <div className="bg-muted/30 rounded-2xl p-4 border border-border" ref={chartContainerRef}>
                     <div className="mb-4 flex flex-col gap-3 border-b border-border/70 pb-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
@@ -547,15 +624,15 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                           {paramMeta?.label}{paramMeta?.unit ? ` (${paramMeta.unit})` : ""}
                         </h3>
                         <p className="text-xs text-muted-foreground">
-                          {chartData.length} record{chartData.length !== 1 ? "s" : ""}
+                          {recordCount} record{recordCount !== 1 ? "s" : ""}
                           {datasetName ? ` in ${datasetName}` : ""}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-start gap-4">
-                        <label className="flex min-h-9 cursor-pointer items-center gap-2 text-sm" data-html2canvas-ignore="true">
+                        {chartType !== "correlation" && <label className="flex min-h-9 cursor-pointer items-center gap-2 text-sm" data-html2canvas-ignore="true">
                           <input type="checkbox" checked={labelPoints} onChange={(event) => setLabelPoints(event.target.checked)} className="h-4 w-4 accent-primary" />
-                          Label points
-                        </label>
+                          {chartType === "histogram" ? "Label counts" : "Label points"}
+                        </label>}
                         {stats && (
                           <div className="flex gap-4 text-center text-xs">
                             <div><p className="text-muted-foreground">Min</p><p className="font-semibold">{stats.min}</p></div>
@@ -578,6 +655,9 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                       </div>
                     </div>
 
+                    {chartType === "line" && <LineFigure data={lineData} xLabel={scatterXMeta?.label ?? "Sample order"} yLabel={paramMeta?.label ?? ""} labelPoints={labelPoints} />}
+                    {chartType === "histogram" && <HistogramFigure values={chartData.map(point => point.value)} bins={bins} label={paramMeta?.label ?? ""} labelPoints={labelPoints} />}
+                    {chartType === "correlation" && <CorrelationFigure records={heatRecords} parameters={heatParams} />}
                     {chartType === "bar" && (
                       <BarFigure
                         key={selectedParam}
@@ -603,18 +683,18 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
                     )}
 
                     {/* Color legend */}
-                    <div className="flex gap-4 justify-center mt-3 flex-wrap">
+                    {!["line", "histogram", "correlation"].includes(chartType) && <div className="flex gap-4 justify-center mt-3 flex-wrap">
                       {[...new Set(chartData.map((d: any) => d.type))].map((t) => (
                         <div key={t as string} className="flex items-center gap-1.5 text-xs">
                           <span className="w-3 h-3 rounded-full" style={{ backgroundColor: TYPE_COLORS[t as string] }} />
                           <span className="text-muted-foreground capitalize">{(t as string).replace("_", "/")}</span>
                         </div>
                       ))}
-                    </div>
+                    </div>}
                   </div>
-                ) : selectedParam ? (
+                ) : chartType === "correlation" ? <p className="py-10 text-center text-sm text-muted-foreground">Select at least two numeric parameters.</p> : selectedParam ? (
                   <div className="py-10 text-center text-muted-foreground text-sm">
-                    No records have values for <strong>{paramMeta?.label}</strong> in this project.
+                    {chartType === "scatter" ? (scatterXParam ? "No records contain values for both selected parameters." : "Choose an X-axis parameter to generate the scatter plot.") : <>No records have values for <strong>{paramMeta?.label}</strong> in this project.</>}
                   </div>
                 ) : (
                   <div className="py-10 text-center text-muted-foreground text-sm">
