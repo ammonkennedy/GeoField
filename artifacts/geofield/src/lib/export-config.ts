@@ -1,3 +1,5 @@
+import { getCustomParameters } from "./custom-parameters.ts";
+import { normalizedParameterLabel, normalizedCustomExportKey } from "./export-parameter-names.ts";
 import { readAccountPreference, writeAccountPreference } from "./account-preferences.ts";
 import * as XLSX from "xlsx";
 import type { Sample } from "@workspace/api-client-react";
@@ -129,37 +131,8 @@ export const SAMPLE_FIXED_COLUMNS: ExportColumn[] = [
   { key: "_notes",      label: "Field Notes",          enabled: true, defaultWidth: 40 },
 ];
 
-type StoredCustomParameter = {
-  label: string;
-  value: unknown;
-};
-
-function getCustomParameters(fields: Record<string, any>): StoredCustomParameter[] {
-  let stored = fields.customParams;
-  if (typeof stored === "string") {
-    try {
-      stored = JSON.parse(stored);
-    } catch {
-      return [];
-    }
-  }
-  if (stored && !Array.isArray(stored) && typeof stored === "object") {
-    const record = stored as Record<string, unknown>;
-    stored = "label" in record
-      ? [record]
-      : Object.entries(record).map(([label, value]) => ({ label, value }));
-  }
-  if (!Array.isArray(stored)) return [];
-  return stored.flatMap((parameter: unknown) => {
-    if (!parameter || typeof parameter !== "object") return [];
-    const label = String((parameter as Record<string, unknown>).label ?? "").trim();
-    if (!label) return [];
-    return [{ label, value: (parameter as Record<string, unknown>).value }];
-  });
-}
-
-function customParameterKey(label: string, occurrence: number) {
-  return `_customParameter:${label}:${occurrence}`;
+function customParameterKey(label: string, occurrence: number, sampleType?: string) {
+  return normalizedCustomExportKey(`_customParameter:${label}:${occurrence}`, sampleType);
 }
 
 function exportCellValue(value: unknown): string | number | boolean {
@@ -213,14 +186,15 @@ export function getSampleColumns(samples: Sample[]): ExportColumn[] {
     });
     if (fields.elevation == null && fields.altitude != null) fieldKeys.add('elevation');
     const occurrences = new Map<string, number>();
-    getCustomParameters(fields).forEach(({ label }) => {
-      const occurrence = occurrences.get(label) ?? 0;
-      occurrences.set(label, occurrence + 1);
-      const key = customParameterKey(label, occurrence);
+    getCustomParameters(fields, s.sampleType).forEach(({ label }) => {
+      const name = normalizedParameterLabel(label, s.sampleType);
+      const occurrence = occurrences.get(name) ?? 0;
+      occurrences.set(name, occurrence + 1);
+      const key = customParameterKey(label, occurrence, s.sampleType);
       if (!customParameterColumns.has(key)) {
         customParameterColumns.set(key, {
           key,
-          label,
+          label: occurrence ? `${label} (reading ${occurrence + 1})` : label,
           enabled: true,
           defaultWidth: Math.max(18, Math.min(40, label.length + 4)),
         });
@@ -255,10 +229,11 @@ export function sampleToDataRow(sample: Sample, folderName: string): Record<stri
   });
   if (fields.elevation == null && fields.altitude != null) row.field_elevation = exportCellValue(fields.altitude);
   const occurrences = new Map<string, number>();
-  getCustomParameters(fields).forEach(({ label, value }) => {
-    const occurrence = occurrences.get(label) ?? 0;
-    occurrences.set(label, occurrence + 1);
-    row[customParameterKey(label, occurrence)] = exportCellValue(value);
+  getCustomParameters(fields, sample.sampleType).forEach(({ label, value }) => {
+    const name = normalizedParameterLabel(label, sample.sampleType);
+    const occurrence = occurrences.get(name) ?? 0;
+    occurrences.set(name, occurrence + 1);
+    row[customParameterKey(label, occurrence, sample.sampleType)] = exportCellValue(value);
   });
   return row;
 }

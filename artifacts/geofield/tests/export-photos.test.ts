@@ -70,9 +70,24 @@ test('account changes during photo loading stop export',async()=>{
 test('export contains only sheet parameters, never internal metadata or duplicate coordinates',()=>{
   const record={...sample,fields:{ph:7,location:'1, 2',collectionDate:'2026-11-26T14:40',altitude:0,latitude:1,longitude:2,gpsAccuracy:3,elevationAccuracy:4,plannedSiteId:'internal',collectionStatus:'collected',collectedAt:'internal time',unknownLegacyField:'old',strike:40,dip:20,customParams:[{label:'My observation',value:'Keep'}]}};
   const columns=getSampleColumns([record]);
-  assert.deepEqual(columns.map(c=>c.key),['_sampleId','_sampleType','_folder','_notes','field_ph','field_location','field_collectionDate','field_elevation','_customParameter:My observation:0']);
+  assert.deepEqual(columns.map(c=>c.key),['_sampleId','_sampleType','_folder','_notes','field_ph','field_location','field_collectionDate','field_elevation','_customParameter:my observation:0']);
   const workbook=buildDatasetWorkbook({...options,samples:[record]})!;
   const rows=XLSX.utils.sheet_to_json(workbook.Sheets.Water,{header:1}) as any[];
   assert.equal(rows[1][7],0);
   assert.equal(JSON.stringify(rows).includes('internal'),false);
 });
+for (const orientation of ['normal','transposed'] as const) {
+  test(`equivalent historical parameter names share one populated workbook column in ${orientation} layout`,()=>{
+    const samples = ['Pressure mm/hg','Pressure','Barometric Pressure (mmHg)'].map((label,index)=>({...sample,sampleId:`Water-${index}`,fields:{customParams:[{label,value:449+index},{label:'Barometric pressure (mmHg)',value:''}]}}));
+    const workbook=buildDatasetWorkbook({...options,samples,sampleConfig:{...DEFAULT_FORMAT_CONFIG,orientation}})!;
+    const saved=XLSX.read(XLSX.write(workbook,{type:'array',bookType:'xlsx'}),{type:'array'});
+    const rows=XLSX.utils.sheet_to_json(saved.Sheets.Water,{header:1}) as any[][];
+    if(orientation==='normal') {
+      assert.equal(rows[0].length,5);
+      assert.deepEqual(rows.slice(1).map(row=>row[4]),[449,450,451]);
+    } else {
+      assert.equal(rows.length,6);
+      assert.deepEqual(rows[5].slice(1),[449,450,451]);
+    }
+  });
+}

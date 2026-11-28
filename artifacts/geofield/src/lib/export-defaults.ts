@@ -1,3 +1,4 @@
+import { normalizedCustomExportKey } from "./export-parameter-names.ts";
 import type { ExportColumn, ExportCustomRow, ExportFormatConfig } from "./export-config";
 import { readAccountPreference, writeAccountPreference } from "./account-preferences.ts";
 
@@ -18,9 +19,11 @@ export function saveExportDefault(value: ExportDefault) {
 export function applyDefaultColumns(current: ExportColumn[], saved: ExportColumn[]): ExportColumn[] {
   const available = new Map(current.map(column => [column.key, column]));
   const ordered = saved.flatMap(column => {
-    const original = available.get(column.key);
+    const normalized = normalizedCustomExportKey(column.key);
+    const key = available.has(normalized) ? normalized : normalizedCustomExportKey(column.key, 'water');
+    const original = available.get(key);
     if (!original) return [];
-    available.delete(column.key);
+    available.delete(key);
     return [{ ...original, label: column.key === "dataset" && column.label === "Dataset" ? "Project" : column.label, enabled: column.enabled }];
   });
   return [...ordered, ...available.values()];

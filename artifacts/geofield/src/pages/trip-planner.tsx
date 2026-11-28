@@ -1,3 +1,4 @@
+import { TOPOGRAPHIC_MAP } from "@/lib/topographic-map";
 import { TRIP_MAP_STYLE } from "@/lib/trip-map-style";
 import { MapConnectivity } from "@/components/MapConnectivity";
 import { registerGeologyProtocol } from "@/lib/geology-tile-cache";
@@ -1029,11 +1030,12 @@ export default function TripPlannerPage() {
                 {(["satellite", "street", "topographic"] as const).map((bl) => (
                   <button
                     key={bl}
+                    title={bl === "topographic" && TOPOGRAPHIC_MAP.onlineOnly ? "Worldwide topographic map · online only" : undefined}
                     onClick={() => setBaseLayer(bl)}
                     className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-all sm:flex-none ${baseLayer === bl ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
                   >
                     {bl === "satellite" ? <Satellite className="w-3.5 h-3.5" /> : bl === "topographic" ? <Mountain className="w-3.5 h-3.5" /> : <Map className="w-3.5 h-3.5" />}
-                    {bl === "topographic" ? "USGS Topo" : bl.charAt(0).toUpperCase() + bl.slice(1)}
+                    {bl === "topographic" ? TOPOGRAPHIC_MAP.label : bl.charAt(0).toUpperCase() + bl.slice(1)}
                   </button>
                 ))}
               </div>

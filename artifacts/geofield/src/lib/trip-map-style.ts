@@ -1,3 +1,4 @@
+import { TOPOGRAPHIC_MAP } from "./topographic-map.ts";
 export const TRIP_MAP_STYLE: any = {
   version: 8,
   sources: {
@@ -17,13 +18,7 @@ export const TRIP_MAP_STYLE: any = {
       attribution: "© Esri",
       maxzoom: 19,
     },
-    topographic: {
-      type: "raster",
-      tiles: ["https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}"],
-      tileSize: 256,
-      attribution: "USGS The National Map",
-      maxzoom: 16,
-    },
+    topographic: TOPOGRAPHIC_MAP.source,
     labels: {
       type: "raster",
       tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"],

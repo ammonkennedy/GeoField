@@ -1,3 +1,4 @@
+import { TOPOGRAPHIC_MAP } from "@/lib/topographic-map";
 import { formatDateTime24 } from "@/lib/date-time";
 import { MapConnectivity } from "@/components/MapConnectivity";
 import { registerGeologyProtocol } from "@/lib/geology-tile-cache";
@@ -95,7 +96,6 @@ type BaseLayer = "street" | "satellite" | "topographic";
 type OverlayLayer = "none" | "geology" | "soil" | "trails" | "prism" | "faults";
 
 const SATELLITE_IMAGERY_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-const USGS_TOPO_TILES = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}";
 const ESRI_STREET_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 const TRAILS_TILES = "https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png";
 const SOIL_WMS =
@@ -142,13 +142,7 @@ const INITIAL_STYLE: any = {
       attribution: "© Esri",
       maxzoom: 19,
     },
-    topographic: {
-      type: "raster",
-      tiles: [USGS_TOPO_TILES],
-      tileSize: 256,
-      attribution: "USGS The National Map",
-      maxzoom: 16,
-    },
+    topographic: TOPOGRAPHIC_MAP.source,
     terrain: {
       type: "raster-dem",
       tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
@@ -1146,11 +1140,12 @@ export default function MapViewPage() {
             {(["satellite", "street", "topographic"] as const).map((bl) => (
               <button
                 key={bl}
+                title={bl === "topographic" && TOPOGRAPHIC_MAP.onlineOnly ? "Worldwide topographic map · online only" : undefined}
                 onClick={() => setBaseLayer(bl)}
                 className={`flex min-w-0 flex-1 items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-xs font-medium transition-all sm:flex-none sm:gap-1.5 sm:px-3 sm:text-sm ${baseLayer === bl ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground hover:text-foreground"}`}
               >
                 {bl === "satellite" ? <Satellite className="w-3.5 h-3.5" /> : bl === "topographic" ? <Mountain className="w-3.5 h-3.5" /> : <MapIcon className="w-3.5 h-3.5" />}
-                {bl === "topographic" ? "USGS Topo" : bl.charAt(0).toUpperCase() + bl.slice(1)}
+                {bl === "topographic" ? TOPOGRAPHIC_MAP.label : bl.charAt(0).toUpperCase() + bl.slice(1)}
               </button>
             ))}
           </div>

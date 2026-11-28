@@ -46,3 +46,8 @@ test("legacy project column label updates without changing its key or custom lab
   assert.equal(applyDefaultColumns(current, [{...current[0], label: 'Field campaign'}])[0].label, 'Field campaign');
   assert.equal(applyDefaultColumns(current, [{...current[0], label: 'Dataset'}])[0].key, 'dataset');
 });
+test('old spelling variants in saved defaults cannot recreate duplicate columns',()=>{
+  const current=[{key:'_customParameter:barometric pressure (mmHg):0',label:'Barometric pressure (mmHg)',enabled:true}];
+  const saved=['Pressure','Pressure mm/hg','Barometric Pressure (mmHg)'].map(label=>({key:`_customParameter:${label}:0`,label,enabled:true}));
+  assert.equal(applyDefaultColumns(current,saved).length,1);
+});

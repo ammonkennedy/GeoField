@@ -1,3 +1,4 @@
+import { sampleFigureFields, figureParameters, figureNumber } from "@/lib/sample-figures";
 import { measurementFigureRecords } from "@/lib/measurement-figures";
 import type { StrikeDipMeasurement } from "@/lib/strike-dip-measurements";
 import { useState, useMemo, useRef, useEffect } from "react";
@@ -21,27 +22,6 @@ import { Badge } from "./ui/badge";
 import { BarChart2, ChevronDown, Download, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import type { Sample } from "@workspace/api-client-react";
 import { saveFile } from "@/lib/save-file";
-
-const NUMERIC_PARAMS: Record<string, { label: string; unit: string; type: string }> = {
-  strike: { label: "Strike", unit: "°", type: "plane" },
-  dip: { label: "Dip", unit: "°", type: "plane" },
-  azimuth: { label: "Azimuth", unit: "°", type: "lineation" },
-  plunge: { label: "Plunge", unit: "°", type: "lineation" },
-  temperature:    { label: "Water Temp",         unit: "°C",     type: "water" },
-  ph:             { label: "pH Level",            unit: "",       type: "any"   },
-  do:             { label: "Dissolved Oxygen",    unit: "mg/L",   type: "water" },
-  conductivity:   { label: "Conductivity",        unit: "μS/cm",  type: "water" },
-  turbidity:      { label: "Turbidity",           unit: "FNU",    type: "water" },
-  flowRate:       { label: "Flow Rate",           unit: "m³/s",   type: "water" },
-  hardness:       { label: "Hardness",            unit: "Mohs",   type: "rock"  },
-  specificGravity:{ label: "Specific Gravity",    unit: "",       type: "rock"  },
-  weight:         { label: "Weight",              unit: "g",      type: "any"   },
-  depth:          { label: "Depth",               unit: "cm",     type: "soil_sand" },
-  organicMatter:  { label: "Organic Matter",      unit: "%",      type: "soil_sand" },
-  pidReading:     { label: "PID Reading",         unit: "",       type: "air" },
-  ambientTemperature: { label: "Ambient Temp",    unit: "°C",     type: "air" },
-  relativeHumidity: { label: "Relative Humidity", unit: "%",      type: "air" },
-};
 
 const TYPE_COLORS: Record<string, string> = {
   plane: "#60a5fa",
@@ -298,7 +278,7 @@ function BoxFigure({ data, paramLabel, paramUnit, labelPoints }: { data: any[]; 
 }
 
 export function DatasetFigures({ samples: sampleRecords, measurements = [], datasetName }: { samples: Sample[]; measurements?: StrikeDipMeasurement[]; datasetName?: string }) {
-  const samples = useMemo(() => [...sampleRecords, ...measurementFigureRecords(measurements)], [sampleRecords, measurements]);
+  const samples = useMemo(() => [...sampleRecords, ...measurementFigureRecords(measurements)].map(sample => ({ ...sample, figure: sampleFigureFields(sample) })), [sampleRecords, measurements]);
   const [open, setOpen] = useState(false);
   const [selectedParam, setSelectedParam] = useState<string>("");
   const [scatterXParam, setScatterXParam] = useState<string>("");
@@ -307,23 +287,20 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
   const [isDownloading, setIsDownloading] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
-  const availableParams = useMemo(() => {
-    return Object.entries(NUMERIC_PARAMS).filter(([key]) =>
-      samples.some((s) => {
-        const val = (s.fields as any)?.[key];
-        return val !== undefined && val !== null && val !== "" && !isNaN(Number(val));
-      })
-    );
-  }, [samples]);
+  const availableParams = useMemo(() => figureParameters(samples.map(sample => sample.figure)), [samples]);
+  const parameterMap = useMemo(() => new Map(availableParams), [availableParams]);
+  useEffect(() => {
+    if (selectedParam && !parameterMap.has(selectedParam)) setSelectedParam("");
+    if (scatterXParam && !parameterMap.has(scatterXParam)) setScatterXParam("");
+  }, [parameterMap, selectedParam, scatterXParam]);
 
   const chartData = useMemo(() => {
     if (!selectedParam) return [];
     return samples
       .map((s) => {
-        const raw = (s.fields as any)?.[selectedParam];
-        const val = raw !== undefined && raw !== null && raw !== "" ? Number(raw) : null;
-        if (val === null || isNaN(val)) return null;
-        const meta = NUMERIC_PARAMS[selectedParam];
+        const val = figureNumber(s.figure.values[selectedParam]);
+        const meta = parameterMap.get(selectedParam);
+        if (val === undefined || !meta) return null;
         return {
           name: s.sampleId,
           value: val,
@@ -332,19 +309,16 @@ export function DatasetFigures({ samples: sampleRecords, measurements = [], data
         };
       })
       .filter(Boolean) as any[];
-  }, [samples, selectedParam]);
+  }, [samples, selectedParam, parameterMap]);
 
-  const paramMeta = selectedParam ? NUMERIC_PARAMS[selectedParam] : null;
-  const scatterXMeta = scatterXParam ? NUMERIC_PARAMS[scatterXParam] : null;
+  const paramMeta = selectedParam ? parameterMap.get(selectedParam) : null;
+  const scatterXMeta = scatterXParam ? parameterMap.get(scatterXParam) : null;
   const scatterData = useMemo(() => {
     if (!selectedParam || !scatterXParam) return [];
     return samples.flatMap((sample) => {
-      const rawX = (sample.fields as any)?.[scatterXParam];
-      const rawY = (sample.fields as any)?.[selectedParam];
-      if (rawX == null || rawY == null || String(rawX).trim() === "" || String(rawY).trim() === "") return [];
-      const x = Number(rawX);
-      const value = Number((sample.fields as any)?.[selectedParam]);
-      if (!Number.isFinite(x) || !Number.isFinite(value)) return [];
+      const x = figureNumber(sample.figure.values[scatterXParam]);
+      const value = figureNumber(sample.figure.values[selectedParam]);
+      if (x === undefined || value === undefined) return [];
       return [{
         name: sample.sampleId,
         x,
